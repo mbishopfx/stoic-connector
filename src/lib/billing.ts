@@ -59,7 +59,9 @@ export async function handleStripeWebhook(request: Request) {
     // Query Stripe's current state so delayed webhooks cannot downgrade a
     // renewed subscription or overwrite a newer plan change.
     const subscriptions = await stripe().subscriptions.list({ customer: customerId, status: "all", limit: 100 });
-    const active = subscriptions.data.find((item) => ["active", "trialing"].includes(item.status));
+    const relayPrices = new Set([requiredEnv("STRIPE_PRO_MONTHLY_PRICE_ID"), requiredEnv("STRIPE_PRO_ANNUAL_PRICE_ID")]);
+    const active = subscriptions.data.find((item) => ["active", "trialing"].includes(item.status)
+      && item.items.data.some((entry) => relayPrices.has(entry.price.id)));
     const { error } = await db.from("workspaces").update({ plan: active ? "pro" : "free", stripe_subscription_id: active?.id || null }).eq("stripe_customer_id", customerId);
     if (error) throw error;
   }
