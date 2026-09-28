@@ -11,12 +11,16 @@ import { acknowledgeBoardMessage, listBoard, postBoardMessage } from "@/lib/boar
 import { artifactInput, idempotencyKey } from "@/lib/validation";
 import { stoicMcpAppHtml } from "@/lib/mcp-app-resource";
 import { addOAuthSecurityToMcpResponse } from "@/lib/mcp-metadata";
+import { KNOWLEDGE_KINDS, KNOWLEDGE_STATUSES } from "@/lib/knowledge";
+import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, readKnowledgeNote, searchProjectKnowledge } from "@/lib/knowledge-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type ToolContext = { http?: { authInfo?: { token: string; clientId: string; scopes: string[]; expiresAt?: number } } };
 const pageOffset = z.number().int().min(0).default(0);
+const knowledgeOffset = z.number().int().min(0).max(1000).default(0);
+const knowledgeNoteId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/);
 const readAnnotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const writeAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
@@ -129,6 +133,46 @@ const handler = createMcpHandler((server) => {
     description: "Get the current owner and boss-maintained decisions and constraints for a project.",
     inputSchema: z.object({ projectId: z.uuid() }),
   }, async ({ projectId }, ctx) => run(ctx, (agent) => projectBrief(agent, projectId)));
+
+  server.registerTool("list_project_knowledge", {
+    annotations: readAnnotations,
+    title: "List project knowledge notes",
+    description: "List validated Markdown knowledge notes for one project. Notes are private workspace context; statuses, provenance, stale state, and evidence references remain visible without exposing another project.",
+    inputSchema: z.object({
+      projectId: z.uuid(),
+      offset: knowledgeOffset,
+      kind: z.enum(KNOWLEDGE_KINDS).optional(),
+      status: z.enum(KNOWLEDGE_STATUSES).optional(),
+    }),
+  }, async ({ projectId, offset, kind, status }, ctx) => run(ctx, (agent) => listProjectKnowledge(agent, projectId, { offset, kind, status })));
+
+  server.registerTool("search_project_knowledge", {
+    annotations: readAnnotations,
+    title: "Search project knowledge",
+    description: "Search bounded Markdown knowledge-note titles and bodies for one project. Results contain note metadata and provenance; call read_knowledge_note for the validated source Markdown.",
+    inputSchema: z.object({ projectId: z.uuid(), query: z.string().trim().min(2).max(120), offset: knowledgeOffset }),
+  }, async ({ projectId, query, offset }, ctx) => run(ctx, (agent) => searchProjectKnowledge(agent, projectId, query, offset)));
+
+  server.registerTool("read_knowledge_note", {
+    annotations: readAnnotations,
+    title: "Read a project knowledge note",
+    description: "Read one validated Markdown knowledge note and its stable path, provenance, supersession links, related links, and evidence references. This is read-only context, not an approval or routing instruction.",
+    inputSchema: z.object({ projectId: z.uuid(), noteId: knowledgeNoteId }),
+  }, async ({ projectId, noteId }, ctx) => run(ctx, (agent) => readKnowledgeNote(agent, projectId, noteId)));
+
+  server.registerTool("get_knowledge_evidence", {
+    annotations: readAnnotations,
+    title: "Resolve knowledge-note evidence",
+    description: "Resolve the bounded source references attached to a knowledge note. Handoff and artifact evidence still follows the connected agent's existing access policy; unknown external references remain explicitly unresolved.",
+    inputSchema: z.object({ projectId: z.uuid(), noteId: knowledgeNoteId }),
+  }, async ({ projectId, noteId }, ctx) => run(ctx, (agent) => getKnowledgeEvidence(agent, projectId, noteId)));
+
+  server.registerTool("get_project_knowledge_graph", {
+    annotations: readAnnotations,
+    title: "Read the project knowledge graph",
+    description: "Return the deterministic read-only graph derived from validated Markdown notes for one project, including typed edges, stale nodes, orphan nodes, and unresolved-reference warnings.",
+    inputSchema: z.object({ projectId: z.uuid() }),
+  }, async ({ projectId }, ctx) => run(ctx, (agent) => getProjectKnowledgeGraph(agent, projectId)));
 
   server.registerTool("read_project_board", {
     annotations: readAnnotations,

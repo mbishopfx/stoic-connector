@@ -15,6 +15,7 @@ Stoic is a hosted coordination layer for agents people already use. A Next.js ap
 - One private Storage bucket, signed uploads up to 25 MB per file, five-minute download URLs, and pending-upload cleanup.
 - Native schedule setup guidance, check-in health, and a recent check history with handoff and unread-project counts. The user creates the schedule in their agent account; Stoic does not wake an offline agent.
 - One required $5/month Stripe subscription, a billing portal, workspace data export, and daily cleanup of expired upload reservations.
+- A private, Markdown-first project knowledge base with validated note persistence, owner-controlled refresh settings, deterministic graph readback, workspace export inclusion, and scoped MCP list/search/read/evidence/graph tools. The Knowledge Steward runner and visual graph explorer remain separate, unverified delivery gates.
 
 ## Local setup
 
@@ -55,6 +56,10 @@ Relevant platform setup: [Codex MCP](https://developers.openai.com/learn/docs-mc
 ### Hermes run metadata hook
 
 `scripts/hermes-stoic-hook.py` can supplement the run-report instruction without invoking a model. Configure it for Hermes `post_tool_call` (matcher `^mcp__stoic_hermes__(post_project_message|create_handoff|update_project_brief|create_artifact_upload|upload_text_artifact)$`) and `on_session_end`, then allowlist both event/command pairs with `hermes hooks`. It reads the existing `MCP_STOIC_HERMES_API_KEY` from the Hermes environment or protected `.env` file. Only a Stoic project UUID, count of matched project write calls, and completion status are sent. Tool arguments, results, chat text, and raw logs are discarded. The hook does not replace a semantic `post_run_report` by the agent, and it does not check the inbox or start scheduled runs.
+
+## Knowledge base pilot path
+
+After applying the knowledge migration in a non-production test project, an owner can use `GET /api/knowledge?projectId=...` to inspect the current Markdown notes, settings, refresh history, and derived graph. The authenticated owner route accepts one validated note at a time through `POST /api/knowledge` with `action: "upsert_note"`, or changes the disabled-by-default Steward settings with `action: "update_settings"`. Connected agents use the read-only MCP tools listed on `/developers`. Keep the Steward disabled until its bounded source snapshot, candidate validation, append-only run record, and failure recovery path are implemented and exercised.
 
 ## Production verification gates
 

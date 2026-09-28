@@ -272,3 +272,15 @@ Matt has made persistent project memory and a visual graph a first-class P0 feat
 - The graph can open its source note for every node and never leaks another workspace's notes.
 - Export/import preserves IDs, links, provenance, supersession, and graph relationships.
 - Tests cover tenant isolation, no-secret/no-full-transcript leakage, stale/superseded decisions, graph determinism, and refresh failure recovery.
+
+## 2026-09-28 implementation delta: persistence and scoped knowledge reads
+
+The next local vertical slice is now implemented and verified separately from provider acceptance:
+
+- `supabase/migrations/202609270024_knowledge_base.sql` adds workspace/project composite-scoped `knowledge_notes`, owner-controlled `knowledge_settings`, and append-oriented `knowledge_refresh_runs`. Direct `anon`/`authenticated` table access is revoked; the server service role remains the only database path.
+- `src/lib/knowledge-store.ts` re-validates stored Markdown before returning it, preserves the existing worker handoff/artifact access policy while resolving evidence, bounds list/search/graph reads, and never treats note text as policy or approval.
+- Read-only MCP tools now cover list, literal search, source-note read, bounded evidence resolution, and deterministic graph projection. This expands the MCP coordination surface without replacing it with A2A or claiming support for unverified Grok web or consumer Muse surfaces.
+- The authenticated owner route at `/api/knowledge` provides bounded note upsert and settings read/write for the future Steward/graph UI. Settings default to disabled with 08:00, 13:00, and 18:00 UTC slots; no unattended runner was enabled.
+- Workspace export includes the knowledge tables, with a compatibility skip if an older deployment has not applied the optional migration yet. The public developer and privacy pages describe the new stored data and explicit runner boundary.
+
+Evidence for this implementation slice: `npm test` passed 36 tests across 8 files; `npm run test:sql` passed with migration `202609270024` loaded into an isolated PostgreSQL cluster; `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check`, JSON parsing, and secret/trailing-whitespace scans passed. These are local implementation/database checks only. Production migration application, authenticated owner route use, MCP `tools/list`/tool calls, real host acceptance, Steward execution, and graph UI rendering remain unverified.

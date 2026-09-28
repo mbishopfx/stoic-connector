@@ -34,4 +34,5 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/202609270021_artifact_board_notice.sql \
   -f supabase/migrations/202609270022_artifact_deletion_history.sql \
   -f supabase/migrations/202609270023_signup_provisioning_and_agent_projects.sql \
+  -f supabase/migrations/202609270024_knowledge_base.sql \
   -f tests/sql/integration.sql

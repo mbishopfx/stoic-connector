@@ -334,5 +334,51 @@ begin
     then raise exception 'private file lost its handoff scope'; end if;
   if has_function_privilege('authenticated', 'public.stoic_mark_artifact_deleted(uuid,uuid,uuid)', 'EXECUTE')
     then raise exception 'authenticated role can delete file metadata directly'; end if;
+
+  insert into public.knowledge_notes(
+    workspace_id, project_id, id, path, kind, title, status, confidence,
+    note_created_at, note_updated_at, source_agent, source_user,
+    supersedes, related, evidence, metadata, body, markdown, updated_by_user_id
+  ) values (
+    w1, p1, 'project-brief', 'index.md', 'brief', 'Current project brief', 'active', 'verified',
+    '2026-09-27T12:00:00Z', '2026-09-27T13:00:00Z', 'agent-source', 'user-source',
+    '{}', '{}', array['brief:version-1'], jsonb_build_object('contract_version', 1, 'id', 'project-brief'),
+    'The validated project direction is stored in Markdown.',
+    E'---\ncontract_version: 1\nid: "project-brief"\nproject_id: "40000000-0000-0000-0000-000000000001"\nkind: "brief"\ntitle: "Current project brief"\nstatus: "active"\ncreated_at: "2026-09-27T12:00:00Z"\nupdated_at: "2026-09-27T13:00:00Z"\nconfidence: "verified"\nsupersedes: []\nrelated: []\nevidence: ["brief:version-1"]\nsource_agent: "agent-source"\nsource_user: "user-source"\n---\n\nThe validated project direction is stored in Markdown.\n',
+    '10000000-0000-0000-0000-000000000001'
+  );
+  if (select count(*) from public.knowledge_notes where workspace_id = w1 and project_id = p1) <> 1
+    then raise exception 'knowledge note was not stored'; end if;
+  begin
+    insert into public.knowledge_notes(
+      workspace_id, project_id, id, path, kind, title, status, confidence,
+      note_created_at, note_updated_at, body, markdown
+    ) values (
+      w1, p2, 'foreign-note', 'foreign.md', 'note', 'Foreign note', 'active', 'uncertain',
+      now(), now(), 'This must be rejected.', 'not a validated note'
+    );
+    raise exception 'cross-workspace knowledge note was stored';
+  exception when foreign_key_violation then null; end;
+  insert into public.knowledge_settings(workspace_id, project_id, enabled, timezone, updated_by_user_id)
+    values(w1, p1, false, 'America/Chicago', '10000000-0000-0000-0000-000000000001');
+  update public.knowledge_settings set enabled = true where workspace_id = w1 and project_id = p1;
+  if not (select enabled from public.knowledge_settings where workspace_id = w1 and project_id = p1)
+    or (select settings_revision from public.knowledge_settings where workspace_id = w1 and project_id = p1) <> 2
+    then raise exception 'knowledge settings trigger did not preserve revision state'; end if;
+  insert into public.knowledge_refresh_runs(
+    workspace_id, project_id, scheduled_slot, source_scope_revision, input_fingerprint,
+    status, started_at, completed_at, output_counts
+  ) values (w1, p1, '08:00', 1, '1234567890abcdef', 'completed', now(), now(), '{"notes": 1}'::jsonb);
+  begin
+    insert into public.knowledge_refresh_runs(
+      workspace_id, project_id, scheduled_slot, source_scope_revision, input_fingerprint,
+      status, started_at
+    ) values (w1, p1, '08:00', 1, '1234567890abcdef', 'completed', now());
+    raise exception 'duplicate knowledge refresh run was stored';
+  exception when unique_violation then null; end;
+  if has_table_privilege('authenticated', 'public.knowledge_notes', 'SELECT')
+    or has_table_privilege('authenticated', 'public.knowledge_settings', 'SELECT')
+    or has_table_privilege('authenticated', 'public.knowledge_refresh_runs', 'SELECT')
+    then raise exception 'authenticated role can read knowledge tables directly'; end if;
   raise notice 'Stoic SQL integration checks passed';
 end $$;

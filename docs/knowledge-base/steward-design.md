@@ -1,6 +1,6 @@
 # Knowledge Steward design
 
-Status: design and acceptance contract only. No scheduled worker, database migration, or production refresh was enabled by the Markdown parser slice.
+Status: the server-owned settings and append-only refresh-run schema are implemented locally, but no scheduled worker or production refresh is enabled. Candidate generation and refresh execution remain a later gate.
 
 ## Purpose
 
@@ -35,9 +35,9 @@ Not allowed:
 
 ## Refresh state
 
-A future refresh record should include a stable `refresh_id`, workspace/project IDs, scheduled slot, started/completed timestamps, source-scope revision, input fingerprints, note IDs created/updated/marked stale, conflict IDs, unresolved references, safety findings, bounded output counts, and final status (`completed`, `partial`, `failed`, `cancelled`). Store the record append-only and keep the raw model response out of it.
+A refresh record in `knowledge_refresh_runs` includes a stable ID, workspace/project IDs, scheduled slot, started/completed timestamps, source-scope revision, input fingerprint, note IDs created/updated/marked stale, conflict IDs, unresolved references, safety findings, bounded output counts, and final status (`completed`, `partial`, `failed`, `cancelled`). The table is append-oriented and keeps the raw model response out of it.
 
-The refresh is idempotent on `(project_id, scheduled_slot, source_scope_revision, input_fingerprint)`. A retry must not duplicate notes or audit entries. The server owns the request fingerprint, note paths, graph output path, and retention decisions.
+The refresh table is unique on `(workspace_id, project_id, scheduled_slot, source_scope_revision, input_fingerprint)`. A future runner must use that key so a retry does not duplicate a run record. The server owns the request fingerprint, note paths, graph output path, and retention decisions.
 
 ## Steward sequence
 
@@ -61,3 +61,11 @@ A failed refresh leaves the last valid note set and graph available. It does not
 - Re-running against the same source fingerprint produces the same note bytes, graph bytes, IDs, and edge ordering.
 - Stale, conflicted, and superseded notes remain inspectable and carry provenance.
 - Owner export contains Markdown plus graph/provenance metadata without raw credentials or full chats.
+
+## Implemented server boundary
+
+- `POST /api/knowledge` with `action: "upsert_note"` validates and stores one bounded Markdown note for the authenticated owner. It rejects cross-project IDs, unsafe paths, credential-like values, and transcript-like bodies before persistence.
+- `POST /api/knowledge` with `action: "update_settings"` changes only the owner-controlled enabled flag, timezone, slots, source scopes, retention, and pinned note IDs. Model or note text cannot expand these fields.
+- `GET /api/knowledge?projectId=...` returns the validated note summaries, deterministic graph projection, settings, and the latest bounded refresh records for the owner.
+- The MCP endpoint exposes read-only list/search/read/evidence/graph tools. Evidence resolution retains the existing worker handoff and artifact access boundary; unknown references remain unresolved.
+- The workspace NDJSON export includes knowledge notes, settings, and refresh records. It does not export credential hashes, Storage paths, full chats, or model responses.

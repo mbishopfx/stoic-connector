@@ -1,6 +1,6 @@
 # Stoic project knowledge base
 
-Status: the Markdown contract and deterministic graph-index slice are implemented locally. Storage, refresh scheduling, scoped MCP tools, owner controls, and the graph explorer remain separate delivery gates.
+Status: the Markdown contract, workspace/project persistence, owner import/settings route, deterministic graph-index read path, export inclusion, and scoped MCP read tools are implemented locally. The unattended Knowledge Steward runner and graph explorer remain separate delivery gates.
 
 ## Product boundary
 
@@ -22,7 +22,7 @@ The knowledge layer is designed for the existing individual-owner workspace mode
   archive/
 ```
 
-The first implementation slice is filesystem/export compatible and does not add a database migration. A future persisted implementation can store the same Markdown files behind workspace-scoped Storage and retain only bounded metadata in Postgres.
+The persisted implementation stores the same validated Markdown files and bounded metadata in workspace/project-scoped Postgres rows. It does not create a per-customer database, schema, or bucket. The owner knowledge route supports bounded note upsert and Steward settings; the existing workspace export includes the knowledge tables. A future large-export path can place the same files in private Storage without changing the note contract.
 
 ## Contract and graph artifacts
 
@@ -41,10 +41,10 @@ The first implementation slice is filesystem/export compatible and does not add 
 - [x] Deterministic graph nodes with bounded provenance/evidence, typed edges, unresolved-reference warnings, stale/superseded flags, and orphan detection.
 - [x] Tenant/project boundary diagnostics for graph inputs and cross-project references.
 - [x] Unit coverage for round trips, malformed metadata, safety boundaries, determinism, provenance, supersession, unknown references, and project isolation.
-- [ ] Workspace-scoped note persistence and export/import route.
-- [ ] Knowledge Steward execution and append-only refresh audit records.
-- [ ] Scoped MCP list/search/read/evidence tools.
-- [ ] Owner controls for cadence, source scopes, retention, pinned decisions, conflict review, export, and rebuild.
+- [x] Workspace/project-scoped note persistence, bounded owner import, and workspace export inclusion.
+- [ ] Knowledge Steward execution; append-only refresh audit storage and default cadence state are present, but no runner is enabled.
+- [x] Scoped MCP list/search/read/evidence tools plus deterministic graph readback.
+- [x] Owner controls for enable/disable, cadence slots, source scopes, retention, pinned notes, and refresh-history readback through `/api/knowledge`.
 - [ ] Read-only Obsidian-style graph explorer.
 
 ## Safety invariants
@@ -54,4 +54,4 @@ The first implementation slice is filesystem/export compatible and does not add 
 3. Supersession is represented as a typed edge and never deletes the earlier note.
 4. The parser rejects secret-like credential values and transcript-like content; the owner can review a rejected source outside the knowledge layer.
 5. The Steward may propose bounded summaries and graph updates only. It cannot approve actions, edit the authoritative brief, create arbitrary handoffs, or expand source scope through model text.
-6. The default future refresh cadence is 08:00, 13:00, and 18:00 in the owner's local timezone, but no scheduler is enabled by this local contract slice.
+6. The default refresh state is disabled and uses 08:00, 13:00, and 18:00 in UTC until an owner chooses a timezone and enables it. No unattended scheduler or Codex-harness run is enabled by this persistence slice.

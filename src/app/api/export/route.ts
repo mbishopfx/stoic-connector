@@ -4,7 +4,16 @@ import { requireWorkspace } from "@/lib/account";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const TABLES = ["projects", "agents", "handoffs", "task_events", "board_messages", "synthesis_runs", "approvals", "artifacts", "audit_events"] as const;
+const TABLES = ["projects", "agents", "handoffs", "task_events", "board_messages", "synthesis_runs", "approvals", "artifacts", "audit_events", "knowledge_notes", "knowledge_settings", "knowledge_refresh_runs"] as const;
+const OPTIONAL_TABLES = new Set(["knowledge_notes", "knowledge_settings", "knowledge_refresh_runs"]);
+
+function missingOptionalTable(table: string, error: { code?: string; message?: string }) {
+  return OPTIONAL_TABLES.has(table) && (
+    error.code === "42P01" || error.code === "PGRST205" ||
+    error.message?.toLowerCase().includes("does not exist") ||
+    error.message?.toLowerCase().includes("schema cache")
+  );
+}
 
 export async function GET() {
   try {
@@ -23,7 +32,10 @@ export async function GET() {
             let offset = 0;
             while (true) {
               const { data, error } = await db.from(table).select("*").eq("workspace_id", workspace.id).range(offset, offset + 999);
-              if (error) throw error;
+              if (error) {
+                if (missingOptionalTable(table, error)) break;
+                throw error;
+              }
               for (const row of data || []) {
                 // Never export hashes, pairing codes, or Storage paths.
                 const safe = { ...row } as Record<string, unknown>;
