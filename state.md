@@ -2,7 +2,7 @@
 
 - current_objective: Finish pilot acceptance and add the Markdown-first Agent Knowledge Base, three-times-daily Codex-harness Knowledge Steward, and Obsidian-style graph explorer as the core planned $10/month value expansion without weakening tenant isolation, approval gates, or the live pilot.
 - loop_window: 2026-09-27T22:46:12-05:00 through the next 8 hours
-- branch: stoic/connector-8h-loop-20260927
+- branch: main
 - completed:
   - Read MASTER_PLAN.md, README.md, AGENTS.md, and CLAUDE.md.
   - Confirmed the deployed pilot and MCP endpoint are separate from provider-native schedules.
@@ -15,14 +15,14 @@
   - Added the Knowledge Base + Graph product scope, Markdown contract direction, three-times-daily Codex-harness refresh, graph acceptance criteria, planned $10/month positioning, and verified-run Git closeout rule to MASTER_PLAN.md.
   - Updated cron job 3f9fcd19b837 so future passes prioritize the Knowledge Steward, Markdown graph, scoped MCP knowledge tools, graph UI, and verified main-branch closeout.
   - Verified the first cron pass output was delivered to Slack channel C0BR6RX99DG and read back as message `1790568093.826969`.
+  - Created private GitHub repository `https://github.com/mbishopfx/stoic-connector`, configured it as `origin`, fast-forwarded local `main`, and pushed commit `7745389` to `origin/main`.
   - Preserved all pre-existing dirty work; no migration, credential, deployment, billing, or external communication was performed by this pass.
 - active_blockers:
   - Real authenticated Codex/Hermes/OpenClaw/Claude host acceptance is still unverified.
   - Grok web and consumer Muse support remain unverified; do not market them as supported.
   - Slack kickoff and scheduled cron delivery read-back passed; future scheduled deliveries remain observable gates.
-  - Git closeout is blocked for now: this checkout has extensive pre-existing dirty WIP and no configured `origin` remote, so no safe push to `main` is possible without a repository/remote decision and file ownership boundary.
 - next_best_action: Define the Markdown knowledge-note contract and deterministic graph index/parser first, then build the bounded three-times-daily Knowledge Steward and source-note graph UI. Do not change provider support claims or billing until those slices have local proof.
-- verification_status: Research artifact readable; MASTER_PLAN and cron scope updates applied; cron creation/launch, Slack send/readback, Google Drive handoff/readback, and source reads verified. `npm test -- tests/agent-health.test.ts --run` passed (6 tests); `npm test` passed (11 tests across 3 files); `npm run test:sql` passed; `npm run typecheck` passed; `npm run lint` passed; `npm run build` passed and generated the MCP App widget; `git diff --check` passed on touched tracked source paths; docs secret-pattern scan returned no matches. No Git commit/push was claimed.
+- verification_status: Research artifact readable; MASTER_PLAN and cron scope updates applied; private GitHub repo creation, origin configuration, main push, and remote readback verified. Cron creation/launch, Slack send/readback, Google Drive handoff/readback, and source reads verified. `npm test` passed (14 tests across 4 files); `npm run test:sql` passed; `npm run typecheck` passed; `npm run lint` passed; `npm run build` passed and generated the MCP App widget; `git diff --cached --check` passed before commit; docs secret-pattern scan returned no matches outside a deliberate redacted credential fixture in `tests/synthesis.test.ts`.
 - deployment_status: No deployment or production mutation approved; live provider/MCP App/billing/SMTP verification remains open.
 - cleanup_status: Removed the stale 299 MB .next directory before the production build, ran a local start smoke check, then removed the rebuildable .next output again; the required public/mcp-app build output remains.
 - safety_boundary: Preserve existing dirty work. No reset/clean, production deploy, live billing, destructive migration, credential copying, public publishing, or external communication without explicit approval.
