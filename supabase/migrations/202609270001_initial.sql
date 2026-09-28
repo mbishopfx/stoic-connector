@@ -1,4 +1,4 @@
--- Relay uses one shared database and one private bucket. All product reads and writes
+-- Stoic uses one shared database and one private bucket. All product reads and writes
 -- go through the application server; OAuth clients never receive table privileges.
 create extension if not exists pgcrypto;
 
@@ -146,7 +146,7 @@ end $$;
 grant usage, select on sequence public.audit_events_id_seq to service_role;
 
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('relay-artifacts', 'relay-artifacts', false, 26214400)
+values ('stoic-artifacts', 'stoic-artifacts', false, 26214400)
 on conflict (id) do update set public = false, file_size_limit = 26214400;
 -- No storage.objects policy is added: only the server service role can manage
 -- objects or mint short-lived signed URLs.

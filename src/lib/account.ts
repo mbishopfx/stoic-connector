@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { AppError, adminDb } from "@/lib/supabase";
-import { LIMITS, type DelegationLevel, type Platform } from "@/lib/config";
-import { rateLimit } from "@/lib/rate-limit";
+import { type DelegationLevel, type Platform } from "@/lib/config";
+import { redactSynthesisSecrets } from "@/lib/synthesis-input";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -11,25 +11,47 @@ export async function workspaceForOwner(ownerId: string) {
   return data;
 }
 
+export async function ensureWorkspaceForOwner(ownerId: string, name = "My Workspace") {
+  const { error } = await adminDb().rpc("stoic_provision_workspace", { p_owner_id: ownerId, p_name: name });
+  if (error) throw error;
+  const workspace = await workspaceForOwner(ownerId);
+  if (!workspace) throw new AppError("Workspace setup did not complete", 500);
+  return workspace;
+}
+
 export async function requireWorkspace(ownerId: string) {
   const workspace = await workspaceForOwner(ownerId);
   if (!workspace) throw new AppError("Create a workspace first", 404);
   return workspace;
 }
 
+export async function requireActiveWorkspace(ownerId: string) {
+  const workspace = await requireWorkspace(ownerId);
+  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
+  return workspace;
+}
+
 export async function dashboardState(ownerId: string) {
-  const workspace = await workspaceForOwner(ownerId);
-  if (!workspace) return { workspace: null };
+  const workspace = await ensureWorkspaceForOwner(ownerId);
   const db = adminDb();
-  const [agents, projects, handoffs, approvals, artifacts, events] = await Promise.all([
-    db.from("agents").select("id,name,platform,status,oauth_client_id,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
+  if (workspace.plan !== "pro") {
+    const { data: agents, error } = await db.from("agents")
+      .select("id,name,platform,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at")
+      .eq("workspace_id", workspace.id).order("created_at");
+    if (error) throw error;
+    return { workspace, agents: agents || [] };
+  }
+  const [agents, projects, handoffs, approvals, artifacts, events, board, activity] = await Promise.all([
+    db.from("agents").select("id,name,platform,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("projects").select("*").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     db.from("handoffs").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100),
     db.from("approvals").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50),
     db.from("artifacts").select("id,project_id,handoff_id,name,mime_type,size_bytes,status,created_at").eq("workspace_id", workspace.id).eq("status", "ready").order("created_at", { ascending: false }).limit(100),
     db.from("task_events").select("id,handoff_id,actor_key,event_type,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(150),
+    db.from("board_messages").select("id,project_id,parent_id,author_key,kind,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
+    db.from("audit_events").select("id,actor_key,details,created_at").eq("workspace_id", workspace.id).eq("action", "inbox.checked").order("created_at", { ascending: false }).limit(100),
   ]);
-  for (const result of [agents, projects, handoffs, approvals, artifacts, events]) if (result.error) throw result.error;
+  for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity]) if (result.error) throw result.error;
   const { data: usage, error: usageError } = await db.rpc("relay_workspace_usage", { p_workspace_id: workspace.id });
   if (usageError) throw usageError;
   return {
@@ -40,57 +62,36 @@ export async function dashboardState(ownerId: string) {
     approvals: approvals.data || [],
     artifacts: artifacts.data || [],
     events: events.data || [],
+    board: board.data || [],
+    activity: activity.data || [],
     usage: { handoffs: Number(usage.handoffs), storageBytes: Number(usage.storageBytes) },
-    limits: LIMITS[workspace.plan as "free" | "pro"],
   };
 }
 
 export async function createWorkspace(ownerId: string, name: string) {
-  const existing = await workspaceForOwner(ownerId);
-  if (existing) {
-    const { count, error: countError } = await adminDb().from("projects").select("id", { count: "exact", head: true }).eq("workspace_id", existing.id);
-    if (countError) throw countError;
-    if (!count) {
-      const { error: repairError } = await adminDb().from("projects").insert({ workspace_id: existing.id, name: "First project", brief: "" });
-      if (repairError) throw repairError;
-    }
-    return existing;
-  }
-  const db = adminDb();
-  const { data, error } = await db.from("workspaces").insert({ owner_id: ownerId, name, delegation_level: "delegate" }).select().single();
-  if (error) throw error;
-  const project = await db.from("projects").insert({ workspace_id: data.id, name: "First project", brief: "" });
-  if (project.error) throw project.error;
-  return data;
+  return ensureWorkspaceForOwner(ownerId, name);
 }
 
 export async function addAgent(ownerId: string, name: string, platform: Platform) {
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = await requireActiveWorkspace(ownerId);
   const db = adminDb();
-  const { count, error: countError } = await db.from("agents").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).neq("status", "revoked");
-  if (countError) throw countError;
-  if ((count || 0) >= LIMITS[workspace.plan as "free" | "pro"].agents) throw new AppError("Agent limit reached. Upgrade or revoke an agent.", 402);
   const { data, error } = await db.from("agents").insert({ workspace_id: workspace.id, name, platform }).select("id,name,platform,status").single();
   if (error) throw error;
-  if (!workspace.boss_agent_id) await db.from("workspaces").update({ boss_agent_id: data.id }).eq("id", workspace.id);
   return data;
 }
 
 export async function createProject(ownerId: string, name: string) {
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = await requireActiveWorkspace(ownerId);
   const db = adminDb();
-  const { count, error: countError } = await db.from("projects").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null);
-  if (countError) throw countError;
-  if ((count || 0) >= LIMITS[workspace.plan as "free" | "pro"].projects) throw new AppError("Project limit reached. Upgrade to add another project.", 402);
   const { data, error } = await db.from("projects").insert({ workspace_id: workspace.id, name }).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function setProjectRouting(ownerId: string, projectId: string, agentId: string | null) {
-  const workspace = await requireWorkspace(ownerId);
-  if (workspace.plan !== "pro") throw new AppError("Project routing is included with Pro", 402);
+  const workspace = await requireActiveWorkspace(ownerId);
   if (agentId) {
+    if (agentId === workspace.boss_agent_id) throw new AppError("Choose a worker other than the designated boss", 400);
     const { data: agent } = await adminDb().from("agents").select("id").eq("id", agentId)
       .eq("workspace_id", workspace.id).eq("status", "connected").maybeSingle();
     if (!agent) throw new AppError("Choose a connected agent in this workspace", 400);
@@ -103,18 +104,18 @@ export async function setProjectRouting(ownerId: string, projectId: string, agen
 }
 
 export async function setWorkspacePolicy(ownerId: string, bossAgentId: string | null, delegationLevel: DelegationLevel) {
-  const workspace = await requireWorkspace(ownerId);
-  if (bossAgentId) {
-    const { data } = await adminDb().from("agents").select("id").eq("workspace_id", workspace.id).eq("id", bossAgentId).neq("status", "revoked").maybeSingle();
-    if (!data) throw new AppError("Choose an active agent in this workspace");
-  }
-  const { data, error } = await adminDb().from("workspaces").update({ boss_agent_id: bossAgentId, delegation_level: delegationLevel }).eq("id", workspace.id).select().single();
+  const workspace = await requireActiveWorkspace(ownerId);
+  const { data, error } = await adminDb().rpc("stoic_set_workspace_policy", {
+    p_workspace_id: workspace.id, p_owner_id: ownerId, p_boss_agent_id: bossAgentId, p_delegation_level: delegationLevel,
+  });
+  if (error?.message.includes("boss_has_active_handoffs")) throw new AppError("Finish or cancel this agent's open handoffs before making it the boss", 409);
+  if (error?.message.includes("boss_agent_not_found")) throw new AppError("Choose an active agent in this workspace", 400);
   if (error) throw error;
   return data;
 }
 
 export async function updateBrief(ownerId: string, projectId: string, brief: string, expectedVersion: number) {
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = await requireActiveWorkspace(ownerId);
   return setBrief(workspace.id, projectId, brief, expectedVersion, `user:${ownerId}`);
 }
 
@@ -130,7 +131,7 @@ export async function setBrief(workspaceId: string, projectId: string, brief: st
 }
 
 export async function setSchedule(ownerId: string, agentId: string, enabled: boolean, cadenceMinutes: number) {
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = enabled ? await requireActiveWorkspace(ownerId) : await requireWorkspace(ownerId);
   const { data: agent } = await adminDb().from("agents").select("platform").eq("workspace_id", workspace.id).eq("id", agentId).maybeSingle();
   if (enabled && ["grok", "muse"].includes(agent?.platform || "")) throw new AppError("This platform has no verified unattended inbox check", 400);
   const { data, error } = await adminDb().from("agents").update({ schedule_enabled: enabled, schedule_cadence_minutes: cadenceMinutes })
@@ -140,8 +141,23 @@ export async function setSchedule(ownerId: string, agentId: string, enabled: boo
   return data;
 }
 
+export async function setAgentAccessNotes(ownerId: string, agentId: string, raw: string) {
+  const workspace = await requireActiveWorkspace(ownerId);
+  const notes = raw.trim();
+  if (notes.length > 2000) throw new AppError("Keep access notes under 2,000 characters", 400);
+  if (redactSynthesisSecrets(notes) !== notes) throw new AppError("Remove credentials and secrets from access notes", 400);
+  const db = adminDb();
+  const { data, error } = await db.from("agents").update({ access_notes: notes })
+    .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked")
+    .select("id,access_notes").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AppError("Agent not found", 404);
+  await db.from("audit_events").insert({ workspace_id: workspace.id, actor_key: `user:${ownerId}`, action: "agent.access_notes_updated", object_id: agentId });
+  return data;
+}
+
 export async function createPairingCode(ownerId: string, agentId: string) {
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = await requireActiveWorkspace(ownerId);
   const code = randomBytes(12).toString("base64url");
   const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   const { data, error } = await adminDb().from("agents").update({ pairing_code_hash: hash(code), pairing_expires_at: expires })
@@ -153,15 +169,14 @@ export async function createPairingCode(ownerId: string, agentId: string) {
 
 export async function pairOAuthAgent(ownerId: string, clientId: string, code: string) {
   if (!clientId || !code) throw new AppError("Pairing requires an OAuth client and code");
-  await rateLimit(`pair:${ownerId}:${clientId}`, 20);
   const db = adminDb();
-  const workspace = await requireWorkspace(ownerId);
+  const workspace = await requireActiveWorkspace(ownerId);
   const { data: agent, error } = await db.from("agents").select("id,name,status,oauth_client_id")
     .eq("workspace_id", workspace.id).eq("pairing_code_hash", hash(code)).gt("pairing_expires_at", new Date().toISOString()).neq("status", "revoked").maybeSingle();
   if (error) throw error;
   if (!agent) throw new AppError("Pairing code is invalid or expired", 403);
   if (agent.oauth_client_id && agent.oauth_client_id !== clientId) throw new AppError("This agent is already paired. Revoke it before pairing again.", 409);
-  const { data, error: updateError } = await db.from("agents").update({ oauth_client_id: clientId, status: "connected", pairing_code_hash: null, pairing_expires_at: null })
+  const { data, error: updateError } = await db.from("agents").update({ oauth_client_id: clientId, credential_hash: null, status: "connected", pairing_code_hash: null, pairing_expires_at: null, last_check_at: null })
     .eq("id", agent.id).eq("workspace_id", workspace.id).eq("pairing_code_hash", hash(code)).select("id,name,platform,status").maybeSingle();
   if (updateError) throw updateError;
   if (!data) throw new AppError("Pairing code was already used", 409);
@@ -170,9 +185,9 @@ export async function pairOAuthAgent(ownerId: string, clientId: string, code: st
 }
 
 export async function issueAgentKey(ownerId: string, agentId: string) {
-  const workspace = await requireWorkspace(ownerId);
-  const raw = `rly_${randomBytes(32).toString("base64url")}`;
-  const { data, error } = await adminDb().from("agents").update({ credential_hash: hash(raw), status: "connected" })
+  const workspace = await requireActiveWorkspace(ownerId);
+  const raw = `stoic_${randomBytes(32).toString("base64url")}`;
+  const { data, error } = await adminDb().from("agents").update({ credential_hash: hash(raw), oauth_client_id: null, pairing_code_hash: null, pairing_expires_at: null, status: "connected", last_check_at: null })
     .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked").select("id,name,platform,status").maybeSingle();
   if (error) throw error;
   if (!data) throw new AppError("Agent not found", 404);

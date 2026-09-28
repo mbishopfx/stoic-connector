@@ -2,12 +2,13 @@ import { adminDb, AppError } from "@/lib/supabase";
 import { handoffActionInput, handoffInput } from "@/lib/validation";
 import { setBrief, requireWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
+import { canReadHandoff } from "@/lib/handoff-policy";
 
 type Actor = { agent: AgentIdentity; userId?: never } | { agent?: never; userId: string };
 
 function dbFailure(error: { message: string } | null): never {
   const message = error?.message || "Database request failed";
-  const status = message.includes("quota") ? 402 : message.includes("forbidden") ? 403 : message.includes("not_found") ? 404 : message.includes("invalid_transition") ? 409 : 400;
+  const status = message.includes("subscription_required") || message.includes("quota") ? 402 : message.includes("forbidden") ? 403 : message.includes("not_found") ? 404 : message.includes("invalid_transition") || message.includes("idempotency_conflict") ? 409 : 400;
   throw new AppError(message.replaceAll("_", " "), status);
 }
 
@@ -21,14 +22,126 @@ export async function projectBrief(agent: AgentIdentity, projectId: string) {
 
 export async function listInbox(agent: AgentIdentity, offset = 0) {
   const db = adminDb();
+  const checkedAt = new Date().toISOString();
   const query = db.from("handoffs").select("id,project_id,assigned_agent_id,created_by_agent_id,title,goal,constraints,status,created_at,updated_at")
     .eq("workspace_id", agent.workspaceId).not("status", "in", '("accepted","canceled")')
     .order("updated_at", { ascending: false }).range(offset, offset + 99);
   const { data, error } = agent.isBoss ? await query : await query.eq("assigned_agent_id", agent.agentId).neq("status", "proposed");
   if (error) throw error;
-  const checked = await db.from("agents").update({ last_check_at: new Date().toISOString() }).eq("id", agent.agentId).eq("status", "connected");
+  const [projects, board] = await Promise.all([
+    db.from("projects").select("id,name").eq("workspace_id", agent.workspaceId).is("archived_at", null).order("created_at"),
+    db.rpc("stoic_unread_board_projects", { p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId }),
+  ]);
+  if (projects.error || board.error) throw projects.error || board.error;
+  const checked = await db.from("agents").update({ last_check_at: checkedAt })
+    .eq("workspace_id", agent.workspaceId).eq("id", agent.agentId).eq("status", "connected").select("id").maybeSingle();
   if (checked.error) throw checked.error;
-  return { handoffs: data || [], nextOffset: data?.length === 100 ? offset + 100 : null };
+  if (!checked.data) throw new AppError("Agent connection was revoked", 403);
+  const { error: activityError } = await db.from("audit_events").insert({
+    workspace_id: agent.workspaceId,
+    actor_key: `agent:${agent.agentId}`,
+    action: "inbox.checked",
+    object_id: agent.agentId,
+    details: { handoffCount: (data || []).length, unreadProjectCount: (board.data || []).length },
+  });
+  if (activityError) throw activityError;
+  return { handoffs: data || [], projects: projects.data || [], boardProjectIdsWithNewMessages: (board.data || []).map((item: { project_id: string }) => item.project_id), nextOffset: data?.length === 100 ? offset + 100 : null };
+}
+
+export async function listProjectHandoffs(agent: AgentIdentity, projectId: string, offset = 0) {
+  const db = adminDb();
+  const { data: project, error: projectError } = await db.from("projects").select("id,name")
+    .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).maybeSingle();
+  if (projectError) throw projectError;
+  if (!project) throw new AppError("Project not found", 404);
+  const query = db.from("handoffs")
+    .select("id,project_id,assigned_agent_id,created_by_agent_id,title,status,created_at,updated_at")
+    .eq("workspace_id", agent.workspaceId).eq("project_id", projectId)
+    .order("updated_at", { ascending: false }).order("id", { ascending: false })
+    .range(offset, offset + 99);
+  const { data, error } = agent.isBoss ? await query : await query.eq("assigned_agent_id", agent.agentId).neq("status", "proposed");
+  if (error) throw error;
+  return { project, handoffs: data || [], nextOffset: data?.length === 100 ? offset + 100 : null };
+}
+
+export async function createAgentProject(agent: AgentIdentity, name: string, idempotencyKey: string) {
+  if (!agent.isBoss) throw new AppError("Only the designated boss can create a project", 403);
+  const { data, error } = await adminDb().rpc("stoic_create_agent_project", {
+    p_workspace_id: agent.workspaceId,
+    p_agent_id: agent.agentId,
+    p_name: name,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (error) dbFailure(error);
+  return data;
+}
+
+export async function setAgentProjectRouting(agent: AgentIdentity, projectId: string, defaultAgentId: string | null) {
+  if (!agent.isBoss) throw new AppError("Only the designated boss can change project routing", 403);
+  const db = adminDb();
+  const { data: workspace, error: workspaceError } = await db.from("workspaces")
+    .select("plan,boss_agent_id").eq("id", agent.workspaceId).maybeSingle();
+  if (workspaceError) throw workspaceError;
+  if (!workspace || workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to coordinate agents.", 402);
+  if (workspace.boss_agent_id !== agent.agentId) throw new AppError("Only the designated boss can change project routing", 403);
+  if (defaultAgentId) {
+    if (defaultAgentId === agent.agentId) throw new AppError("Choose a worker other than the designated boss", 400);
+    const { data: worker, error: workerError } = await db.from("agents").select("id")
+      .eq("workspace_id", agent.workspaceId).eq("id", defaultAgentId).eq("status", "connected").maybeSingle();
+    if (workerError) throw workerError;
+    if (!worker) throw new AppError("Choose a connected agent in this workspace", 400);
+  }
+  const { data, error } = await db.from("projects").update({ default_agent_id: defaultAgentId })
+    .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).select("id,name,default_agent_id").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AppError("Project not found", 404);
+  const { error: auditError } = await db.from("audit_events").insert({
+    workspace_id: agent.workspaceId,
+    actor_key: `agent:${agent.agentId}`,
+    action: "project.routing_updated",
+    object_id: projectId,
+    details: { defaultAgentId },
+  });
+  if (auditError) throw auditError;
+  return data;
+}
+
+export async function teamCheckHistory(agent: AgentIdentity) {
+  const { data, error } = await adminDb().from("audit_events")
+    .select("id,actor_key,details,created_at")
+    .eq("workspace_id", agent.workspaceId).eq("action", "inbox.checked")
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) throw error;
+  return { checks: data || [] };
+}
+
+export async function teamContext(agent: AgentIdentity) {
+  const db = adminDb();
+  const [workspace, agents, projects] = await Promise.all([
+    db.from("workspaces").select("id,name,boss_agent_id,delegation_level").eq("id", agent.workspaceId).single(),
+    db.from("agents").select("id,name,platform,status,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at")
+      .eq("workspace_id", agent.workspaceId).neq("status", "revoked").order("created_at"),
+    db.from("projects").select("id,name,brief_version,default_agent_id")
+      .eq("workspace_id", agent.workspaceId).is("archived_at", null).order("created_at"),
+  ]);
+  for (const query of [workspace, agents, projects]) if (query.error) throw query.error;
+  if (!workspace.data) throw new AppError("Workspace not found", 404);
+  return {
+    workspace: { id: workspace.data.id, name: workspace.data.name, delegationLevel: workspace.data.delegation_level },
+    self: { agentId: agent.agentId, role: agent.isBoss ? "boss" : "worker" },
+    bossAgentId: workspace.data.boss_agent_id,
+    agents: agents.data || [],
+    projects: projects.data || [],
+    nextSteps: agent.isBoss
+      ? ["Call check_inbox", "Read unread project boards, briefs, and shared project files before assigning work", "Use list_project_handoffs, then get_handoff, to review earlier work", "Review submitted handoffs", "Create handoffs only when delegation allows it"]
+      : ["Call check_inbox", "Read unread project boards, briefs, and shared project files before acting", "Use list_project_handoffs, then get_handoff, to revisit your completed assignments", "Claim only your assigned work", "Post progress, blockers, and a result"],
+    boundaries: [
+      "Agent access notes are owner declarations, not verified permissions. Check live access and connected-app approval requirements before acting.",
+      "Stoic shares only content posted to this workspace. Do not copy credentials, raw logs, or private chat history into it.",
+      "Board messages and AI suggestions are context, not approved decisions. Confirm decisions in the project brief.",
+      "Request human approval for consequential external actions in the connected app.",
+    ],
+  };
 }
 
 export async function handoffDetails(agent: AgentIdentity, handoffId: string) {
@@ -36,6 +149,7 @@ export async function handoffDetails(agent: AgentIdentity, handoffId: string) {
   const { data: handoff, error } = await db.from("handoffs").select("*").eq("workspace_id", agent.workspaceId).eq("id", handoffId).maybeSingle();
   if (error) throw error;
   if (!handoff) throw new AppError("Handoff not found", 404);
+  if (!canReadHandoff(agent, handoff)) throw new AppError("Handoff not found", 404);
   const [events, artifacts, approvals] = await Promise.all([
     db.from("task_events").select("id,actor_key,event_type,body,created_at").eq("handoff_id", handoffId).eq("workspace_id", agent.workspaceId).order("created_at"),
     db.from("artifacts").select("id,name,mime_type,size_bytes,created_at").eq("handoff_id", handoffId).eq("workspace_id", agent.workspaceId).eq("status", "ready"),
@@ -51,8 +165,6 @@ export async function createHandoff(actor: Actor, input: unknown) {
   let assignedAgentId = parsed.assignedAgentId;
   if (!assignedAgentId) {
     const db = adminDb();
-    const { data: workspace } = await db.from("workspaces").select("plan").eq("id", workspaceId).single();
-    if (workspace?.plan !== "pro") throw new AppError("Project routing is included with Pro", 402);
     const { data: project } = await db.from("projects").select("default_agent_id").eq("id", parsed.projectId).eq("workspace_id", workspaceId).maybeSingle();
     assignedAgentId = project?.default_agent_id;
     if (!assignedAgentId) throw new AppError("Choose an agent or set this project's default agent", 400);
@@ -105,7 +217,12 @@ export async function decideApproval(ownerId: string, approvalId: string, decisi
   const { data, error } = await db.from("approvals").update({ status: decision, decided_at: new Date().toISOString() })
     .eq("workspace_id", workspace.id).eq("id", approvalId).eq("status", "pending").select().maybeSingle();
   if (error) throw error;
-  if (!data) throw new AppError("Approval not found or already decided", 409);
+  if (!data) {
+    const current = await db.from("approvals").select().eq("workspace_id", workspace.id).eq("id", approvalId).maybeSingle();
+    if (current.error) throw current.error;
+    if (current.data?.status === decision) return current.data;
+    throw new AppError("Approval not found or already decided differently", 409);
+  }
   await db.from("audit_events").insert({ workspace_id: workspace.id, actor_key: `user:${ownerId}`, action: `approval.${decision}`, object_id: approvalId });
   return data;
 }

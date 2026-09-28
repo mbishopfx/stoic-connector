@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { AppError, assertSameOrigin, currentUser, responseError } from "@/lib/supabase";
+import { requireWorkspace } from "@/lib/account";
 import { agentInput, artifactInput, handoffActionInput, handoffInput, projectInput, uuid, workspaceInput } from "@/lib/validation";
-import { addAgent, createPairingCode, createProject, createWorkspace, issueAgentKey, revokeAgent, setSchedule, setWorkspacePolicy, setProjectRouting, updateBrief } from "@/lib/account";
+import { addAgent, createPairingCode, createProject, createWorkspace, issueAgentKey, revokeAgent, setAgentAccessNotes, setSchedule, setWorkspacePolicy, setProjectRouting, updateBrief } from "@/lib/account";
 import { createHandoff, handoffAction, decideApproval } from "@/lib/coordination";
-import { reserveArtifact, completeArtifact, artifactDownload } from "@/lib/artifacts";
+import { reserveArtifact, completeArtifact, artifactDownload, deleteArtifact } from "@/lib/artifacts";
 import { createCheckout, createBillingPortal } from "@/lib/billing";
-import { rateLimit } from "@/lib/rate-limit";
+import { boardPostInput, postBoardMessage } from "@/lib/board";
 
 export const runtime = "nodejs";
 
@@ -14,11 +15,16 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     if (Number(request.headers.get("content-length") || 0) > 50_000) throw new AppError("Request too large", 413);
     const user = await currentUser();
-    await rateLimit(`owner:${user.id}`, 60);
     const raw = await request.text();
     if (raw.length > 50_000) throw new AppError("Request too large", 413);
     const body = JSON.parse(raw) as Record<string, unknown>;
     const action = z.string().parse(body.action);
+    const accountActions = new Set(["create_workspace", "checkout", "billing_portal", "revoke_agent", "delete_artifact"]);
+    const turningScheduleOff = action === "set_schedule" && body.enabled === false;
+    if (!accountActions.has(action) && !turningScheduleOff) {
+      const workspace = await requireWorkspace(user.id);
+      if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
+    }
     let data: unknown;
     switch (action) {
       case "create_workspace": {
@@ -56,6 +62,11 @@ export async function POST(request: Request) {
         data = await setSchedule(user.id, parsed.agentId, parsed.enabled, parsed.cadenceMinutes);
         break;
       }
+      case "set_agent_access": {
+        const parsed = z.object({ agentId: uuid, accessNotes: z.string().max(2000) }).parse(body);
+        data = await setAgentAccessNotes(user.id, parsed.agentId, parsed.accessNotes);
+        break;
+      }
       case "pair_code": {
         data = await createPairingCode(user.id, uuid.parse(body.agentId));
         break;
@@ -70,6 +81,10 @@ export async function POST(request: Request) {
       }
       case "create_handoff": {
         data = await createHandoff({ userId: user.id }, handoffInput.parse(body));
+        break;
+      }
+      case "post_board_message": {
+        data = await postBoardMessage({ userId: user.id }, boardPostInput.parse(body));
         break;
       }
       case "task_action": {
@@ -93,9 +108,12 @@ export async function POST(request: Request) {
         data = await artifactDownload({ userId: user.id }, uuid.parse(body.artifactId));
         break;
       }
+      case "delete_artifact": {
+        data = await deleteArtifact(user.id, uuid.parse(body.artifactId));
+        break;
+      }
       case "checkout": {
-        const interval = z.enum(["monthly", "annual"]).parse(body.interval);
-        data = await createCheckout(user.id, interval);
+        data = await createCheckout(user.id);
         break;
       }
       case "billing_portal": {

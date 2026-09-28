@@ -1,18 +1,15 @@
-import { currentUser, adminDb, AppError, responseError } from "@/lib/supabase";
+import { currentUser, adminDb, responseError } from "@/lib/supabase";
 import { requireWorkspace } from "@/lib/account";
-import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const TABLES = ["projects", "agents", "handoffs", "task_events", "approvals", "artifacts", "audit_events"] as const;
+const TABLES = ["projects", "agents", "handoffs", "task_events", "board_messages", "synthesis_runs", "approvals", "artifacts", "audit_events"] as const;
 
 export async function GET() {
   try {
     const user = await currentUser();
-    await rateLimit(`export:${user.id}`, 2);
     const workspace = await requireWorkspace(user.id);
-    if (workspace.plan !== "pro") throw new AppError("Workspace export is included with Pro", 402);
     const encoder = new TextEncoder();
     const db = adminDb();
     const stream = new ReadableStream({
@@ -46,7 +43,7 @@ export async function GET() {
     });
     return new Response(stream, { headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Content-Disposition": "attachment; filename=relay-workspace-export.ndjson",
+      "Content-Disposition": "attachment; filename=stoic-workspace-export.ndjson",
       "Cache-Control": "no-store",
     } });
   } catch (error) { return responseError(error); }

@@ -18,7 +18,7 @@ export interface VerifiedToken {
 export async function verifyAgentToken(token?: string): Promise<VerifiedToken | undefined> {
   if (!token) return undefined;
   const db = adminDb();
-  if (token.startsWith("rly_")) {
+  if (token.startsWith("stoic_")) {
     const { data: agent } = await db.from("agents").select("id,workspace_id,status").eq("credential_hash", hash(token)).maybeSingle();
     if (!agent || agent.status !== "connected") return undefined;
     return { token, clientId: agent.id, scopes: ["relay"] };
@@ -43,8 +43,9 @@ export async function identityFromVerified(auth: VerifiedToken | undefined): Pro
   const db = adminDb();
   const { data: agent } = await db.from("agents").select("id,workspace_id,status").eq("id", auth.clientId).maybeSingle();
   if (!agent || agent.status !== "connected") throw new AppError("Agent credential was revoked", 403);
-  const { data: workspace } = await db.from("workspaces").select("id,owner_id,boss_agent_id").eq("id", agent.workspace_id).maybeSingle();
+  const { data: workspace } = await db.from("workspaces").select("id,owner_id,boss_agent_id,plan").eq("id", agent.workspace_id).maybeSingle();
   if (!workspace) throw new AppError("Workspace not found", 404);
+  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
   return { agentId: agent.id, workspaceId: workspace.id, ownerId: workspace.owner_id, isBoss: workspace.boss_agent_id === agent.id };
 }
 

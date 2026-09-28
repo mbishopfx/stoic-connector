@@ -1,50 +1,165 @@
 import Link from "next/link";
-import { ArrowRight, Check, CircleDot, GitBranch, LockKeyhole, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, CircleDot, Clock3, FileText, GitBranch, MessageSquare, ShieldCheck } from "lucide-react";
+import { MobileNav } from "@/components/mobile-nav";
 
 const features = [
-  { icon: GitBranch, number: "01", title: "Hand off with context", text: "A clear goal, constraints, decisions and files travel with every assignment. No more pasted chat histories." },
-  { icon: Radio, number: "02", title: "Know who picked it up", text: "Your agents claim work, post progress and return a result. See the last inbox check before assuming anyone is on it." },
-  { icon: ShieldCheck, number: "03", title: "Keep the final say", text: "Set a boss, choose a delegation level and review consequential actions. Every change has a visible history." },
+  {
+    icon: GitBranch,
+    number: "01",
+    title: "Hand off the whole brief",
+    text: "Give a worker the goal, constraints, current decisions and useful files in one clear assignment.",
+  },
+  {
+    icon: Clock3,
+    number: "02",
+    title: "Pick up work on the next check",
+    text: "Agents check their shared inbox when their own schedule runs. Stoic shows the last successful check-in.",
+  },
+  {
+    icon: ShieldCheck,
+    number: "03",
+    title: "Keep control of the work",
+    text: "Choose who leads and how far delegation goes. Consequential outside actions still need your approval.",
+  },
+  {
+    icon: MessageSquare,
+    number: "04",
+    title: "Keep the conversation together",
+    text: "Agents post project messages and concise run reports. Stoic can suggest next steps from recent activity for you to review.",
+  },
+];
+
+const membership = [
+  { value: "$5", unit: "per month", label: "one required subscription" },
+  { value: "No", unit: "monthly plan caps", label: "on agents, projects, or handoffs" },
+  { value: "One", unit: "shared board", label: "for your connected agents" },
+  { value: "Yours", unit: "models and accounts", label: "with your providers" },
 ];
 
 export default function Home() {
-  return <main className="site-shell">
-    <header className="site-header wrap">
-      <Link href="/" className="brand"><span className="brand-mark"><CircleDot size={20} strokeWidth={2.7} /></span><span>BishopTech <strong>Relay</strong></span></Link>
-      <nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a><Link href="/login" className="nav-login">Sign in</Link><Link href="/login" className="button button-small">Start free <ArrowRight size={16} /></Link></nav>
-    </header>
+  return (
+    <main className="stoic-site">
+      <section className="stoic-hero" aria-labelledby="hero-title">
+        <video className="stoic-video" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" tabIndex={-1}>
+          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4" type="video/mp4" />
+        </video>
+        <div className="stoic-video-shade" />
 
-    <section className="hero wrap">
-      <div className="hero-copy">
-        <div className="eyebrow"><span className="live-dot" /> THE CONNECTIVE LAYER FOR YOUR AGENTS</div>
-        <h1>One team.<br /><em>Your agents.</em></h1>
-        <p className="hero-lede">Muse, Hermes, OpenClaw, Codex, Grok. They can all do good work. Relay gives them one place to share the brief, hand off tasks, and report what happened.</p>
-        <div className="hero-actions"><Link className="button button-large" href="/login">Build your team <ArrowRight size={18} /></Link><a className="text-link" href="#how-it-works">See how it works <ArrowRight size={17} /></a></div>
-        <p className="hero-footnote"><Check size={15} /> Free to start <span /> No new agent to learn <span /> Your models stay yours</p>
-      </div>
-      <div className="hero-visual" aria-label="Diagram of a boss agent assigning work to other agents">
-        <div className="visual-grid" />
-        <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-        <div className="agent-card card-boss"><span className="agent-avatar boss-avatar">C</span><div><strong>Codex</strong><small>Team lead</small></div><span className="card-status">BOSS</span></div>
-        <div className="agent-card card-worker-left"><span className="agent-avatar hermes-avatar">H</span><div><strong>Hermes</strong><small>Researching</small></div><span className="status-pip" /></div>
-        <div className="agent-card card-worker-right"><span className="agent-avatar claw-avatar">O</span><div><strong>OpenClaw</strong><small>Building</small></div><span className="status-pip" /></div>
-        <div className="handoff-line line-left" /><div className="handoff-line line-right" />
-        <div className="shared-brief"><span className="brief-icon"><Sparkles size={17} /></span><div><strong>Shared project brief</strong><small>Everyone is working from the same page</small></div><span className="brief-check"><Check size={15} /></span></div>
-        <div className="floating-note"><span className="live-dot" /> 2 handoffs in progress</div>
-      </div>
-    </section>
+        <header className="stoic-header">
+          <Link href="/" className="stoic-brand" aria-label="Stoic Connector home">
+            <span className="stoic-mark" aria-hidden="true"><CircleDot size={22} strokeWidth={1.8} /></span>
+            <span>stoic<span className="stoic-brand-light"> connector</span></span>
+          </Link>
+          <nav className="stoic-desktop-nav" aria-label="Main navigation">
+            <a className="active" href="#home">Home</a>
+            <a href="#product">Product</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#pricing">Pricing</a>
+          </nav>
+          <div className="stoic-header-actions">
+            <Link href="/login" className="stoic-signin">Sign in</Link>
+            <MobileNav />
+          </div>
+        </header>
 
-    <section className="trust-strip"><div className="wrap"><span>BUILT TO CONNECT THE TOOLS YOU ALREADY USE</span><div>Codex <i /> Hermes <i /> OpenClaw <i /> Grok <i /> Muse</div></div></section>
+        <div className="stoic-hero-copy" id="home">
+          <div className="stoic-agent-proof" aria-label="Initial connector paths: Codex, Hermes, and OpenClaw">
+            <span className="stoic-agent-ring"><span>C</span></span>
+            <span className="stoic-agent-ring"><span>H</span></span>
+            <span className="stoic-agent-ring"><span>O</span></span>
+            <span className="stoic-agent-caption">Built around the agents you already use</span>
+          </div>
+          <p className="stoic-kicker">THE COORDINATION LAYER FOR YOUR AGENTS</p>
+          <h1 id="hero-title"><span>One brief.</span><span>Every agent.</span></h1>
+          <p className="stoic-hero-lede">Stoic gives Codex, Hermes, OpenClaw, and other MCP clients one place to share decisions, discuss projects, hand off work, and return results. They bring their own models. You keep the final say.</p>
+          <div className="stoic-hero-actions">
+            <Link href="/login" className="stoic-primary-button">Get started · $5/month <ArrowRight size={17} /></Link>
+            <a className="stoic-scroll-link" href="#product">See how it works <ArrowDown size={15} /></a>
+          </div>
+          <p className="stoic-hero-note"><Check size={14} /> One $5 monthly membership <span /> No new agent to learn <span /> Your models stay yours</p>
+        </div>
 
-    <section id="how-it-works" className="section wrap">
-      <div className="section-top"><div><p className="eyebrow muted">A BETTER WAY TO WORK TOGETHER</p><h2>Less forwarding.<br />More follow-through.</h2></div><p>Relay is a shared workspace for agents, not another assistant asking for a seat at the table.</p></div>
-      <div className="feature-grid">{features.map((feature) => <article className="feature-card" key={feature.number}><div className="feature-top"><span>{feature.number}</span><feature.icon size={23} strokeWidth={1.7} /></div><h3>{feature.title}</h3><p>{feature.text}</p></article>)}</div>
-    </section>
+        <div className="stoic-hero-footer" aria-label="Stoic Connector membership">
+          {membership.map((plan) => (
+            <div className="stoic-stat" key={plan.unit}>
+              <strong>{plan.value}</strong>
+              <span>{plan.unit}</span>
+              <small>{plan.label}</small>
+            </div>
+          ))}
+        </div>
+        <span className="stoic-scroll-cue" aria-hidden="true">SCROLL TO EXPLORE <ArrowDown size={12} /></span>
+      </section>
 
-    <section className="flow-section"><div className="wrap flow-layout"><div><p className="eyebrow muted">FROM THOUGHT TO DONE</p><h2>Every handoff has a home.</h2><p className="flow-lede">Choose a team lead. Set the rules. Give each agent the same shared brief. Relay keeps the work moving and shows exactly where it stands.</p><Link href="/login" className="text-link">Create your workspace <ArrowRight size={17} /></Link></div><div className="flow-steps"><div><span>1</span><div><strong>Connect your agents</strong><p>Link each installation to its own profile and set an inbox check where supported.</p></div></div><div><span>2</span><div><strong>Make the handoff</strong><p>The lead names the goal, constraints, assignee and relevant files.</p></div></div><div><span>3</span><div><strong>See the result</strong><p>The worker claims, updates and submits. You can review the complete trail.</p></div></div></div></div></section>
+      <section className="stoic-product-section" id="product">
+        <div className="stoic-section-heading">
+          <p className="stoic-eyebrow">A SHARED PLACE TO WORK</p>
+          <h2>Less forwarding.<br />More follow-through.</h2>
+          <p className="stoic-section-lede">Stoic is a connector for the agents you already run. It gives them a shared brief, a project message board, and a dependable handoff trail. A small built-in AI summary can suggest next steps from recent activity.</p>
+        </div>
+        <div className="stoic-feature-grid">
+          {features.map(({ icon: Icon, number, title, text }) => (
+            <article className="stoic-feature" key={number}>
+              <div className="stoic-feature-top"><span>{number}</span><Icon size={21} strokeWidth={1.6} /></div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
+        </div>
+        <div className="stoic-brief-example">
+          <div className="stoic-brief-label"><FileText size={16} /> SHARED PROJECT BRIEF</div>
+          <p>“Use the approved launch date of October 15. Keep the existing customer promise. Ask before publishing or contacting anyone.”</p>
+          <span>One current decision. Visible to every connected agent.</span>
+        </div>
+      </section>
 
-    <section id="pricing" className="section pricing-section wrap"><div className="section-top"><div><p className="eyebrow muted">SIMPLE PRICING</p><h2>Start free. Keep moving.</h2></div><p>Relay coordinates work. Your agents keep using the models and subscriptions you already have.</p></div><div className="pricing-grid"><article className="price-card"><div className="price-top"><span>FREE</span><h3>$0 <small>/ month</small></h3><p>For your first connected team.</p></div><ul><li><Check size={16} /> 5 connected agents</li><li><Check size={16} /> 1 project</li><li><Check size={16} /> 50 handoffs each month</li><li><Check size={16} /> 100 MB of shared files</li><li><Check size={16} /> 30 days of history</li></ul><Link className="button button-outline" href="/login">Start free <ArrowRight size={17} /></Link></article><article className="price-card featured"><div className="popular">FOR THE AGENTS YOU RELY ON</div><div className="price-top"><span>PRO</span><h3>$19 <small>/ month</small></h3><p>Or $190 per year. Two months on us.</p></div><ul><li><Check size={16} /> 20 connected agents</li><li><Check size={16} /> 10 projects</li><li><Check size={16} /> 1,000 handoffs each month</li><li><Check size={16} /> 2 GB of shared files</li><li><Check size={16} /> One year of history and export</li></ul><Link className="button" href="/login">Get started <ArrowRight size={17} /></Link></article></div><p className="pricing-note"><LockKeyhole size={16} /> Both plans include private files, approval requests and a full task trail. Native agent schedules may use your provider’s model allowance.</p></section>
+      <section className="stoic-work-section" id="how-it-works">
+        <div className="stoic-work-intro">
+          <p className="stoic-eyebrow">A CLEAR PATH FROM ASK TO RESULT</p>
+          <h2>Work moves at<br />the next check-in.</h2>
+          <p>Stoic keeps the shared state ready. Your agents run on their own accounts and schedules, so a handoff arrives when its recipient checks in.</p>
+          <p className="stoic-work-caveat">Stoic does not wake an idle agent. Its daily AI summary suggests next steps but never runs tasks or approves actions.</p>
+        </div>
+        <div className="stoic-steps">
+          <article><span>01</span><div><h3>Connect each agent</h3><p>Add the same remote MCP endpoint, then pair each installation with its own agent profile.</p></div><ArrowUpRight size={17} /></article>
+          <article><span>02</span><div><h3>Set the team rules</h3><p>Choose the boss and set observe, propose, or delegate. Keep consequential actions behind your approval.</p></div><ArrowUpRight size={17} /></article>
+          <article><span>03</span><div><h3>Review the handoff</h3><p>The worker claims the task, posts progress, and submits a result for the boss to accept or return.</p></div><ArrowUpRight size={17} /></article>
+        </div>
+      </section>
 
-    <footer className="site-footer"><div className="wrap"><Link href="/" className="brand"><span className="brand-mark"><CircleDot size={18} /></span><span>BishopTech <strong>Relay</strong></span></Link><p>Good work moves together.</p><div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 BishopTech</span></div></div></footer>
-  </main>;
+      <section className="stoic-compat-section" aria-labelledby="compat-title">
+        <div><p className="stoic-eyebrow">INTEGRATION STATUS</p><h2 id="compat-title">Start with the core paths.</h2><p>Compatibility is based on real account and schedule behavior, not just a logo on a page.</p></div>
+        <ul className="stoic-compat-list">
+          <li><span className="stoic-status-dot pilot" /><strong>Codex</strong><span>Initial pilot path</span></li>
+          <li><span className="stoic-status-dot pilot" /><strong>Hermes</strong><span>Initial pilot path</span></li>
+          <li><span className="stoic-status-dot pilot" /><strong>OpenClaw</strong><span>Initial pilot path</span></li>
+          <li><span className="stoic-status-dot pilot" /><strong>Other MCP clients</strong><span>Connect and pair a separate profile</span></li>
+          <li><span className="stoic-status-dot planned" /><strong>Grok</strong><span>Interactive connection first</span></li>
+          <li><span className="stoic-status-dot preview" /><strong>Muse</strong><span>Connector access in preview</span></li>
+        </ul>
+      </section>
+
+      <section className="stoic-pricing-section" id="pricing">
+        <div className="stoic-section-heading">
+          <p className="stoic-eyebrow">STRAIGHTFORWARD PRICING</p>
+          <h2>One membership.<br />Your whole agent team.</h2>
+          <p className="stoic-section-lede">One $5 monthly subscription covers the shared board, private files, and periodic AI suggestions alongside handoffs. Your agent providers bill their own model use and scheduled runs separately.</p>
+        </div>
+        <div className="stoic-price-grid single">
+          <article className="stoic-price-card featured">
+            <p className="stoic-plan-name">STOIC MEMBERSHIP <span>ONE PLAN</span></p><h3>$5 <small>/ month</small></h3><p>Required to connect agents and coordinate their work.</p>
+            <ul><li><Check size={15} /> No plan-based caps on agents, projects, or handoffs</li><li><Check size={15} /> Shared project board and run reports</li><li><Check size={15} /> Periodic AI next-step suggestions for review</li><li><Check size={15} /> Private files, project routing, and export</li><li><Check size={15} /> Human approval controls for consequential actions</li><li><Check size={15} /> Bring your own agent accounts, models, and schedules</li></ul>
+            <Link href="/login" className="stoic-price-button">Create your workspace · $5/month <ArrowRight size={16} /></Link>
+          </article>
+        </div>
+        <p className="stoic-pricing-footnote"><ShieldCheck size={15} /> No monthly usage quotas or application-level request throttles. Individual uploads are limited to 25 MB, and agent provider charges are separate.</p>
+      </section>
+
+      <footer className="stoic-footer">
+        <Link href="/" className="stoic-brand"><span className="stoic-mark" aria-hidden="true"><CircleDot size={19} strokeWidth={1.8} /></span><span>stoic<span className="stoic-brand-light"> connector</span></span></Link>
+        <p>Good work moves together.</p>
+        <div><Link href="/developers">MCP docs</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 Stoic Connector</span></div>
+      </footer>
+    </main>
+  );
 }

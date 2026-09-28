@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { agentHealth } from "../src/lib/agent-health";
+import { agentConnectionSummary, agentHealth } from "../src/lib/agent-health";
 
 const now = Date.parse("2026-09-26T18:00:00Z");
 const base = { status: "connected", schedule_enabled: true, schedule_cadence_minutes: 60, last_check_at: "2026-09-26T17:00:00Z" };
+const connectedRecord = { ...base, platform: "codex" as const, oauth_client_id: null, access_notes: "GitHub read access; ask before merging." };
 
 describe("scheduled check health", () => {
   it("distinguishes a first check from an overdue agent", () => {
@@ -11,9 +12,33 @@ describe("scheduled check health", () => {
   });
   it("does not imply an unscheduled or revoked agent is checking in", () => {
     expect(agentHealth({ ...base, schedule_enabled: false }, now).label).toBe("On demand");
+    expect(agentHealth({ ...base, schedule_enabled: false, last_check_at: null }, now).label).toBe("Awaiting first check");
     expect(agentHealth({ ...base, status: "revoked" }, now).label).toBe("Revoked");
   });
   it("marks a successful check inside the grace window", () => {
     expect(agentHealth(base, now).label).toBe("Checking in");
+  });
+
+  it("separates server proof from an owner-declared schedule", () => {
+    const summary = agentConnectionSummary({ ...connectedRecord, last_check_at: null }, now);
+    expect(summary.auth).toMatchObject({ label: "Stoic key paired", evidence: "server_record" });
+    expect(summary.transport).toMatchObject({ label: "Streamable HTTP MCP", evidence: "product_config" });
+    expect(summary.schedule).toMatchObject({ label: "Enabled · owner-declared", evidence: "owner_declared" });
+    expect(summary.proof).toMatchObject({ label: "Awaiting first check", evidence: "none" });
+    expect(summary.access).toMatchObject({ label: "Owner notes provided", evidence: "owner_declared" });
+  });
+
+  it("labels OAuth and unverified host postures without granting permissions", () => {
+    const summary = agentConnectionSummary({ ...connectedRecord, platform: "grok", oauth_client_id: "oauth-client" }, now);
+    expect(summary.auth).toMatchObject({ label: "OAuth paired", evidence: "server_record" });
+    expect(summary.host).toMatchObject({ posture: "interactive_only" });
+    expect(summary.proof.evidence).toBe("server_check");
+    expect(summary.proof.detail).toContain("does not prove the host schedule");
+  });
+
+  it("keeps preview platforms out of unattended-check claims", () => {
+    const summary = agentConnectionSummary({ ...connectedRecord, platform: "muse", last_check_at: null }, now);
+    expect(summary.host).toMatchObject({ posture: "preview" });
+    expect(summary.proof).toMatchObject({ label: "Awaiting first check", evidence: "none" });
   });
 });

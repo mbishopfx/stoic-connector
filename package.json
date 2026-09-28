@@ -1,9 +1,11 @@
 {
-  "name": "bishoptech-relay",
+  "name": "stoic-connector",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run build:mcp-app",
+    "build:mcp-app": "node scripts/build-mcp-app.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -12,6 +14,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.117.2",
@@ -27,6 +30,7 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.3.6",
     "typescript": "^5.9.0",

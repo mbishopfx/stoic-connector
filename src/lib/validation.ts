@@ -28,4 +28,5 @@ export const artifactInput = z.object({
   name: z.string().trim().min(1).max(180).regex(/^[^/\\\x00-\x1f]+$/),
   mimeType: z.string().min(3).max(120),
   sizeBytes: z.number().int().min(1).max(25 * 1024 * 1024),
+  idempotencyKey: idempotencyKey.optional(),
 });

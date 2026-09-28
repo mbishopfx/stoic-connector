@@ -18,4 +18,20 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/202609270005_rate_limits.sql \
   -f supabase/migrations/202609270006_project_routing.sql \
   -f supabase/migrations/202609270007_usage.sql \
+  -f supabase/migrations/202609270008_paid_uncapped_access.sql \
+  -f supabase/migrations/202609270009_remove_request_throttles.sql \
+  -f supabase/migrations/202609270010_project_board.sql \
+  -f supabase/migrations/202609270011_synthesis_runs.sql \
+  -f supabase/migrations/202609270012_board_retry_race.sql \
+  -f supabase/migrations/202609270013_board_read_cursors.sql \
+  -f supabase/migrations/202609270014_board_cursor_index.sql \
+  -f supabase/migrations/202609270015_synthesis_queue.sql \
+  -f supabase/migrations/202609270016_agent_access_notes.sql \
+  -f supabase/migrations/202609270017_distinct_handoff_worker.sql \
+  -f supabase/migrations/202609270018_guard_boss_role_change.sql \
+  -f supabase/migrations/202609270019_artifact_idempotency.sql \
+  -f supabase/migrations/202609270020_handoff_retry_conflicts.sql \
+  -f supabase/migrations/202609270021_artifact_board_notice.sql \
+  -f supabase/migrations/202609270022_artifact_deletion_history.sql \
+  -f supabase/migrations/202609270023_signup_provisioning_and_agent_projects.sql \
   -f tests/sql/integration.sql
