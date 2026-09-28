@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stoic.bishoptech.dev/schemas/knowledge-note.json",
+  "title": "Stoic Knowledge Note",
+  "description": "Validated Markdown note metadata for one Stoic project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "id",
+    "project_id",
+    "kind",
+    "title",
+    "status",
+    "created_at",
+    "updated_at",
+    "confidence",
+    "supersedes",
+    "related",
+    "evidence"
+  ],
+  "properties": {
+    "contract_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$" },
+    "project_id": { "type": "string", "format": "uuid" },
+    "kind": { "enum": ["index", "brief", "decision", "agent_profile", "handoff", "artifact", "question", "note", "steward_audit"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "status": { "enum": ["active", "proposed", "stale", "superseded", "archived", "conflicted"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "confidence": { "enum": ["verified", "likely", "uncertain"] },
+    "source_agent": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "source_user": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "source_handoff": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "supersedes": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/reference" } },
+    "related": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/reference" } },
+    "evidence": { "type": "array", "maxItems": 50, "items": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\r\\n]+$" } }
+  },
+  "$defs": {
+    "reference": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$" }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stoic.bishoptech.dev/schemas/knowledge-graph.json",
+  "title": "Stoic Knowledge Graph Index",
+  "description": "Deterministic read-only projection of one project's validated Markdown notes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "project_id", "nodes", "edges"],
+  "properties": {
+    "contract_version": { "const": 1 },
+    "project_id": { "type": "string", "format": "uuid" },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "project_id", "kind", "title", "status", "confidence", "updated_at", "source_path", "evidence", "stale", "orphan"],
+      "properties": {
+        "id": { "type": "string" },
+        "project_id": { "type": "string", "format": "uuid" },
+        "kind": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "confidence": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "source_path": { "type": "string" },
+        "source_agent": { "type": "string" },
+        "source_user": { "type": "string" },
+        "source_handoff": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "stale": { "type": "boolean" },
+        "orphan": { "type": "boolean" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "type", "target_exists"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "type": { "enum": ["supersedes", "related", "wikilink"] },
+        "target_exists": { "type": "boolean" }
+      }
+    }
+  }
+}
