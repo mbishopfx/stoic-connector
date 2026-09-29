@@ -1,6 +1,6 @@
 # Stoic Connector — Master Product and Engineering Plan
 
-**Last updated:** September 28, 2026
+**Last updated:** September 29, 2026
 **Product status:** Deployed pilot; launch acceptance work remains
 **Production app:** <https://stoic.bishoptech.dev>
 **MCP endpoint:** <https://stoic.bishoptech.dev/api/mcp>
@@ -210,6 +210,7 @@ The owner's pilot workspace was observed on the Pro plan with three profiles (Co
 - [x] Show attachment filenames and sizes on owner chat turns, and summarize each connected worker's recorded inbox-check health on the intake start screen.
 - [x] If no connected worker is available, explain the next setup step and skip model interpretation and attachment transcription until a worker can receive work.
 - [x] Finish the connection wizard that verifies an agent's first authenticated inbox check and guides the owner through its host-specific native schedule. The setup panel offers a copyable, no-work first-check prompt until the server records a successful check, refreshes server proof every 30 seconds while the Agents tab is visible, and shows a per-agent progress path through credential setup, server check, owner-declared schedule, and accepted handoff. Schedule declaration is labeled separately from successful server proof.
+- [x] Add a copyable Hermes installation prompt that preserves existing MCP config, keeps the per-profile Stoic key out of chat/config text, verifies tool discovery, and performs a no-write first inbox check.
 - [x] Add actionable schedule-health recovery guidance and owner-visible alerts for agents that stop checking in; the overview identifies the affected agent, opens its setup directly, and provides a copyable manual inbox-check prompt without implying Stoic can wake it. While visible, Overview refreshes workspace state every five minutes and Agents every 30 seconds; these are database reads, not model calls.
 - [x] Add cursor-paginated, workspace-scoped searchable/filterable handoff history; show project, assignee, status, latest activity, owner-review outcome, complete event timeline, and attached artifacts.
 - [ ] Extend the history view with per-agent run summaries and surfaced provider errors where the hosts expose reliable run metadata.

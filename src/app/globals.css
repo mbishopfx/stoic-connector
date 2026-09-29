@@ -329,6 +329,13 @@
 .connection-guide>p{margin:6px 0 11px;color:#5d7063;font-size:11px;line-height:1.6}
 .connection-guide .copy-box{align-items:flex-start}
 .connection-guide .copy-box code{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.hermes-install-prompt{margin-top:13px;padding-top:12px;border-top:1px solid #e3ece5}
+.hermes-install-prompt>p{margin:0 0 9px;color:#5d7063;font-size:11px;line-height:1.6}
+.hermes-install-prompt .field-help{margin:8px 0 0}
+.dashboard-shell[data-theme="dark"] .connection-guide{border-color:var(--dash-line);background:var(--dash-soft)}
+.dashboard-shell[data-theme="dark"] .connection-guide>strong{color:var(--dash-text)}
+.dashboard-shell[data-theme="dark"] .connection-guide>p,.dashboard-shell[data-theme="dark"] .hermes-install-prompt>p{color:var(--dash-muted)}
+.dashboard-shell[data-theme="dark"] .hermes-install-prompt{border-color:var(--dash-line)}
 .connection-guide>a{display:inline-flex;align-items:center;gap:4px;margin-top:10px;color:#38725a;font-size:10px;font-weight:700;text-decoration:none}
 .file-actions{display:inline-flex;align-items:center;gap:4px;flex:none}
 

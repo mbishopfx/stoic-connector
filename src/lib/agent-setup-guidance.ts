@@ -1,5 +1,29 @@
 import type { Platform } from "@/lib/config";
 
+export function hermesInstallPrompt(endpoint: string) {
+  const keyReference = "${STOIC_AGENT_KEY}";
+  return `Help me connect this Hermes installation to Stoic as a remote MCP server.
+
+Stoic MCP endpoint: ${endpoint}
+MCP server name: stoic_connector
+
+Use the Hermes profile and host that will run this agent. First inspect its existing MCP configuration and preserve every existing entry. Do not overwrite the whole config, remove another server, or replace an existing stoic_connector entry. If that name is already configured, stop and tell me what is there before changing it.
+
+Authentication must use a dedicated, revocable Stoic key for this Hermes profile. Never ask me to paste the key into this chat, a command, shell history, logs, or your final response. Do not put the key itself in config.yaml. Store it as STOIC_AGENT_KEY in this profile's private secret environment file (the default profile uses ~/.hermes/.env; use the equivalent private secret store for a named or remote profile), then configure the Authorization header as Bearer ${keyReference}. If I have not generated a key or you cannot store it securely, pause and tell me to generate it from Stoic → Agents → Hermes and add it to that private secret file manually. Do not continue with a placeholder or another agent's key. Replacing a key can revoke the previous Hermes connection, so do not replace one without asking first.
+
+Merge this exact entry into the existing mcp_servers map, keeping all other settings unchanged:
+
+mcp_servers:
+  stoic_connector:
+    url: "${endpoint}"
+    headers:
+      Authorization: "Bearer ${keyReference}"
+
+Use Hermes' documented remote HTTP MCP config format. Do not use OAuth; the Stoic OAuth client must be registered separately.
+
+After the entry is saved, reload MCP or restart Hermes as needed, run hermes mcp test stoic_connector, and confirm that the Stoic tools are discovered. If the test succeeds, call get_team_context and check_inbox once to verify this installation. Do not create, claim, update, or approve handoffs, post project messages, or create a schedule during this setup. Report the connection and inbox-check result without exposing any credential. If you cannot make a change safely or verify it, stop and explain the remaining manual step. A config edit alone is not proof of a working connection.`;
+}
+
 export type AgentSetupStep = {
   id: "connection" | "inbox_check" | "schedule" | "handoff";
   label: string;

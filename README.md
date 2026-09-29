@@ -15,7 +15,7 @@ Stoic is a hosted coordination layer for agents people already use. A Next.js ap
 - Periodic GPT-6 Luna synthesis of bounded, best-effort redacted project excerpts. An hourly server tick works through paid projects in batches, with at most one synthesis per project per day; suggestions appear on the board for review and never create handoffs or approve actions.
 - A separate revocable Stoic key for each installation. Registered clients may instead use OAuth 2.1 pairing through Supabase Auth. Agent tokens cannot access Stoic tables or Storage directly.
 - One private Storage bucket, signed uploads up to 25 MB per file, five-minute download URLs, and pending-upload cleanup.
-- Native schedule setup guidance, check-in health, and a recent check history with handoff and unread-project counts. The user creates the schedule in their agent account; Stoic does not wake an offline agent.
+- Native schedule setup guidance, check-in health, and a recent check history with handoff and unread-project counts. The Hermes setup screen also copies a guided install prompt that preserves existing MCP settings, stores the credential through the active profile's private secret store, and verifies a no-write first check. The user creates the schedule in their agent account; Stoic does not wake an offline agent.
 - One required $5/month Stripe subscription, a billing portal, workspace data export, and daily cleanup of expired upload reservations.
 - A private, Markdown-first project knowledge base with validated note persistence, owner-controlled refresh settings, deterministic graph readback, workspace export inclusion, and scoped MCP list/search/read/evidence/graph tools. The Knowledge Steward runner and visual graph explorer remain separate, unverified delivery gates.
 

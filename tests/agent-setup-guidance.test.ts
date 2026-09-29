@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAgentSetupGuidance } from "../src/lib/agent-setup-guidance";
+import { getAgentSetupGuidance, hermesInstallPrompt } from "../src/lib/agent-setup-guidance";
 
 const worker = {
   id: "worker",
@@ -61,5 +61,19 @@ describe("per-agent setup guidance", () => {
     });
 
     expect(progress.steps.map((step) => step.id)).toEqual(["connection", "inbox_check", "handoff"]);
+  });
+});
+
+describe("Hermes install prompt", () => {
+  it("guides a safe, verifiable install without embedding an agent credential", () => {
+    const prompt = hermesInstallPrompt("https://stoic.bishoptech.dev/api/mcp");
+
+    expect(prompt).toContain("https://stoic.bishoptech.dev/api/mcp");
+    expect(prompt).toContain("preserve every existing entry");
+    expect(prompt).toContain("private secret environment file");
+    expect(prompt).toContain("Bearer ${STOIC_AGENT_KEY}");
+    expect(prompt).toContain("hermes mcp test stoic_connector");
+    expect(prompt).toContain("get_team_context and check_inbox once");
+    expect(prompt).not.toContain("PASTE_STOIC_KEY_HERE");
   });
 });
