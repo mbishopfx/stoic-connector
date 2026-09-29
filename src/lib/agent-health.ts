@@ -17,6 +17,8 @@ export type AgentConnectionRecord = AgentCheckStatus & {
 
 export type AgentHealth = { label: string; tone: AgentHealthTone };
 
+export const FIRST_INBOX_CHECK_PROMPT = "Using the Stoic MCP connection in this agent, call get_team_context, then check_inbox once. Do not create, claim, update, or approve any work. Report whether both calls succeeded; do not include credentials in your reply.";
+
 export function agentHealth(agent: AgentCheckStatus, now = Date.now()): AgentHealth {
   if (agent.status === "revoked") return { label: "Revoked", tone: "muted" };
   if (agent.status !== "connected") return { label: "Needs pairing", tone: "warning" };

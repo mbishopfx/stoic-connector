@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { agentConnectionSummary, agentHealth } from "../src/lib/agent-health";
+import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "../src/lib/agent-health";
 
 const now = Date.parse("2026-09-26T18:00:00Z");
 const base = { status: "connected", schedule_enabled: true, schedule_cadence_minutes: 60, last_check_at: "2026-09-26T17:00:00Z" };
 const connectedRecord = { ...base, platform: "codex" as const, oauth_client_id: null, access_notes: "GitHub read access; ask before merging." };
 
 describe("scheduled check health", () => {
+  it("provides a safe, one-time connection check without asking the agent to change work", () => {
+    expect(FIRST_INBOX_CHECK_PROMPT).toContain("get_team_context");
+    expect(FIRST_INBOX_CHECK_PROMPT).toContain("check_inbox once");
+    expect(FIRST_INBOX_CHECK_PROMPT).toContain("Do not create, claim, update, or approve any work");
+    expect(FIRST_INBOX_CHECK_PROMPT).toContain("do not include credentials");
+  });
+
   it("distinguishes a first check from an overdue agent", () => {
     expect(agentHealth({ ...base, last_check_at: null }, now).label).toBe("Awaiting first check");
     expect(agentHealth({ ...base, last_check_at: "2026-09-26T14:00:00Z" }, now).label).toBe("Check overdue");

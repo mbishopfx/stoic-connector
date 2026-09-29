@@ -1,5 +1,7 @@
 import { AppError, adminDb, authClient } from "@/lib/supabase";
 import { hash, workspaceForOwner } from "@/lib/account";
+import { mcpResourceUri, supabaseIssuer } from "@/lib/config";
+import { hasValidOAuthClaims } from "@/lib/oauth-claims";
 
 export interface AgentIdentity {
   agentId: string;
@@ -24,9 +26,10 @@ export async function verifyAgentToken(token?: string): Promise<VerifiedToken | 
     return { token, clientId: agent.id, scopes: ["relay"] };
   }
   const { data, error } = await authClient().auth.getClaims(token);
-  const ownerId = data?.claims?.sub;
-  const oauthClientId = data?.claims?.client_id;
-  if (error || typeof ownerId !== "string" || typeof oauthClientId !== "string") return undefined;
+  const claims = data?.claims as Record<string, unknown> | undefined;
+  if (error || !hasValidOAuthClaims(claims, { issuer: supabaseIssuer(), audience: mcpResourceUri() })) return undefined;
+  const ownerId = claims.sub;
+  const oauthClientId = claims.client_id;
   const workspace = await workspaceForOwner(ownerId);
   if (!workspace) return undefined;
   const { data: agent } = await db.from("agents").select("id,status").eq("workspace_id", workspace.id).eq("oauth_client_id", oauthClientId).maybeSingle();
@@ -34,7 +37,7 @@ export async function verifyAgentToken(token?: string): Promise<VerifiedToken | 
     token,
     clientId: agent?.status === "connected" ? agent.id : oauthClientId,
     scopes: agent?.status === "connected" ? ["relay"] : ["pair"],
-    expiresAt: typeof data?.claims?.exp === "number" ? data.claims.exp : undefined,
+    expiresAt: claims.exp,
   };
 }
 
@@ -52,8 +55,9 @@ export async function identityFromVerified(auth: VerifiedToken | undefined): Pro
 export async function pairingIdentity(auth: VerifiedToken | undefined) {
   if (!auth?.scopes.includes("pair")) throw new AppError("OAuth pairing is not available for this connection", 403);
   const { data, error } = await authClient().auth.getClaims(auth.token);
-  const ownerId = data?.claims?.sub;
-  const clientId = data?.claims?.client_id;
-  if (error || typeof ownerId !== "string" || typeof clientId !== "string") throw new AppError("Invalid OAuth session", 401);
-  return { ownerId, clientId };
+  const claims = data?.claims as Record<string, unknown> | undefined;
+  if (error || !hasValidOAuthClaims(claims, { issuer: supabaseIssuer(), audience: mcpResourceUri() }) || claims.client_id !== auth.clientId) {
+    throw new AppError("Invalid OAuth session", 401);
+  }
+  return { ownerId: claims.sub, clientId: claims.client_id };
 }

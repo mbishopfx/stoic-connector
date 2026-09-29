@@ -29,6 +29,7 @@ insert into public.workspaces(id, owner_id, name) values
 insert into public.agents(id, workspace_id, name, platform, status, oauth_client_id) values
   ('30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Boss', 'codex', 'connected', 'shared-client'),
   ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Worker', 'hermes', 'connected', null),
+  ('30000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001', 'Worker Two', 'openclaw', 'connected', null),
   ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', 'Other boss', 'openclaw', 'connected', 'shared-client');
 update public.workspaces set boss_agent_id = '30000000-0000-0000-0000-000000000001' where id = '20000000-0000-0000-0000-000000000001';
 update public.workspaces set boss_agent_id = '30000000-0000-0000-0000-000000000003' where id = '20000000-0000-0000-0000-000000000002';
@@ -44,6 +45,7 @@ declare
   p2 uuid := '40000000-0000-0000-0000-000000000002';
   boss uuid := '30000000-0000-0000-0000-000000000001';
   worker uuid := '30000000-0000-0000-0000-000000000002';
+  worker2 uuid := '30000000-0000-0000-0000-000000000004';
   other_boss uuid := '30000000-0000-0000-0000-000000000003';
   h jsonb;
   again jsonb;
@@ -51,9 +53,15 @@ declare
   m public.board_messages%rowtype;
   m2 public.board_messages%rowtype;
   public_file_id uuid;
+  attachment_file_id uuid;
   private_file_id uuid;
   created_project jsonb;
   repeated_project jsonb;
+  team_handoff jsonb;
+  repeated_team_handoff jsonb;
+  attach_handoff jsonb;
+  competing_handoff jsonb;
+  attached_count integer;
   i integer;
 begin
   begin
@@ -231,10 +239,49 @@ begin
     then raise exception 'completed worker could not become boss'; end if;
   perform public.stoic_set_workspace_policy(w1, '10000000-0000-0000-0000-000000000001', boss, 'delegate');
 
+  update public.workspaces set delegation_level = 'propose' where id = w1;
+  team_handoff := public.relay_create_team_handoff(w1, p1, boss, null, 'Shared research', 'Find three useful examples for the launch brief', '', 'team-queue-key');
+  repeated_team_handoff := public.relay_create_team_handoff(w1, p1, boss, null, 'Shared research', 'Find three useful examples for the launch brief', '', 'team-queue-key');
+  if team_handoff->>'id' is distinct from repeated_team_handoff->>'id'
+    then raise exception 'team handoff retry created a duplicate'; end if;
+  if team_handoff->>'status' <> 'proposed' or team_handoff->>'assigned_agent_id' is not null
+    then raise exception 'propose-mode team handoff was not left unassigned for review'; end if;
+  if (select count(*) from public.handoff_eligible_agents where workspace_id = w1 and handoff_id = (team_handoff->>'id')::uuid) <> 2
+    then raise exception 'team handoff did not snapshot all connected workers'; end if;
+  if exists (select 1 from public.relay_agent_handoff_page(w1, worker, null, 0) where id = (team_handoff->>'id')::uuid)
+    or exists (select 1 from public.relay_agent_handoff_page(w1, worker2, null, 0) where id = (team_handoff->>'id')::uuid)
+    then raise exception 'workers saw a proposed team handoff before owner approval'; end if;
+  perform public.relay_handoff_action((team_handoff->>'id')::uuid, null, '10000000-0000-0000-0000-000000000001', 'approve_assignment', '', 'approve-team-queue-key');
+  if not exists (select 1 from public.relay_agent_handoff_page(w1, worker, null, 0) where id = (team_handoff->>'id')::uuid)
+    or not exists (select 1 from public.relay_agent_handoff_page(w1, worker2, null, 0) where id = (team_handoff->>'id')::uuid)
+    then raise exception 'approved team handoff was not visible to all eligible workers'; end if;
+  perform public.relay_handoff_action((team_handoff->>'id')::uuid, worker2, null, 'claim', '', 'claim-team-queue-key');
+  if (select assigned_agent_id from public.handoffs where id = (team_handoff->>'id')::uuid) <> worker2
+    or (select status from public.handoffs where id = (team_handoff->>'id')::uuid) <> 'claimed'
+    then raise exception 'first team-queue claimant did not become the sole assignee'; end if;
+  if exists (select 1 from public.relay_agent_handoff_page(w1, worker, null, 0) where id = (team_handoff->>'id')::uuid)
+    then raise exception 'non-claiming worker continued to see another worker assignment'; end if;
+  begin
+    perform public.relay_handoff_action((team_handoff->>'id')::uuid, worker, null, 'claim', '', 'claim-team-queue-second-key');
+    raise exception 'second worker claimed an already assigned team handoff';
+  exception when others then
+    if sqlerrm <> 'invalid_transition' then raise; end if;
+  end;
+  update public.workspaces set delegation_level = 'delegate' where id = w1;
+
+  update public.workspaces set delegation_level = 'propose' where id = w2;
+  begin
+    perform public.relay_create_team_handoff(w2, p2, null, '10000000-0000-0000-0000-000000000002', 'No worker', 'This should not be queueable', '', 'no-workers-key');
+    raise exception 'team handoff succeeded without connected workers';
+  exception when others then
+    if sqlerrm <> 'no_workers_available' then raise; end if;
+  end;
+  update public.workspaces set delegation_level = 'delegate' where id = w2;
+
   for i in 1..60 loop
     perform public.relay_create_handoff(w1, p1, worker, boss, null, 'Additional task ' || i, 'Complete another bounded research task', '', 'extra-task-' || i);
   end loop;
-  if (select count(*) from public.handoffs where workspace_id = w1) <> 61 then raise exception 'handoff count was capped'; end if;
+  if (select count(*) from public.handoffs where workspace_id = w1) <> 62 then raise exception 'handoff count was capped'; end if;
 
   for i in 1..5 loop
     perform public.relay_reserve_artifact(w1, p1, null, boss, null, 'file' || i || '.pdf', 'application/pdf', 26214400);
@@ -272,11 +319,17 @@ begin
     then raise exception 'authenticated role can read board table'; end if;
   if has_table_privilege('authenticated', 'public.board_read_cursors', 'SELECT')
     then raise exception 'authenticated role can read board cursors'; end if;
+  if has_table_privilege('authenticated', 'public.handoff_eligible_agents', 'SELECT')
+    then raise exception 'authenticated role can read team-queue recipient table'; end if;
   if has_function_privilege('authenticated', 'public.stoic_ack_board_message(uuid,uuid,uuid,uuid)', 'EXECUTE')
     then raise exception 'authenticated role can acknowledge board directly'; end if;
   if has_function_privilege('authenticated', 'public.relay_create_handoff(uuid,uuid,uuid,uuid,uuid,text,text,text,text)', 'EXECUTE')
     then raise exception 'authenticated role can execute task RPC'; end if;
-  if (public.relay_workspace_usage(w1)->>'handoffs')::integer <> 61 then raise exception 'handoff usage mismatch'; end if;
+  if has_function_privilege('authenticated', 'public.relay_create_team_handoff(uuid,uuid,uuid,uuid,text,text,text,text)', 'EXECUTE')
+    then raise exception 'authenticated role can execute team handoff RPC'; end if;
+  if has_function_privilege('authenticated', 'public.relay_agent_handoff_page(uuid,uuid,uuid,integer)', 'EXECUTE')
+    then raise exception 'authenticated role can execute scoped handoff reader directly'; end if;
+  if (public.relay_workspace_usage(w1)->>'handoffs')::integer <> 62 then raise exception 'handoff usage mismatch'; end if;
   if (public.relay_workspace_usage(w1)->>'storageBytes')::bigint <> 131072000 then raise exception 'storage usage mismatch'; end if;
   a := public.stoic_reserve_artifact_v2(w1,p1,null,boss,null,'retry.txt','text/plain',1,'artifact-retry-key',null);
   again := public.stoic_reserve_artifact_v2(w1,p1,null,boss,null,'retry.txt','text/plain',1,'artifact-retry-key',null);
@@ -321,6 +374,48 @@ begin
     then raise exception 'project file deletion was not idempotent or announced'; end if;
   if exists (select 1 from public.artifacts where id = public_file_id and status = 'ready')
     then raise exception 'deleted project file remained readable'; end if;
+  again := public.stoic_reserve_artifact_v2(w1,p1,null,boss,null,'intake-attachment.txt','text/plain',1,'intake-attachment-file-key',null);
+  attachment_file_id := (again->>'id')::uuid;
+  update public.artifacts set status = 'ready' where id = attachment_file_id;
+  perform public.stoic_announce_project_artifact(attachment_file_id);
+  attach_handoff := public.relay_create_team_handoff(
+    w1, p1, null, '10000000-0000-0000-0000-000000000001',
+    'Review the owner intake file', 'Read the attached source file and report its key points', '', 'intake-attach-first-key'
+  );
+  competing_handoff := public.relay_create_team_handoff(
+    w1, p1, null, '10000000-0000-0000-0000-000000000001',
+    'Review another source file', 'Read the source file and report its key points', '', 'intake-attach-second-key'
+  );
+  attached_count := public.stoic_attach_intake_artifacts_to_handoff(
+    w1, '10000000-0000-0000-0000-000000000001', p1, (attach_handoff->>'id')::uuid, array[attachment_file_id]
+  );
+  if attached_count <> 1 or (select handoff_id from public.artifacts where id = attachment_file_id) <> (attach_handoff->>'id')::uuid
+    then raise exception 'approved intake file was not scoped to its handoff'; end if;
+  perform public.stoic_attach_intake_artifacts_to_handoff(
+    w1, '10000000-0000-0000-0000-000000000001', p1, (attach_handoff->>'id')::uuid, array[attachment_file_id]
+  );
+  if (select count(*) from public.task_events where handoff_id = (attach_handoff->>'id')::uuid and event_type = 'artifact_attached') <> 1
+    then raise exception 'intake file attachment retry duplicated task history'; end if;
+  if exists (select 1 from public.artifacts where id = attachment_file_id and handoff_id is null)
+    then raise exception 'attached intake file remained project-wide'; end if;
+  begin
+    perform public.stoic_attach_intake_artifacts_to_handoff(
+      w1, '10000000-0000-0000-0000-000000000001', p1, (competing_handoff->>'id')::uuid, array[attachment_file_id]
+    );
+    raise exception 'an artifact already attached to another handoff was reassigned';
+  exception when others then
+    if sqlerrm <> 'artifact_not_attachable' then raise; end if;
+  end;
+  begin
+    perform public.stoic_attach_intake_artifacts_to_handoff(
+      w2, '10000000-0000-0000-0000-000000000002', p2, (attach_handoff->>'id')::uuid, array[attachment_file_id]
+    );
+    raise exception 'cross-workspace artifact attachment succeeded';
+  exception when others then
+    if sqlerrm <> 'handoff_not_found' then raise; end if;
+  end;
+  if has_function_privilege('authenticated', 'public.stoic_attach_intake_artifacts_to_handoff(uuid,uuid,uuid,uuid,uuid[])', 'EXECUTE')
+    then raise exception 'authenticated role can attach artifacts directly'; end if;
   perform public.stoic_mark_artifact_deleted(w1, '10000000-0000-0000-0000-000000000001', private_file_id);
   if exists (select 1 from public.board_messages where idempotency_key = 'artifact-deleted:' || private_file_id::text)
     then raise exception 'private file deletion leaked to project board'; end if;
@@ -376,9 +471,43 @@ begin
     ) values (w1, p1, '08:00', 1, '1234567890abcdef', 'completed', now());
     raise exception 'duplicate knowledge refresh run was stored';
   exception when unique_violation then null; end;
+  insert into public.knowledge_refresh_runs(
+    workspace_id, project_id, scheduled_slot, scheduled_local_date, source_scope_revision, input_fingerprint,
+    status, started_at
+  ) values (w1, p1, '08:00', current_date + 1, 1, '2234567890abcdef', 'running', now());
+  insert into public.knowledge_refresh_runs(
+    workspace_id, project_id, scheduled_slot, scheduled_local_date, trigger_kind, source_scope_revision, input_fingerprint,
+    status, started_at
+  ) values
+    (w1, p1, '08:00', current_date, 'manual', 1, '3234567890abcdef', 'running', now()),
+    (w1, p1, '08:00', current_date, 'manual', 1, '4234567890abcdef', 'running', now());
+  if (select count(*) from public.knowledge_refresh_runs where workspace_id = w1 and project_id = p1 and trigger_kind = 'manual') <> 2
+    then raise exception 'manual refresh runs were incorrectly subject to scheduled-slot deduplication'; end if;
   if has_table_privilege('authenticated', 'public.knowledge_notes', 'SELECT')
     or has_table_privilege('authenticated', 'public.knowledge_settings', 'SELECT')
     or has_table_privilege('authenticated', 'public.knowledge_refresh_runs', 'SELECT')
     then raise exception 'authenticated role can read knowledge tables directly'; end if;
+  insert into public.intake_threads(id, workspace_id, project_id, title)
+    values('90000000-0000-0000-0000-000000000001', w1, p1, 'Owner intake');
+  begin
+    insert into public.intake_threads(workspace_id, project_id, title)
+      values(w1, p2, 'Foreign project');
+    raise exception 'cross-workspace intake thread was stored';
+  exception when foreign_key_violation then null; end;
+  insert into public.intake_turns(workspace_id, thread_id, owner_id, request_key, prompt, proposal_status)
+    values(w1, '90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'intake-retry-key', 'Assign the research work', 'creating');
+  begin
+    insert into public.intake_turns(workspace_id, thread_id, owner_id, request_key, prompt)
+      values(w1, '90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'intake-retry-key', 'Duplicate');
+    raise exception 'duplicate intake request key was stored';
+  exception when unique_violation then null; end;
+  begin
+    insert into public.intake_turns(workspace_id, thread_id, owner_id, request_key, prompt)
+      values(w2, '90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'foreign-intake-key', 'Foreign');
+    raise exception 'cross-workspace intake turn was stored';
+  exception when foreign_key_violation then null; end;
+  if has_table_privilege('authenticated', 'public.intake_threads', 'SELECT')
+    or has_table_privilege('authenticated', 'public.intake_turns', 'SELECT')
+    then raise exception 'authenticated role can read owner intake tables directly'; end if;
   raise notice 'Stoic SQL integration checks passed';
 end $$;

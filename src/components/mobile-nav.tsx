@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, X } from "lucide-react";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
 export function MobileNav() {
@@ -33,15 +33,15 @@ export function MobileNav() {
   return (
     <>
       <button className={`stoic-menu-toggle${open ? " open" : ""}`} type="button" aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open} aria-controls="stoic-mobile-menu" onClick={() => setOpen((value) => !value)}>
-        {open ? <X size={19} /> : <span className="stoic-menu-lines"><i /><i /><i /></span>}
-      </button>
+        {open ? <XMarkIcon width={19} height={19} /> : <Bars3Icon width={19} height={19} />}
+     </button>
       {open && <div className="stoic-mobile-backdrop" onClick={close}>
         <nav ref={panel} id="stoic-mobile-menu" className="stoic-mobile-panel" aria-label="Mobile navigation" onClick={(event) => event.stopPropagation()}>
           <Link href="#home" onClick={close}>Home</Link>
           <Link href="#product" onClick={close}>Product</Link>
           <Link href="#how-it-works" onClick={close}>How it works</Link>
           <Link href="#pricing" onClick={close}>Pricing</Link>
-          <Link href="/login" className="stoic-mobile-cta" onClick={close}>Sign in <ArrowRight size={16} /></Link>
+          <Link href="/login" className="stoic-mobile-cta" onClick={close}>Sign in</Link>
         </nav>
       </div>}
     </>

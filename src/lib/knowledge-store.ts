@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   buildKnowledgeGraph,
+  KNOWLEDGE_CONTRACT_VERSION,
   KNOWLEDGE_CONFIDENCE,
   parseKnowledgeNote,
   serializeKnowledgeNote,
@@ -13,10 +14,12 @@ import {
 import { requireActiveWorkspace } from "@/lib/account";
 import { AppError, adminDb } from "@/lib/supabase";
 import type { AgentIdentity } from "@/lib/identity";
-import { canReadHandoff } from "@/lib/handoff-policy";
+import { canReadScopedHandoff } from "@/lib/handoff-access";
+import { redactSynthesisSecrets } from "@/lib/synthesis-input";
 import {
   KNOWLEDGE_SOURCE_SCOPES,
   knowledgeSearchPattern,
+  ownerKnowledgeNoteInput,
   knowledgeSettingsInput,
   type KnowledgeSettingsInput,
   type KnowledgeSourceScope,
@@ -29,7 +32,7 @@ const MAX_SEARCH_CANDIDATES = 250;
 
 const NOTE_SELECT = "id,project_id,path,kind,title,status,confidence,note_created_at,note_updated_at,source_agent,source_user,source_handoff,supersedes,related,evidence,metadata,body,markdown,stored_updated_at";
 
-export { KNOWLEDGE_SOURCE_SCOPES, knowledgeSettingsInput, knowledgeSearchPattern } from "./knowledge-boundary";
+export { KNOWLEDGE_SOURCE_SCOPES, knowledgeSettingsInput, knowledgeSearchPattern, ownerKnowledgeNoteInput } from "./knowledge-boundary";
 export type { KnowledgeSettingsInput, KnowledgeSourceScope } from "./knowledge-boundary";
 
 export type KnowledgeNoteSummary = {
@@ -246,6 +249,28 @@ export async function readKnowledgeNote(agent: AgentIdentity, projectId: string,
   };
 }
 
+export async function readOwnerKnowledgeNote(ownerId: string, projectId: string, noteId: string) {
+  const { workspace, project } = await ownerProject(ownerId, projectId);
+  const { data, error } = await adminDb().from("knowledge_notes")
+    .select(NOTE_SELECT)
+    .eq("workspace_id", workspace.id)
+    .eq("project_id", projectId)
+    .eq("id", noteId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AppError("Knowledge note not found", 404);
+  const row = data as KnowledgeNoteRow;
+  const note = parseStoredNote(row);
+  return {
+    project,
+    note: {
+      ...summarizeStoredNote(row),
+      body: note.body,
+      markdown: serializeKnowledgeNote(note),
+    },
+  };
+}
+
 async function resolveEvidence(agent: AgentIdentity, project: KnowledgeProject, references: string[]) {
   const db = adminDb();
   const resolved: Array<Record<string, unknown>> = [];
@@ -258,12 +283,61 @@ async function resolveEvidence(agent: AgentIdentity, project: KnowledgeProject, 
       resolved.push({ reference, type: "project_brief", project_id: project.id, requested_version: version ? Number(version) : null, current_version: project.brief_version, current: version ? Number(version) === project.brief_version : null });
       continue;
     }
+    if (type === "note" && /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value)) {
+      const { data, error } = await db.from("knowledge_notes")
+        .select("id,title,kind,status,note_updated_at")
+        .eq("workspace_id", agent.workspaceId).eq("project_id", project.id).eq("id", value).maybeSingle();
+      if (error) throw error;
+      resolved.push(data
+        ? { reference, type: "project_knowledge_note", accessible: true, note: data }
+        : { reference, type, accessible: false, reason: "not_found_or_project_scope" });
+      continue;
+    }
+    if (type === "message" && z.uuid().safeParse(value).success) {
+      const { data, error } = await db.from("board_messages")
+        .select("id,author_key,kind,body,created_at")
+        .eq("workspace_id", agent.workspaceId).eq("project_id", project.id).eq("id", value).maybeSingle();
+      if (error) throw error;
+      resolved.push(data
+        ? { reference, type: "project_board_message", accessible: true, message: { id: data.id, author_key: data.author_key, kind: data.kind, excerpt: redactSynthesisSecrets(data.body).slice(0, 500), created_at: data.created_at } }
+        : { reference, type, accessible: false, reason: "not_found_or_project_scope" });
+      continue;
+    }
+    if (type === "event" && z.uuid().safeParse(value).success) {
+      const { data, error } = await db.from("task_events")
+        .select("id,handoff_id,event_type,body,created_at")
+        .eq("workspace_id", agent.workspaceId).eq("id", value).maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        resolved.push({ reference, type, accessible: false, reason: "not_found_or_assignment_scope" });
+        continue;
+      }
+      const { data: handoff, error: handoffError } = await db.from("handoffs")
+        .select("id,title,status,assigned_agent_id,updated_at")
+        .eq("workspace_id", agent.workspaceId).eq("project_id", project.id).eq("id", data.handoff_id).maybeSingle();
+      if (handoffError) throw handoffError;
+      if (!handoff || !await canReadScopedHandoff(agent, handoff)) {
+        resolved.push({ reference, type, accessible: false, reason: "not_found_or_assignment_scope" });
+      } else {
+        resolved.push({ reference, type: "task_event", accessible: true, event: { id: data.id, handoff_id: data.handoff_id, event_type: data.event_type, excerpt: redactSynthesisSecrets(data.body).slice(0, 500), created_at: data.created_at } });
+      }
+      continue;
+    }
+    if (type === "agent" && z.uuid().safeParse(value).success) {
+      const { data, error } = await db.from("agents").select("id,name,platform,status")
+        .eq("workspace_id", agent.workspaceId).eq("id", value).maybeSingle();
+      if (error) throw error;
+      resolved.push(data
+        ? { reference, type: "workspace_agent_profile", accessible: true, agent: data }
+        : { reference, type, accessible: false, reason: "not_found_or_workspace_scope" });
+      continue;
+    }
     if (type === "handoff" && z.uuid().safeParse(value).success) {
       const { data, error } = await db.from("handoffs")
         .select("id,title,status,assigned_agent_id,updated_at")
         .eq("workspace_id", agent.workspaceId).eq("project_id", project.id).eq("id", value).maybeSingle();
       if (error) throw error;
-      if (!data || !canReadHandoff(agent, data)) {
+      if (!data || !await canReadScopedHandoff(agent, data)) {
         resolved.push({ reference, type, accessible: false, reason: "not_found_or_assignment_scope" });
       } else {
         resolved.push({ reference, type, accessible: true, handoff: data });
@@ -425,6 +499,42 @@ export async function upsertOwnerKnowledgeNote(ownerId: string, projectId: strin
   });
   if (auditError) throw auditError;
   return { project, note: summarizeStoredNote(stored) };
+}
+
+export async function saveOwnerKnowledgeNote(ownerId: string, input: unknown) {
+  const parsed = ownerKnowledgeNoteInput.parse(input);
+  const { workspace } = await ownerProject(ownerId, parsed.projectId);
+  const { data, error } = await adminDb().from("knowledge_notes")
+    .select(NOTE_SELECT)
+    .eq("workspace_id", workspace.id)
+    .eq("project_id", parsed.projectId)
+    .eq("id", parsed.id)
+    .maybeSingle();
+  if (error) throw error;
+
+  const existing = data ? (data as KnowledgeNoteRow) : null;
+  const previous = existing ? parseStoredNote(existing) : null;
+  const now = new Date().toISOString();
+  const note: KnowledgeNote = {
+    contract_version: KNOWLEDGE_CONTRACT_VERSION,
+    id: parsed.id,
+    project_id: parsed.projectId,
+    kind: parsed.kind,
+    title: parsed.title,
+    status: parsed.status,
+    created_at: previous?.created_at || now,
+    updated_at: now,
+    confidence: parsed.confidence,
+    source_user: ownerId,
+    ...(previous?.source_agent ? { source_agent: previous.source_agent } : {}),
+    ...(previous?.source_handoff ? { source_handoff: previous.source_handoff } : {}),
+    supersedes: previous?.supersedes || [],
+    related: previous?.related || [],
+    evidence: previous?.evidence || [],
+    body: parsed.body,
+  };
+  const path = existing?.path || `notes/${parsed.id.replace(/[^A-Za-z0-9._-]/g, "-")}.md`;
+  return upsertOwnerKnowledgeNote(ownerId, parsed.projectId, path, serializeKnowledgeNote(note));
 }
 
 export async function getOwnerKnowledgeOverview(ownerId: string, projectId: string) {

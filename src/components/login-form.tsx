@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 
 type AuthMode = "signup" | "signin";
@@ -56,7 +55,7 @@ export function LoginForm() {
       <input id="password" type="password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p className="auth-success" role="status">{notice}</p>}
-      <button className="button" disabled={busy}>{busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}<ArrowRight size={18} /></button>
+      <button className="button" disabled={busy}>{busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}</button>
     </form>
     <p className="auth-mode-switch">{mode === "signup" ? "Already have an account?" : "New to Stoic Connector?"} <button type="button" className="text-link" onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(""); setNotice(""); }}>{mode === "signup" ? "Sign in" : "Create an account"}</button></p>
   </>;

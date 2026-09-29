@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { knowledgeSearchPattern, knowledgeSettingsInput } from "../src/lib/knowledge-boundary";
+import { knowledgeSearchPattern, knowledgeSettingsInput, ownerKnowledgeNoteInput } from "../src/lib/knowledge-boundary";
 
 const projectId = "00000000-0000-4000-8000-000000000001";
 
@@ -30,6 +30,14 @@ describe("knowledge persistence boundary", () => {
     expect(knowledgeSettingsInput.safeParse(validSettings({ scheduleSlots: ["08:00", "08:00"] })).success).toBe(false);
     expect(knowledgeSettingsInput.safeParse(validSettings({ sourceScopes: ["brief", "brief"] })).success).toBe(false);
     expect(knowledgeSettingsInput.safeParse(validSettings({ timezone: "America/Chicago local" })).success).toBe(false);
+    expect(knowledgeSettingsInput.safeParse(validSettings({ timezone: "Mars/Olympus_Mons" })).success).toBe(false);
     expect(knowledgeSettingsInput.safeParse(validSettings({ pinnedNoteIds: ["bad id"] })).success).toBe(false);
+  });
+
+  it("accepts bounded owner notes but reserves generated brief and index notes", () => {
+    const note = { projectId, id: "decision-1", title: "Current decision", kind: "decision", status: "proposed", confidence: "uncertain", body: "Keep the launch scoped to the pilot." };
+    expect(ownerKnowledgeNoteInput.safeParse(note).success).toBe(true);
+    expect(ownerKnowledgeNoteInput.safeParse({ ...note, kind: "brief" }).success).toBe(false);
+    expect(ownerKnowledgeNoteInput.safeParse({ ...note, body: "x".repeat(24_001) }).success).toBe(false);
   });
 });

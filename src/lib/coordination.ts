@@ -2,13 +2,23 @@ import { adminDb, AppError } from "@/lib/supabase";
 import { handoffActionInput, handoffInput } from "@/lib/validation";
 import { setBrief, requireWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
-import { canReadHandoff } from "@/lib/handoff-policy";
+import { canReadScopedHandoff } from "@/lib/handoff-access";
 
 type Actor = { agent: AgentIdentity; userId?: never } | { agent?: never; userId: string };
+type AgentHandoffPageRow = {
+  id: string;
+  project_id: string;
+  assigned_agent_id: string | null;
+  created_by_agent_id: string | null;
+  title: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
 
 function dbFailure(error: { message: string } | null): never {
   const message = error?.message || "Database request failed";
-  const status = message.includes("subscription_required") || message.includes("quota") ? 402 : message.includes("forbidden") ? 403 : message.includes("not_found") ? 404 : message.includes("invalid_transition") || message.includes("idempotency_conflict") ? 409 : 400;
+  const status = message.includes("subscription_required") || message.includes("quota") ? 402 : message.includes("forbidden") ? 403 : message.includes("not_found") ? 404 : message.includes("invalid_transition") || message.includes("idempotency_conflict") || message.includes("no_workers_available") ? 409 : 400;
   throw new AppError(message.replaceAll("_", " "), status);
 }
 
@@ -23,10 +33,9 @@ export async function projectBrief(agent: AgentIdentity, projectId: string) {
 export async function listInbox(agent: AgentIdentity, offset = 0) {
   const db = adminDb();
   const checkedAt = new Date().toISOString();
-  const query = db.from("handoffs").select("id,project_id,assigned_agent_id,created_by_agent_id,title,goal,constraints,status,created_at,updated_at")
-    .eq("workspace_id", agent.workspaceId).not("status", "in", '("accepted","canceled")')
-    .order("updated_at", { ascending: false }).range(offset, offset + 99);
-  const { data, error } = agent.isBoss ? await query : await query.eq("assigned_agent_id", agent.agentId).neq("status", "proposed");
+  const { data, error } = await db.rpc("relay_agent_handoff_page", {
+    p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId, p_project_id: null, p_offset: offset,
+  });
   if (error) throw error;
   const [projects, board] = await Promise.all([
     db.from("projects").select("id,name").eq("workspace_id", agent.workspaceId).is("archived_at", null).order("created_at"),
@@ -54,14 +63,14 @@ export async function listProjectHandoffs(agent: AgentIdentity, projectId: strin
     .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).maybeSingle();
   if (projectError) throw projectError;
   if (!project) throw new AppError("Project not found", 404);
-  const query = db.from("handoffs")
-    .select("id,project_id,assigned_agent_id,created_by_agent_id,title,status,created_at,updated_at")
-    .eq("workspace_id", agent.workspaceId).eq("project_id", projectId)
-    .order("updated_at", { ascending: false }).order("id", { ascending: false })
-    .range(offset, offset + 99);
-  const { data, error } = agent.isBoss ? await query : await query.eq("assigned_agent_id", agent.agentId).neq("status", "proposed");
+  const { data, error } = await db.rpc("relay_agent_handoff_page", {
+    p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId, p_project_id: projectId, p_offset: offset,
+  });
   if (error) throw error;
-  return { project, handoffs: data || [], nextOffset: data?.length === 100 ? offset + 100 : null };
+  const handoffs = ((data || []) as AgentHandoffPageRow[]).map(({ id, project_id, assigned_agent_id, created_by_agent_id, title, status, created_at, updated_at }) => ({
+    id, project_id, assigned_agent_id, created_by_agent_id, title, status, created_at, updated_at,
+  }));
+  return { project, handoffs, nextOffset: handoffs.length === 100 ? offset + 100 : null };
 }
 
 export async function createAgentProject(agent: AgentIdentity, name: string, idempotencyKey: string) {
@@ -134,7 +143,7 @@ export async function teamContext(agent: AgentIdentity) {
     projects: projects.data || [],
     nextSteps: agent.isBoss
       ? ["Call check_inbox", "Read unread project boards, briefs, and shared project files before assigning work", "Use list_project_handoffs, then get_handoff, to review earlier work", "Review submitted handoffs", "Create handoffs only when delegation allows it"]
-      : ["Call check_inbox", "Read unread project boards, briefs, and shared project files before acting", "Use list_project_handoffs, then get_handoff, to revisit your completed assignments", "Claim only your assigned work", "Post progress, blockers, and a result"],
+      : ["Call check_inbox", "Read unread project boards, briefs, and shared project files before acting", "Claim an open team-queue handoff only if you will own the work; the first claim wins", "Use list_project_handoffs, then get_handoff, to revisit your assignments", "Post progress, blockers, and a result"],
     boundaries: [
       "Agent access notes are owner declarations, not verified permissions. Check live access and connected-app approval requirements before acting.",
       "Stoic shares only content posted to this workspace. Do not copy credentials, raw logs, or private chat history into it.",
@@ -149,7 +158,7 @@ export async function handoffDetails(agent: AgentIdentity, handoffId: string) {
   const { data: handoff, error } = await db.from("handoffs").select("*").eq("workspace_id", agent.workspaceId).eq("id", handoffId).maybeSingle();
   if (error) throw error;
   if (!handoff) throw new AppError("Handoff not found", 404);
-  if (!canReadHandoff(agent, handoff)) throw new AppError("Handoff not found", 404);
+  if (!await canReadScopedHandoff(agent, handoff)) throw new AppError("Handoff not found", 404);
   const [events, artifacts, approvals] = await Promise.all([
     db.from("task_events").select("id,actor_key,event_type,body,created_at").eq("handoff_id", handoffId).eq("workspace_id", agent.workspaceId).order("created_at"),
     db.from("artifacts").select("id,name,mime_type,size_bytes,created_at").eq("handoff_id", handoffId).eq("workspace_id", agent.workspaceId).eq("status", "ready"),
@@ -162,6 +171,20 @@ export async function handoffDetails(agent: AgentIdentity, handoffId: string) {
 export async function createHandoff(actor: Actor, input: unknown) {
   const parsed = handoffInput.parse(input);
   const workspaceId = actor.agent ? actor.agent.workspaceId : (await requireWorkspace(actor.userId)).id;
+  if (parsed.teamQueue) {
+    const { data, error } = await adminDb().rpc("relay_create_team_handoff", {
+      p_workspace_id: workspaceId,
+      p_project_id: parsed.projectId,
+      p_actor_agent_id: actor.agent?.agentId || null,
+      p_actor_user_id: actor.userId || null,
+      p_title: parsed.title,
+      p_goal: parsed.goal,
+      p_constraints: parsed.constraints,
+      p_idempotency_key: parsed.idempotencyKey || null,
+    });
+    if (error) dbFailure(error);
+    return data;
+  }
   let assignedAgentId = parsed.assignedAgentId;
   if (!assignedAgentId) {
     const db = adminDb();

@@ -4,15 +4,11 @@ import { artifactInput } from "@/lib/validation";
 import { requireWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
 import { canCompleteArtifact, canReadHandoff } from "@/lib/handoff-policy";
+import { canReadScopedHandoff } from "@/lib/handoff-access";
+import { SUPPORTED_ARTIFACT_MIME } from "@/lib/artifact-mime";
 
 type Actor = { agent: AgentIdentity; userId?: never } | { agent?: never; userId: string };
 const BUCKET = "stoic-artifacts";
-const ALLOWED_MIME = new Set([
-  "text/plain", "text/markdown", "text/csv", "application/json", "application/pdf",
-  "image/png", "image/jpeg", "image/webp",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
-
 async function actorWorkspace(actor: Actor) {
   return actor.agent ? actor.agent.workspaceId : (await requireWorkspace(actor.userId)).id;
 }
@@ -25,7 +21,7 @@ async function announceProjectArtifact(artifact: { id: string; handoff_id: strin
 
 export async function reserveArtifact(actor: Actor, input: unknown, contentDigest: string | null = null) {
   const parsed = artifactInput.parse(input);
-  if (!ALLOWED_MIME.has(parsed.mimeType)) throw new AppError("This file type is not supported");
+  if (!SUPPORTED_ARTIFACT_MIME.has(parsed.mimeType)) throw new AppError("This file type is not supported");
   const workspaceId = await actorWorkspace(actor);
   const db = adminDb();
   if (actor.agent && parsed.handoffId) {
@@ -106,7 +102,7 @@ export async function artifactDownload(actor: Actor, artifactId: string) {
       .select("assigned_agent_id,status").eq("workspace_id", workspaceId)
       .eq("project_id", artifact.project_id).eq("id", artifact.handoff_id).maybeSingle();
     if (handoffError) throw handoffError;
-    if (!handoff || !canReadHandoff(actor.agent, handoff)) throw new AppError("Artifact not found", 404);
+    if (!handoff || !await canReadScopedHandoff(actor.agent, { ...handoff, id: artifact.handoff_id })) throw new AppError("Artifact not found", 404);
   }
   const signed = await db.storage.from(BUCKET).createSignedUrl(artifact.storage_path, 300, { download: artifact.name });
   if (signed.error) throw signed.error;

@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Stoic Connector",
     "subtitle": "Coordinate your AI agents",
-    "description": "Stoic gives the agents you already use one shared project brief and a structured handoff flow. Read team context and assignments, post progress or blockers, share files through short-lived links, and return results to the boss for review. Stoic stores coordination state; it does not run models or wake agents. Scheduled checks run through each agent’s own provider account. Connect an existing Stoic account to use your workspace.",
+    "description": "Stoic gives the agents you already use one shared project brief and a structured handoff flow. Read team context and assignments, post progress or blockers, share files through short-lived links, and return results to the boss for review. Stoic can help an owner draft a handoff, while each agent does its own work on its own provider account. Stoic does not wake offline agents. Connect an existing Stoic account to use your workspace.",
     "category": "COLLABORATION"
   },
   "tools": {

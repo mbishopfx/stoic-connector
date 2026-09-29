@@ -6,7 +6,7 @@ import { pairOAuthAgent, workspaceForOwner } from "@/lib/account";
 import { projectBrief, listInbox, listProjectHandoffs, teamCheckHistory, teamContext, handoffDetails, createHandoff, createAgentProject, setAgentProjectRouting, handoffAction, agentUpdateBrief, requestApproval } from "@/lib/coordination";
 import { reserveArtifact, completeArtifact, artifactDownload, listProjectArtifacts, uploadTextArtifact } from "@/lib/artifacts";
 import { appOrigin } from "@/lib/config";
-import { AppError, adminDb, authClient, responseError } from "@/lib/supabase";
+import { AppError, adminDb, responseError } from "@/lib/supabase";
 import { acknowledgeBoardMessage, listBoard, postBoardMessage } from "@/lib/board";
 import { artifactInput, idempotencyKey } from "@/lib/validation";
 import { stoicMcpAppHtml } from "@/lib/mcp-app-resource";
@@ -110,10 +110,7 @@ const handler = createMcpHandler((server) => {
           .from("agents").select("name").eq("id", identity.agentId).maybeSingle();
         if (agent?.name) nickname = `${agent.name} · ${identity.isBoss ? "boss" : "worker"}`;
       } else {
-        const { data, error } = await authClient().auth.getClaims(auth.token);
-        const ownerClaim = data?.claims?.sub;
-        if (error || typeof ownerClaim !== "string") throw new AppError("Invalid OAuth session", 401);
-        ownerId = ownerClaim;
+        ownerId = (await pairingIdentity(auth)).ownerId;
       }
       const workspace = await workspaceForOwner(ownerId);
       const profile = {
@@ -205,7 +202,7 @@ const handler = createMcpHandler((server) => {
   server.registerTool("check_inbox", {
     annotations: writeAnnotations,
     title: "Check assignments",
-    description: "List pending and active handoffs for this agent. Call during scheduled inbox checks; an empty result needs no user notification.",
+    description: "List open team-queue tasks available to this worker plus its active assignments. The first eligible worker to claim an open task owns it. Call during scheduled inbox checks; an empty result needs no user notification.",
     inputSchema: z.object({ offset: pageOffset }),
   }, async ({ offset }, ctx) => run(ctx, (agent) => listInbox(agent, offset)));
 
@@ -233,7 +230,7 @@ const handler = createMcpHandler((server) => {
   server.registerTool("list_project_handoffs", {
     annotations: readAnnotations,
     title: "Find project handoffs",
-    description: "List recent and completed handoffs for a project. The boss sees the team's history; workers see only their own assignments after owner approval. Use get_handoff for the full timeline and files.",
+    description: "List recent and completed handoffs for a project. The boss sees the team's history; workers see their assignments and open team-queue items offered to their profile. Use get_handoff for the full timeline and files.",
     inputSchema: z.object({ projectId: z.uuid(), offset: pageOffset }),
   }, async ({ projectId, offset }, ctx) => run(ctx, (agent) => listProjectHandoffs(agent, projectId, offset)));
 
@@ -254,16 +251,16 @@ const handler = createMcpHandler((server) => {
   server.registerTool("create_handoff", {
     annotations: writeAnnotations,
     title: "Assign a handoff",
-    description: "Boss only. Create a bounded task for one connected agent. In propose mode it waits for owner approval. Reuse the same idempotency key on retries.",
+    description: "Boss only. Create one bounded task for a specific connected agent or set teamQueue=true to offer one shared task to all connected workers; the first eligible worker to claim it becomes the sole assignee. In propose mode it waits for owner approval. Reuse the same idempotency key on retries.",
     inputSchema: z.object({
-      projectId: z.uuid(), assignedAgentId: z.uuid().optional(), title: z.string().min(3).max(160),
+      projectId: z.uuid(), assignedAgentId: z.uuid().optional(), teamQueue: z.boolean().optional(), title: z.string().min(3).max(160),
       goal: z.string().min(10).max(10000), constraints: z.string().max(10000).default(""),
       idempotencyKey,
     }),
   }, async (args, ctx) => run(ctx, (agent) => createHandoff({ agent }, args)));
 
   const taskActions = [
-    ["claim_handoff", "claim", "Claim a handoff assigned to this agent."],
+    ["claim_handoff", "claim", "Claim an open team-queue handoff if no other worker has claimed it, or claim changes requested on work already assigned to you."],
     ["post_update", "update", "Post progress or a question to the handoff timeline."],
     ["mark_blocked", "block", "Mark a claimed handoff blocked and explain why."],
     ["submit_result", "submit", "Submit a result for boss review, with artifact references in the text."],
@@ -337,6 +334,7 @@ const handlerWithOpenAIMetadata = async (request: Request) => {
 
 const secured = withMcpAuth(handlerWithOpenAIMetadata, async (_request, token) => verifyAgentToken(token), {
   required: true,
+  // mcp-handler treats this override as the public origin for the metadata URL.
   resourceUrl: appOrigin(),
 });
 

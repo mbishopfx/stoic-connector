@@ -11,11 +11,12 @@ export const projectInput = z.object({ name: z.string().trim().min(2).max(100) }
 export const handoffInput = z.object({
   projectId: uuid,
   assignedAgentId: uuid.optional(),
+  teamQueue: z.boolean().default(false),
   title: z.string().trim().min(3).max(160),
   goal: z.string().trim().min(10).max(10000),
   constraints: z.string().trim().max(10000).default(""),
   idempotencyKey: idempotencyKey.optional(),
-});
+}).refine((value) => !(value.teamQueue && value.assignedAgentId), "Choose either one assigned worker or the team queue");
 export const handoffActionInput = z.object({
   handoffId: uuid,
   action: z.enum(["claim", "update", "block", "submit", "accept", "request_changes", "approve_assignment", "cancel"]),
