@@ -20,6 +20,9 @@ type Handoff = { id: string; project_id: string; assigned_agent_id: string | nul
 type Approval = { id: string; handoff_id: string; action_summary: string; status: string; created_at: string };
 type Artifact = { id: string; project_id: string; handoff_id: string | null; name: string; mime_type: string; size_bytes: number; created_at: string };
 type Event = { id: string; handoff_id: string; actor_key: string; event_type: string; body: string; created_at: string };
+type HandoffHistoryFilters = { q: string; projectId: string; agentId: string; status: string };
+type HandoffHistoryPage = { items: Handoff[]; nextCursor: string | null; hasMore: boolean; pageSize: number };
+type HandoffHistoryDetail = { handoff: Handoff; events: Event[]; artifacts: Artifact[] };
 type BoardMessage = { id: string; project_id: string; parent_id: string | null; author_key: string; kind: "message" | "run_report" | "suggestion" | "artifact"; body: string; created_at: string };
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null };
@@ -235,8 +238,25 @@ function Metric({ value, label, detail }: { value: number; label: string; detail
 function Status({ status }: { status: string }) { return <span className={`status status-${status}`}>{status.replaceAll("_", " ")}</span>; }
 function Empty({ title, text }: { title: string; text: string }) { return <div className="empty-state"><strong>{title}</strong><p>{text}</p></div>; }
 
+function historyUrl(filters: HandoffHistoryFilters, cursor?: string | null) {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.projectId !== "all") params.set("projectId", filters.projectId);
+  if (filters.agentId !== "all") params.set("agentId", filters.agentId);
+  if (filters.status !== "all") params.set("status", filters.status);
+  if (cursor) params.set("cursor", cursor);
+  return `/api/handoffs?${params.toString()}`;
+}
+
+async function fetchHandoffHistoryPage(url: string, signal?: AbortSignal) {
+  const response = await fetch(url, { cache: "no-store", signal });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Could not load handoff history");
+  return result as HandoffHistoryPage;
+}
+
 function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgentId, busy, command }: { agents: Agent[]; projects: Project[]; handoffs: Handoff[]; events: Event[]; artifacts: Artifact[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(handoffs[0]?.id || null);
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId);
@@ -244,11 +264,58 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   const [assignedAgentId, setAssignedAgentId] = useState(() => projects[0]?.default_agent_id && workers.some((agent) => agent.id === projects[0].default_agent_id) ? projects[0].default_agent_id : workers[0]?.id || "");
   const effectiveAssigneeId = workers.some((agent) => agent.id === assignedAgentId) ? assignedAgentId : workers[0]?.id || "";
   const [title, setTitle] = useState(""); const [goal, setGoal] = useState(""); const [constraints, setConstraints] = useState(""); const [body, setBody] = useState("");
+  const [filterInput, setFilterInput] = useState<HandoffHistoryFilters>({ q: "", projectId: "all", agentId: "all", status: "all" });
+  const [filters, setFilters] = useState<HandoffHistoryFilters>({ q: "", projectId: "all", agentId: "all", status: "all" });
+  const [historyItems, setHistoryItems] = useState(handoffs);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [detail, setDetail] = useState<HandoffHistoryDetail | null>(null);
+  const [detailError, setDetailError] = useState("");
   const createAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const actionAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
-  const selected = handoffs.find((h) => h.id === selectedId) || handoffs[0];
+  const selectedFromHistory = historyItems.find((handoff) => handoff.id === selectedId);
+  const selected = selectedFromHistory
+    || (detail?.handoff.id === selectedId ? detail.handoff : undefined)
+    || handoffs.find((handoff) => handoff.id === selectedId)
+    || historyItems[0] || null;
   const selectedAssignee = teamQueue ? undefined : workers.find((agent) => agent.id === effectiveAssigneeId);
-  const agentNames = Object.fromEntries(agents.map((a) => [a.id, a.name]));
+  const agentNames = Object.fromEntries(agents.map((agent) => [agent.id, agent.name]));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchHandoffHistoryPage(historyUrl(filters), controller.signal).then((page) => {
+      setHistoryItems(page.items);
+      setNextCursor(page.nextCursor);
+      setSelectedId((current) => page.items.some((item) => item.id === current) ? current : page.items[0]?.id || null);
+    }).catch((error) => {
+      if (!controller.signal.aborted) {
+        setHistoryItems([]);
+        setSelectedId(null);
+        setHistoryError(error instanceof Error ? error.message : "Could not load handoff history");
+      }
+    }).finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    return () => controller.abort();
+  }, [filters, historyRevision]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const controller = new AbortController();
+    void fetch(`/api/handoffs?id=${encodeURIComponent(selectedId)}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not load this handoff");
+      return result as HandoffHistoryDetail;
+    }).then((result) => {
+      setDetail(result);
+      setDetailError("");
+    }).catch((error) => {
+      if (!controller.signal.aborted) setDetailError(error instanceof Error ? error.message : "Could not load this handoff");
+    });
+    return () => controller.abort();
+  }, [selectedId, historyRevision]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!teamQueue && !effectiveAssigneeId) return;
@@ -256,18 +323,88 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
     if (createAttempt.current?.fingerprint !== fingerprint) createAttempt.current = { fingerprint, key: crypto.randomUUID() };
     await command("create_handoff", { projectId, ...(teamQueue ? { teamQueue: true } : { assignedAgentId: effectiveAssigneeId }), title, goal, constraints, idempotencyKey: createAttempt.current.key });
     createAttempt.current = null;
-    setTitle(""); setGoal(""); setConstraints(""); setShowForm(false);
+    setTitle(""); setGoal(""); setConstraints(""); setShowForm(false); setHistoryRevision((value) => value + 1);
+    setHistoryLoading(true); setHistoryError("");
   }
+
   async function act(action: string) {
     if (!selected) return;
     const fingerprint = JSON.stringify([selected.id, action, body]);
     if (actionAttempt.current?.fingerprint !== fingerprint) actionAttempt.current = { fingerprint, key: crypto.randomUUID() };
     await command("task_action", { handoffId: selected.id, action, body, idempotencyKey: actionAttempt.current.key });
     actionAttempt.current = null;
-    setBody("");
+    setBody(""); setHistoryRevision((value) => value + 1);
+    setHistoryLoading(true); setHistoryError("");
   }
-  return <><div className="page-heading"><div><span className="eyebrow muted">WORK IN MOTION</span><h1>Handoffs</h1><p>One shared team queue, one worker claim, and a visible history.</p></div><button className="button" onClick={() => setShowForm(!showForm)}>{showForm ? "Close" : "New handoff"}</button></div>{showForm && <section className="panel form-panel"><h2>Make a handoff</h2>{!workers.length && <div className="callout warning"><strong>Connect a worker first.</strong><p>Connected workers can claim a shared handoff on their next inbox check. The first claim gives that worker sole ownership.</p></div>}<form className="form-grid" onSubmit={(event) => submit(event).catch(() => {})}><div><label htmlFor="handoff-project">Project</label><select id="handoff-project" value={projectId} onChange={(event) => { const next = projects.find((project) => project.id === event.target.value); setProjectId(event.target.value); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }} required>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div><div><label htmlFor="handoff-assignee">Who can take this?</label><select id="handoff-assignee" value={teamQueue ? "team_queue" : effectiveAssigneeId} onChange={(event) => { const next = event.target.value; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }} required><option value="team_queue">All connected workers · first claim wins</option>{workers.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} only</option>)}</select></div><div className="full assignee-context" role="note"><strong>{teamQueue ? "Shared team queue" : selectedAssignee ? `${selectedAssignee.name}\u2019s access` : "Connect a worker first"}</strong><p>{teamQueue ? "Every connected worker can see this handoff on its next inbox check. The first to claim it becomes its sole owner." : selectedAssignee?.access_notes || "No app access has been described yet. Confirm what this agent can do before assigning work."}</p><small>{teamQueue ? "Stoic creates one handoff, so workers cannot accidentally receive duplicate copies." : "Owner-provided notes guide routing; the agent must verify live access and approval requirements."}</small></div><div className="full"><label>Title</label><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Research our launch options" minLength={3} maxLength={160} required /></div><div className="full"><label>What needs to be done?</label><textarea value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Describe the outcome the agent should deliver…" minLength={10} maxLength={10000} required rows={4} /></div><div className="full"><label>Constraints or decisions to keep in mind</label><textarea value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Budget, scope, approval boundaries…" maxLength={10000} rows={3} /></div><button className="button" disabled={busy || !projectId || !workers.length}>Create handoff</button></form></section>}
-    <div className="handoff-layout"><section className="panel handoff-list"><div className="panel-heading"><div><h2>All handoffs</h2><p>{handoffs.length} recorded</p></div></div>{handoffs.length ? handoffs.map((task) => <button key={task.id} className={`handoff-list-item ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}><span><strong>{task.title}</strong><small>{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {timeAgo(task.updated_at)}</small></span><Status status={task.status} /></button>) : <Empty title="Nothing handed off yet" text="Start with one clear assignment to a connected agent." />}</section><section className="panel handoff-detail">{selected ? <><div className="detail-top"><div><span className="eyebrow muted">{projects.find((p) => p.id === selected.project_id)?.name || "Project"}</span><h2>{selected.title}</h2><p>{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</p></div><Status status={selected.status} /></div><div className="detail-block"><span>GOAL</span><p>{selected.goal}</p></div>{selected.constraints && <div className="detail-block"><span>CONSTRAINTS</span><p>{selected.constraints}</p></div>}<div className="detail-block"><span>ACTIVITY</span><div className="timeline">{events.filter((event) => event.handoff_id === selected.id).slice().reverse().map((event) => <div className="timeline-item" key={event.id}><i /><div><strong>{event.event_type.replaceAll("_", " ")}</strong><small>{timeAgo(event.created_at)}</small>{event.body && <p>{event.body}</p>}</div></div>)}</div></div>{artifacts.some((a) => a.handoff_id === selected.id) && <div className="detail-block"><span>FILES</span><p>{artifacts.filter((a) => a.handoff_id === selected.id).map((a) => a.name).join(", ")}</p></div>}<div className="detail-actions"><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context for your agent…" rows={2} /><div><button className="button button-outline button-small" onClick={() => act("update").catch(() => {})} disabled={busy || body.trim().length < 2}>Post update</button>{selected.status === "submitted" && <><button className="button button-small" disabled={busy} onClick={() => act("accept").catch(() => {})}>Accept result</button><button className="button button-outline button-small" disabled={busy || body.trim().length < 2} onClick={() => act("request_changes").catch(() => {})}>Request changes</button></>}{selected.status === "proposed" && <button className="button button-small" disabled={busy} onClick={() => act("approve_assignment").catch(() => {})}>Approve assignment</button>}</div></div></> : <Empty title="Select a handoff" text="Choose a task to see its complete trail." />}</section></div></>;
+
+  async function loadOlder() {
+    if (!nextCursor || historyLoadingMore) return;
+    setHistoryLoadingMore(true);
+    setHistoryError("");
+    try {
+      const page = await fetchHandoffHistoryPage(historyUrl(filters, nextCursor));
+      setHistoryItems((current) => [...current, ...page.items.filter((item) => !current.some((existing) => existing.id === item.id))]);
+      setNextCursor(page.nextCursor);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Could not load older handoffs");
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }
+
+  function applyFilters(event: FormEvent) {
+    event.preventDefault();
+    setHistoryLoading(true);
+    setHistoryError("");
+    setFilters({ ...filterInput, q: filterInput.q.trim() });
+  }
+
+  function clearFilters() {
+    const empty: HandoffHistoryFilters = { q: "", projectId: "all", agentId: "all", status: "all" };
+    setFilterInput(empty);
+    setHistoryLoading(true);
+    setHistoryError("");
+    setFilters(empty);
+  }
+
+  const selectedProject = selected && projects.find((project) => project.id === selected.project_id);
+  const detailForSelected = !!selected && detail?.handoff.id === selected.id;
+  const selectedEvents = detail?.handoff.id === selected?.id ? detail.events : events.filter((event) => event.handoff_id === selected?.id);
+  const selectedArtifacts = detail?.handoff.id === selected?.id ? detail.artifacts : artifacts.filter((artifact) => artifact.handoff_id === selected?.id);
+
+  return <>
+    <div className="page-heading"><div><span className="eyebrow muted">WORK IN MOTION</span><h1>Handoffs</h1><p>Search every project assignment, follow its complete timeline, and review the result.</p></div><button className="button" onClick={() => setShowForm(!showForm)}>{showForm ? "Close" : "New handoff"}</button></div>
+    {showForm && <section className="panel form-panel"><h2>Make a handoff</h2>{!workers.length && <div className="callout warning"><strong>Connect a worker first.</strong><p>Connected workers can claim a shared handoff on their next inbox check. The first claim gives that worker sole ownership.</p></div>}<form className="form-grid" onSubmit={(event) => submit(event).catch(() => {})}><div><label htmlFor="handoff-project">Project</label><select id="handoff-project" value={projectId} onChange={(event) => { const next = projects.find((project) => project.id === event.target.value); setProjectId(event.target.value); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }} required>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div><div><label htmlFor="handoff-assignee">Who can take this?</label><select id="handoff-assignee" value={teamQueue ? "team_queue" : effectiveAssigneeId} onChange={(event) => { const next = event.target.value; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }} required><option value="team_queue">All connected workers · first claim wins</option>{workers.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} only</option>)}</select></div><div className="full assignee-context" role="note"><strong>{teamQueue ? "Shared team queue" : selectedAssignee ? `${selectedAssignee.name}\u2019s access` : "Connect a worker first"}</strong><p>{teamQueue ? "Every connected worker can see this handoff on its next inbox check. The first to claim it becomes its sole owner." : selectedAssignee?.access_notes || "No app access has been described yet. Confirm what this agent can do before assigning work."}</p><small>{teamQueue ? "Stoic creates one handoff, so workers cannot accidentally receive duplicate copies." : "Owner-provided notes guide routing; the agent must verify live access and approval requirements."}</small></div><div className="full"><label htmlFor="handoff-title">Title</label><input id="handoff-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Research our launch options" minLength={3} maxLength={160} required /></div><div className="full"><label htmlFor="handoff-goal">What needs to be done?</label><textarea id="handoff-goal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Describe the outcome the agent should deliver…" minLength={10} maxLength={10000} required rows={4} /></div><div className="full"><label htmlFor="handoff-constraints">Constraints or decisions to keep in mind</label><textarea id="handoff-constraints" value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Budget, scope, approval boundaries…" maxLength={10000} rows={3} /></div><button className="button" disabled={busy || !projectId || !workers.length}>Create handoff</button></form></section>}
+    <div className="handoff-layout">
+      <section className="panel handoff-list">
+        <div className="panel-heading"><div><h2>Handoff history</h2><p>{historyItems.length} loaded · newest first</p></div></div>
+        <form className="handoff-history-filters" onSubmit={applyFilters}>
+          <label className="history-search">Search titles and goals<input value={filterInput.q} onChange={(event) => setFilterInput((current) => ({ ...current, q: event.target.value }))} maxLength={120} placeholder="Try a project or task phrase" disabled={historyLoadingMore} /></label>
+          <div className="history-filter-row">
+            <label>Project<select value={filterInput.projectId} onChange={(event) => setFilterInput((current) => ({ ...current, projectId: event.target.value }))} disabled={historyLoadingMore}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+            <label>Agent<select value={filterInput.agentId} onChange={(event) => setFilterInput((current) => ({ ...current, agentId: event.target.value }))} disabled={historyLoadingMore}><option value="all">All agents</option><option value="unassigned">Team queue</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
+            <label>Status<select value={filterInput.status} onChange={(event) => setFilterInput((current) => ({ ...current, status: event.target.value }))} disabled={historyLoadingMore}><option value="all">All statuses</option><option value="proposed">Proposed</option><option value="assigned">Assigned</option><option value="claimed">Claimed</option><option value="blocked">Blocked</option><option value="submitted">Submitted</option><option value="changes_requested">Changes requested</option><option value="accepted">Accepted</option><option value="canceled">Canceled</option></select></label>
+          </div>
+          <div className="history-filter-actions"><button className="button button-small" type="submit" disabled={historyLoading || historyLoadingMore}>Search history</button><button className="subtle-link" type="button" onClick={clearFilters} disabled={historyLoadingMore}>Clear filters</button></div>
+        </form>
+        {historyError && <p className="history-error" role="alert">{historyError}</p>}
+        {historyLoading && !historyItems.length ? <p className="history-loading-note" role="status">Loading project handoffs…</p> : historyItems.length ? <div aria-busy={historyLoading} className="handoff-history-results">{historyItems.map((task) => <button key={task.id} className={`handoff-list-item ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}><span><strong>{task.title}</strong><small>{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</small></span><Status status={task.status} /></button>)}</div> : <Empty title={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "No matching handoffs" : "Nothing handed off yet"} text={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "Try a different phrase or clear the filters to see all project work." : "Start with one clear assignment to a connected agent."} />}
+        {nextCursor && <div className="history-load-more"><button className="button button-outline button-small" onClick={() => loadOlder().catch(() => {})} disabled={historyLoadingMore}>{historyLoadingMore ? "Loading older handoffs…" : "Load older handoffs"}</button></div>}
+        {!nextCursor && historyItems.length > 0 && <p className="history-end-note">All matching handoffs are loaded.</p>}
+      </section>
+      <section className="panel handoff-detail">
+        {selected ? <>
+          <div className="detail-top"><div><span className="eyebrow muted">{selectedProject?.name || "Project"}</span><h2>{selected.title}</h2><p>{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</p></div><Status status={selected.status} /></div>
+          <div className="handoff-run-summary"><span>Last activity</span><strong>{timeAgo(selected.updated_at)}</strong><span>Created</span><strong>{new Date(selected.created_at).toLocaleString()}</strong><span>Outcome</span><strong>{selected.status === "accepted" ? "Accepted by the owner" : selected.status === "submitted" ? "Waiting for owner review" : selected.status === "blocked" ? "Blocked · review the latest update" : selected.status === "changes_requested" ? "Changes requested" : selected.status === "canceled" ? "Canceled" : selected.status.replaceAll("_", " ")}</strong></div>
+          <div className="detail-block"><span>GOAL</span><p>{selected.goal}</p></div>
+          {selected.constraints && <div className="detail-block"><span>CONSTRAINTS</span><p>{selected.constraints}</p></div>}
+          <div className="detail-block"><span>ACTIVITY</span>{detailError && <p className="history-error" role="alert">Could not load the complete timeline: {detailError}</p>}{!detailForSelected && !detailError && <p className="history-loading-note">Loading handoff activity…</p>}{detailForSelected && selectedEvents.length === 0 && <p className="history-loading-note">No updates have been posted yet.</p>}<div className="timeline">{selectedEvents.map((event) => { const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic"; return <div className="timeline-item" key={event.id}><i /><div><strong>{event.event_type.replaceAll("_", " ")}</strong><small>{actor} · {timeAgo(event.created_at)}</small>{event.body && <p>{event.body}</p>}</div></div>; })}</div></div>
+          {selectedArtifacts.length > 0 && <div className="detail-block"><span>FILES</span><ul className="handoff-file-list">{selectedArtifacts.map((artifact) => <li key={artifact.id}>{artifact.name}</li>)}</ul></div>}
+          <div className="detail-actions"><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context for your agent…" rows={2} /><div><button className="button button-outline button-small" onClick={() => act("update").catch(() => {})} disabled={busy || body.trim().length < 2}>Post update</button>{selected.status === "submitted" && <><button className="button button-small" disabled={busy} onClick={() => act("accept").catch(() => {})}>Accept result</button><button className="button button-outline button-small" disabled={busy || body.trim().length < 2} onClick={() => act("request_changes").catch(() => {})}>Request changes</button></>}{selected.status === "proposed" && <button className="button button-small" disabled={busy} onClick={() => act("approve_assignment").catch(() => {})}>Approve assignment</button>}</div></div>
+        </> : <Empty title="Select a handoff" text="Choose a task to see its complete trail." />}
+      </section>
+    </div>
+  </>;
 }
 
 function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSelect, onSecret, onNavigate, command }: { agents: Agent[]; workspace: Workspace; handoffs: Handoff[]; busy: boolean; selected?: Agent; secret: { agentId: string; value: string; type: "key" | "code" } | null; onSelect: (id: string) => void; onSecret: (value: { agentId: string; value: string; type: "key" | "code" } | null) => void; onNavigate: (tab: Tab) => void; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {

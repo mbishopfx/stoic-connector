@@ -115,6 +115,11 @@ begin
   end;
 
   h := public.relay_create_handoff(w1, p1, worker, boss, null, 'Research market', 'Find three concrete market examples', '', 'first-task-key');
+  if not exists (
+    select 1 from public.handoffs
+    where id = (h->>'id')::uuid
+      and search_document @@ websearch_to_tsquery('simple', 'market examples')
+  ) then raise exception 'handoff search document did not index the title and goal'; end if;
   begin
     perform public.stoic_set_workspace_policy(w1, '10000000-0000-0000-0000-000000000001', worker, 'delegate');
     raise exception 'worker with an open handoff became boss';

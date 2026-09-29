@@ -39,4 +39,5 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/202609270026_team_queue_handoffs.sql \
   -f supabase/migrations/20260928220551_attach_intake_artifacts_to_handoff.sql \
   -f supabase/migrations/20260929005456_knowledge_steward_runner.sql \
+  -f supabase/migrations/20260929020000_handoff_history_search.sql \
   -f tests/sql/integration.sql
