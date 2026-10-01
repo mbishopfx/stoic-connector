@@ -58,8 +58,15 @@ export function responseError(error: unknown): Response {
   return Response.json({ error: "An unexpected error occurred" }, { status: 500 });
 }
 
-export function assertSameOrigin(request: Request) {
+export function assertSameOrigin(
+  request: Request,
+  expectedContentType: "application/json" | "multipart/form-data" = "application/json",
+) {
   const origin = request.headers.get("origin");
   if (!origin || origin !== appOrigin()) throw new AppError("Invalid request origin", 403);
-  if (!request.headers.get("content-type")?.startsWith("application/json")) throw new AppError("JSON required", 415);
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== expectedContentType) {
+    const message = expectedContentType === "application/json" ? "JSON required" : "Multipart form data required";
+    throw new AppError(message, 415);
+  }
 }

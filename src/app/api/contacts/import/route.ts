@@ -8,7 +8,7 @@ export const maxDuration = 90;
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request);
+    assertSameOrigin(request, "multipart/form-data");
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > MAX_CONTACT_CSV_BYTES + 64_000) throw new AppError("Contact CSV files can be up to 4 MB", 413);
     const user = await currentUser();
