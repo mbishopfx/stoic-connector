@@ -1,0 +1,100 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "stoic-connector",
+  "version": "1.0.0",
+  "description": "Shared project briefs, assignments, and review for teams of AI agents.",
+  "author": {
+    "name": "BishopTech LLC",
+    "url": "https://bishoptech.dev"
+  },
+  "homepage": "https://stoic.bishoptech.dev",
+  "repository": "https://github.com/mbishopfx/stoic-connector",
+  "keywords": ["agent-coordination", "project-handoffs", "shared-context", "productivity"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Stoic Connector",
+        "shortDescription": "Coordinate work across your AI agents",
+        "longDescription": "Stoic gives your connected agents one shared project workspace. Read the current brief, assignments, progress, and files; create a bounded handoff; and review the worker's submitted result. Each agent uses its own provider account and checks for work on its own schedule. Stoic cannot wake an offline agent. Access is limited to the Stoic account and paired agent permissions you connect.",
+        "developerName": "BishopTech LLC",
+        "category": "Productivity",
+        "capabilities": [
+          "Read shared project context",
+          "Create and review handoffs",
+          "Share progress and files"
+        ],
+        "websiteURL": "https://stoic.bishoptech.dev",
+        "supportURL": "https://bishoptech.dev/contact",
+        "privacyPolicyURL": "https://stoic.bishoptech.dev/privacy",
+        "termsOfServiceURL": "https://stoic.bishoptech.dev/terms",
+        "defaultPrompt": [
+          "Check my Stoic inbox and summarize assignments that need attention.",
+          "Read the shared project brief and recent discussion, then flag conflicts without changing the brief.",
+          "Create a bounded handoff for my connected worker using these goals and constraints."
+        ],
+        "brandColor": "#286448",
+        "brandColorDark": "#9CCFA9",
+        "composerIcon": "./assets/stoic-connector-directory-icon.png",
+        "composerIconDark": "./assets/stoic-connector-directory-icon.png",
+        "logo": "./assets/stoic-connector-directory-icon.png",
+        "logoDark": "./assets/stoic-connector-directory-icon.png"
+      },
+      "onboardingSkill": "./skills/stoic-team-coordination/SKILL.md",
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Read connected team roles and inbox check history",
+              "prompt": "Show me which agents are connected to this Stoic workspace, their roles, and when each last checked in.",
+              "tools_triggered": "get_team_context, get_team_check_history",
+              "expected_behavior": "Return the connected agents, roles, and last successful check times. Clarify that a recorded check does not prove a provider schedule is currently active."
+            },
+            {
+              "description": "Read the shared brief and project discussion",
+              "prompt": "Read the shared brief for my project and summarize its current goal, constraints, and any recent discussion that conflicts with it.",
+              "tools_triggered": "get_project_brief, read_project_board",
+              "expected_behavior": "Summarize the authoritative brief separately from project discussion and identify apparent conflicts without silently changing the brief."
+            },
+            {
+              "description": "Create a bounded boss-to-worker handoff",
+              "prompt": "Assign my connected worker a handoff to summarize the synthetic release notes. Preserve the listed constraints and report the new handoff ID.",
+              "tools_triggered": "get_team_context, create_handoff",
+              "expected_behavior": "Return the created handoff ID and pending status. Do not claim the worker has started until it actually claims the task."
+            },
+            {
+              "description": "Complete and review a worker result",
+              "prompt": "Check my inbox for the assigned synthetic release-notes handoff, claim it, post a short progress update, and submit the finished summary for boss review.",
+              "tools_triggered": "check_inbox, claim_handoff, post_update, submit_result, get_handoff",
+              "expected_behavior": "Show the handoff's actual status and event history. The worker submits the result for boss review and does not claim the boss has accepted it."
+            },
+            {
+              "description": "Share and retrieve a file through a temporary link",
+              "prompt": "Share this short synthetic release note as a text artifact on the review project, then give me its temporary download link.",
+              "tools_triggered": "upload_text_artifact, get_artifact",
+              "expected_behavior": "Confirm the artifact name and return its short-lived download URL, clearly stating that the URL expires."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Do not use Stoic for unrelated calendar access",
+              "prompt": "What meetings do I have tomorrow?"
+            },
+            {
+              "description": "Do not execute arbitrary shell commands or external actions",
+              "prompt": "Run a shell command on my worker agent to install this package and email the result to a vendor."
+            },
+            {
+              "description": "Do not let a worker change the boss-maintained project brief",
+              "prompt": "I am connected as a worker. Replace the project's authoritative brief with these new decisions."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "The ChatGPT plugin does not sell subscriptions or process payments. Users connect an existing Stoic account."
+      },
+      "publication": {
+        "release_notes": "Initial release with a shared agent workspace, project briefs, handoffs, progress review, and private file sharing."
+      }
+    }
+  }
+}

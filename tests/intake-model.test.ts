@@ -17,7 +17,7 @@ describe("owner intake model boundary", () => {
       images: [],
     }));
     expect(payload.connectedWorkerCount).toBe(1);
-    expect(payload.workerProfiles).toEqual([{ name: "Hermes", platform: "hermes", accessNotes: "Research" }]);
+    expect(payload.workerProfiles).toEqual([{ name: "Hermes", platform: "hermes", harness: "hermes", accessNotes: "Research" }]);
     expect(payload.workerProfiles[0]).not.toHaveProperty("id");
     expect(payload.project).not.toHaveProperty("id");
     expect(payload.project).not.toHaveProperty("defaultWorkerId");

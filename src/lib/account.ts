@@ -36,13 +36,13 @@ export async function dashboardState(ownerId: string) {
   const db = adminDb();
   if (workspace.plan !== "pro") {
     const { data: agents, error } = await db.from("agents")
-      .select("id,name,platform,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at")
+      .select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at")
       .eq("workspace_id", workspace.id).order("created_at");
     if (error) throw error;
     return { workspace, agents: agents || [] };
   }
   const [agents, projects, handoffs, approvals, artifacts, events, board, activity] = await Promise.all([
-    db.from("agents").select("id,name,platform,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
+    db.from("agents").select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("projects").select("*").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     db.from("handoffs").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100),
     db.from("approvals").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50),
@@ -72,10 +72,10 @@ export async function createWorkspace(ownerId: string, name: string) {
   return ensureWorkspaceForOwner(ownerId, name);
 }
 
-export async function addAgent(ownerId: string, name: string, platform: Platform) {
+export async function addAgent(ownerId: string, name: string, platform: Platform, harnessName: string) {
   const workspace = await requireActiveWorkspace(ownerId);
   const db = adminDb();
-  const { data, error } = await db.from("agents").insert({ workspace_id: workspace.id, name, platform }).select("id,name,platform,status").single();
+  const { data, error } = await db.from("agents").insert({ workspace_id: workspace.id, name, platform, harness_name: harnessName }).select("id,name,platform,harness_name,status").single();
   if (error) throw error;
   return data;
 }
@@ -92,9 +92,10 @@ export async function setProjectRouting(ownerId: string, projectId: string, agen
   const workspace = await requireActiveWorkspace(ownerId);
   if (agentId) {
     if (agentId === workspace.boss_agent_id) throw new AppError("Choose a worker other than the designated boss", 400);
-    const { data: agent } = await adminDb().from("agents").select("id").eq("id", agentId)
+    const { data: agent } = await adminDb().from("agents").select("id,platform").eq("id", agentId)
       .eq("workspace_id", workspace.id).eq("status", "connected").maybeSingle();
     if (!agent) throw new AppError("Choose a connected agent in this workspace", 400);
+    if (agent.platform === "muse") throw new AppError("Muse's browser relay cannot receive MCP handoffs", 400);
   }
   const { data, error } = await adminDb().from("projects").update({ default_agent_id: agentId })
     .eq("id", projectId).eq("workspace_id", workspace.id).is("archived_at", null).select().maybeSingle();
@@ -105,6 +106,13 @@ export async function setProjectRouting(ownerId: string, projectId: string, agen
 
 export async function setWorkspacePolicy(ownerId: string, bossAgentId: string | null, delegationLevel: DelegationLevel) {
   const workspace = await requireActiveWorkspace(ownerId);
+  if (bossAgentId) {
+    const { data: boss, error: bossError } = await adminDb().from("agents").select("platform,status")
+      .eq("workspace_id", workspace.id).eq("id", bossAgentId).maybeSingle();
+    if (bossError) throw bossError;
+    if (!boss || boss.status !== "connected") throw new AppError("Choose a connected MCP agent as the team lead", 400);
+    if (boss.platform === "muse") throw new AppError("Muse's browser relay cannot lead MCP handoffs", 400);
+  }
   const { data, error } = await adminDb().rpc("stoic_set_workspace_policy", {
     p_workspace_id: workspace.id, p_owner_id: ownerId, p_boss_agent_id: bossAgentId, p_delegation_level: delegationLevel,
   });
@@ -158,6 +166,10 @@ export async function setAgentAccessNotes(ownerId: string, agentId: string, raw:
 
 export async function createPairingCode(ownerId: string, agentId: string) {
   const workspace = await requireActiveWorkspace(ownerId);
+  const { data: agent, error: agentError } = await adminDb().from("agents").select("platform")
+    .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked").maybeSingle();
+  if (agentError) throw agentError;
+  if (agent?.platform === "muse") throw new AppError("Muse uses its browser credential store, not Stoic MCP pairing", 400);
   const code = randomBytes(12).toString("base64url");
   const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   const { data, error } = await adminDb().from("agents").update({ pairing_code_hash: hash(code), pairing_expires_at: expires })
@@ -171,10 +183,11 @@ export async function pairOAuthAgent(ownerId: string, clientId: string, code: st
   if (!clientId || !code) throw new AppError("Pairing requires an OAuth client and code");
   const db = adminDb();
   const workspace = await requireActiveWorkspace(ownerId);
-  const { data: agent, error } = await db.from("agents").select("id,name,status,oauth_client_id")
+  const { data: agent, error } = await db.from("agents").select("id,name,status,oauth_client_id,platform")
     .eq("workspace_id", workspace.id).eq("pairing_code_hash", hash(code)).gt("pairing_expires_at", new Date().toISOString()).neq("status", "revoked").maybeSingle();
   if (error) throw error;
   if (!agent) throw new AppError("Pairing code is invalid or expired", 403);
+  if (agent.platform === "muse") throw new AppError("Muse uses its browser credential store, not Stoic MCP pairing", 400);
   if (agent.oauth_client_id && agent.oauth_client_id !== clientId) throw new AppError("This agent is already paired. Revoke it before pairing again.", 409);
   const { data, error: updateError } = await db.from("agents").update({ oauth_client_id: clientId, credential_hash: null, status: "connected", pairing_code_hash: null, pairing_expires_at: null, last_check_at: null })
     .eq("id", agent.id).eq("workspace_id", workspace.id).eq("pairing_code_hash", hash(code)).select("id,name,platform,status").maybeSingle();
@@ -186,6 +199,10 @@ export async function pairOAuthAgent(ownerId: string, clientId: string, code: st
 
 export async function issueAgentKey(ownerId: string, agentId: string) {
   const workspace = await requireActiveWorkspace(ownerId);
+  const { data: agent, error: agentError } = await adminDb().from("agents").select("platform")
+    .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked").maybeSingle();
+  if (agentError) throw agentError;
+  if (agent?.platform === "muse") throw new AppError("Muse uses its browser credential store, not a Stoic MCP key", 400);
   const raw = `stoic_${randomBytes(32).toString("base64url")}`;
   const { data, error } = await adminDb().from("agents").update({ credential_hash: hash(raw), oauth_client_id: null, pairing_code_hash: null, pairing_expires_at: null, status: "connected", last_check_at: null })
     .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked").select("id,name,platform,status").maybeSingle();

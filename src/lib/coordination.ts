@@ -95,10 +95,11 @@ export async function setAgentProjectRouting(agent: AgentIdentity, projectId: st
   if (workspace.boss_agent_id !== agent.agentId) throw new AppError("Only the designated boss can change project routing", 403);
   if (defaultAgentId) {
     if (defaultAgentId === agent.agentId) throw new AppError("Choose a worker other than the designated boss", 400);
-    const { data: worker, error: workerError } = await db.from("agents").select("id")
+    const { data: worker, error: workerError } = await db.from("agents").select("id,platform")
       .eq("workspace_id", agent.workspaceId).eq("id", defaultAgentId).eq("status", "connected").maybeSingle();
     if (workerError) throw workerError;
     if (!worker) throw new AppError("Choose a connected agent in this workspace", 400);
+    if (worker.platform === "muse") throw new AppError("Muse's browser relay cannot receive MCP handoffs", 400);
   }
   const { data, error } = await db.from("projects").update({ default_agent_id: defaultAgentId })
     .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).select("id,name,default_agent_id").maybeSingle();
@@ -128,7 +129,7 @@ export async function teamContext(agent: AgentIdentity) {
   const db = adminDb();
   const [workspace, agents, projects] = await Promise.all([
     db.from("workspaces").select("id,name,boss_agent_id,delegation_level").eq("id", agent.workspaceId).single(),
-    db.from("agents").select("id,name,platform,status,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at")
+    db.from("agents").select("id,name,platform,harness_name,status,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at")
       .eq("workspace_id", agent.workspaceId).neq("status", "revoked").order("created_at"),
     db.from("projects").select("id,name,brief_version,default_agent_id")
       .eq("workspace_id", agent.workspaceId).is("archived_at", null).order("created_at"),
@@ -139,7 +140,9 @@ export async function teamContext(agent: AgentIdentity) {
     workspace: { id: workspace.data.id, name: workspace.data.name, delegationLevel: workspace.data.delegation_level },
     self: { agentId: agent.agentId, role: agent.isBoss ? "boss" : "worker" },
     bossAgentId: workspace.data.boss_agent_id,
-    agents: agents.data || [],
+    agents: (agents.data || []).map((item) => item.platform === "muse" && item.status === "connected"
+      ? { ...item, status: "browser_relay_only", schedule_enabled: false }
+      : item),
     projects: projects.data || [],
     nextSteps: agent.isBoss
       ? ["Call check_inbox", "Read unread project boards, briefs, and shared project files before assigning work", "Use list_project_handoffs, then get_handoff, to review earlier work", "Review submitted handoffs", "Create handoffs only when delegation allows it"]
@@ -192,6 +195,11 @@ export async function createHandoff(actor: Actor, input: unknown) {
     assignedAgentId = project?.default_agent_id;
     if (!assignedAgentId) throw new AppError("Choose an agent or set this project's default agent", 400);
   }
+  const { data: assignee, error: assigneeError } = await adminDb().from("agents").select("platform,status")
+    .eq("workspace_id", workspaceId).eq("id", assignedAgentId).maybeSingle();
+  if (assigneeError) throw assigneeError;
+  if (!assignee || assignee.status !== "connected") throw new AppError("Choose a connected agent in this workspace", 400);
+  if (assignee.platform === "muse") throw new AppError("Muse's browser relay cannot receive MCP handoffs", 400);
   const { data, error } = await adminDb().rpc("relay_create_handoff", {
     p_workspace_id: workspaceId,
     p_project_id: parsed.projectId,

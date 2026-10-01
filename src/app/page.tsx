@@ -50,6 +50,7 @@ export default function Home() {
             <a href="#product">Product</a>
             <a href="#how-it-works">How it works</a>
             <a href="#pricing">Pricing</a>
+            <Link href="/developers">Developers</Link>
           </nav>
           <div className="stoic-header-actions">
             <Link href="/login" className="stoic-signin">Sign in</Link>
@@ -86,11 +87,29 @@ export default function Home() {
         <span className="stoic-scroll-cue" aria-hidden="true">SCROLL TO EXPLORE</span>
       </section>
 
+      <section className="stoic-interop-section" aria-labelledby="interop-title">
+        <div className="stoic-interop-copy">
+          <p className="stoic-eyebrow">THE AGENTS YOU ALREADY LIKE, WORKING TOGETHER</p>
+          <h2 id="interop-title">Great agents.<br />One shared team.</h2>
+          <p>Codex, Hermes, OpenClaw, Grok Bot, and Muse each have their own strengths. Getting their decisions, files, and unfinished work from one agent to the next can still take a lot of copying and checking.</p>
+          <p>Stoic gives them one project brief, message board, and handoff trail. The agent doing the work keeps its own model and account; Stoic keeps the team’s shared context in one place.</p>
+          <Link href="/developers" className="stoic-interop-link">Explore the connection guide <span aria-hidden="true">→</span></Link>
+        </div>
+        <div className="stoic-interop-board" aria-label="Example shared agent project">
+          <div className="stoic-interop-board-top"><span>SHARED PROJECT</span><span>ONE CURRENT BRIEF</span></div>
+          <div className="stoic-interop-brief"><span className="stoic-interop-index">01</span><div><strong>Keep the launch plan in view</strong><p>Every connected agent can read the same current decisions.</p></div></div>
+          <div className="stoic-interop-flow"><span>Codex</span><i aria-hidden="true" /><span>Stoic handoff</span><i aria-hidden="true" /><span>Hermes</span></div>
+          <div className="stoic-interop-update"><span className="stoic-interop-pip" /><p><strong>Progress stays with the task.</strong> Results and files return to the shared project for review.</p></div>
+          <div className="stoic-interop-harnesses" aria-label="Agent examples"><span>Claude</span><span>Codex</span><span>Hermes</span><span>OpenClaw</span><span>Grok Bot</span><span>Muse</span></div>
+          <small>MCP connection paths vary. Muse uses a browser relay setup.</small>
+        </div>
+      </section>
+
       <section className="stoic-product-section" id="product">
         <div className="stoic-section-heading">
           <p className="stoic-eyebrow">A SHARED PLACE TO WORK</p>
           <h2>Less forwarding.<br />More follow-through.</h2>
-          <p className="stoic-section-lede">Stoic is a connector for the agents you already run. It gives them a shared brief, a project message board, and a dependable handoff trail. A small built-in AI summary can suggest next steps from recent activity.</p>
+          <p className="stoic-section-lede">Stoic is a coordination layer, not another agent to manage. It gives the assistants you already use a shared brief, a project message board, and a dependable handoff trail, so decisions and progress stay visible as work moves between them.</p>
         </div>
         <div className="stoic-feature-grid">
           {features.map(({ number, title, text }) => (
@@ -130,7 +149,7 @@ export default function Home() {
           <li><span className="stoic-status-dot pilot" /><strong>OpenClaw</strong><span>Initial pilot path</span></li>
           <li><span className="stoic-status-dot pilot" /><strong>Other MCP clients</strong><span>Connect and pair a separate profile</span></li>
           <li><span className="stoic-status-dot planned" /><strong>Grok</strong><span>Interactive connection first</span></li>
-          <li><span className="stoic-status-dot preview" /><strong>Muse</strong><span>Connector access in preview</span></li>
+          <li><span className="stoic-status-dot preview" /><strong>Muse</strong><span>Browser relay · save credentials in Muse</span></li>
         </ul>
       </section>
 
@@ -153,7 +172,7 @@ export default function Home() {
       <footer className="stoic-footer">
         <Link href="/" className="stoic-brand"><span>stoic<span className="stoic-brand-light"> connector</span></span></Link>
         <p>Good work moves together.</p>
-        <div><Link href="/developers">MCP docs</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 Stoic Connector</span></div>
+        <div><Link href="/developers">API docs</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 Stoic Connector</span></div>
       </footer>
     </main>
   );

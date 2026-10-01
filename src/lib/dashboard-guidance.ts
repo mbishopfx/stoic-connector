@@ -43,7 +43,7 @@ const SCHEDULABLE_PLATFORMS = new Set(["codex", "hermes", "openclaw"]);
 
 export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuidance {
   const now = input.now ?? Date.now();
-  const connected = input.agents.filter((agent) => agent.status === "connected");
+  const connected = input.agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse");
   const boss = connected.find((agent) => agent.id === input.bossAgentId);
   const worker = connected.find((agent) => agent.id !== input.bossAgentId);
   const hasBrief = input.projects.some((project) => project.brief.trim().length > 0);

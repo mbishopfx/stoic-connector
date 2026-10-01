@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
-import { MicrophoneIcon, PaperClipIcon, SpeakerWaveIcon, SpeakerXMarkIcon, StopIcon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftRightIcon, LockClosedIcon, MicrophoneIcon, PaperClipIcon, PlusIcon, SpeakerWaveIcon, SpeakerXMarkIcon, StopIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { safeArtifactMime } from "@/lib/artifact-mime";
 import { agentHealth } from "@/lib/agent-health";
 import { getFileUploadIdempotencyKey } from "@/lib/intake-upload";
+import { plainRichText } from "@/lib/rich-text";
 import type { DashboardGuidance } from "@/lib/dashboard-guidance";
+import { AssistantRichInline, AssistantRichText } from "@/components/rich-text";
 
 type Project = { id: string; name: string; brief: string };
 type Agent = { id: string; name: string; platform: string; status: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null };
@@ -47,6 +49,7 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [turnArtifacts, setTurnArtifacts] = useState<IntakeArtifact[]>([]);
   const [threadId, setThreadId] = useState("");
+  const [threadsOpen, setThreadsOpen] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -57,6 +60,8 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const conversationsToggle = useRef<HTMLButtonElement>(null);
+  const conversationsClose = useRef<HTMLButtonElement>(null);
   const scrollEnd = useRef<HTMLDivElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -64,7 +69,7 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
   const requestKey = useRef<string | null>(null);
   const fileUploadKeys = useRef(new WeakMap<object, string>());
   const initialSeed = useRef(initialPrompt && initialProjectId ? { prompt: initialPrompt, projectId: initialProjectId } : null);
-  const workerCount = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId).length;
+  const workerCount = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse").length;
   const rosterAgents = agents.filter((agent) => agent.status !== "revoked");
   const activeThread = threads.find((thread) => thread.id === threadId);
   const selectedProjectId = activeThread?.project_id || projectId;
@@ -109,11 +114,25 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
     return () => window.clearInterval(timer);
   }, [load, threadId, turns]);
 
+  useEffect(() => {
+    if (!threadsOpen) return;
+    conversationsClose.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setThreadsOpen(false);
+      window.requestAnimationFrame(() => conversationsToggle.current?.focus());
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [threadsOpen]);
+
   useEffect(() => { scrollEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [visibleTurns.length, lastTurnStatus]);
   useEffect(() => () => { recorder.current?.stop(); stream.current?.getTracks().forEach((track) => track.stop()); window.speechSynthesis?.cancel(); }, []);
 
   function newChat() {
     setThreadId(crypto.randomUUID());
+    setThreadsOpen(false);
+    window.requestAnimationFrame(() => document.getElementById("stoic-message")?.focus());
     setTurns([]);
     setTurnArtifacts([]);
     setMessage("");
@@ -202,7 +221,7 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
       await load(threadId);
       if (speakReplies && body.turn?.response && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(body.turn.response));
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(plainRichText(body.turn.response)));
       }
     } catch (cause) { if (intakeResponseHandled) requestKey.current = null; setError(messageError(cause)); }
     finally { setSending(false); }
@@ -220,7 +239,8 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
     finally { setDeciding(null); }
   }
 
-  function chooseThread(thread: Thread) { setThreadId(thread.id); setProjectId(thread.project_id); setError(""); setMessage(""); setFiles([]); void load(thread.id).catch((cause) => setError(messageError(cause))); }
+  function chooseThread(thread: Thread) { setThreadId(thread.id); setThreadsOpen(false); window.requestAnimationFrame(() => conversationsToggle.current?.focus()); setProjectId(thread.project_id); setError(""); setMessage(""); setFiles([]); void load(thread.id).catch((cause) => setError(messageError(cause))); }
+  function closeThreads() { setThreadsOpen(false); window.requestAnimationFrame(() => conversationsToggle.current?.focus()); }
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) { addFiles(Array.from(event.target.files || [])); event.target.value = ""; }
 
   function followGuidance() {
@@ -232,14 +252,15 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
     onOpenGuidance();
   }
 
-  return <div className="intake-layout" onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={onDrop}>
-    <aside className="intake-threads" aria-label="Stoic conversations">
-      <div className="intake-threads-head"><span>Conversations</span><button type="button" className="intake-new" onClick={newChat}>New conversation</button></div>
+  return <div className={`intake-layout${threadsOpen ? " threads-open" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={onDrop}>
+    {threadsOpen && <button type="button" tabIndex={-1} className="intake-threads-backdrop" aria-label="Close conversation list" onClick={closeThreads} />}
+    <aside id="stoic-conversations" className="intake-threads" aria-label="Stoic conversations" hidden={!threadsOpen}>
+      <div className="intake-threads-head"><span>Conversations</span><div><button ref={conversationsClose} type="button" className="intake-toolbar-button" aria-label="Close conversations" title="Close conversations" onClick={closeThreads}><XMarkIcon aria-hidden="true" /></button><button type="button" className="intake-toolbar-button intake-new" aria-label="New conversation" title="New conversation" onClick={newChat}><PlusIcon aria-hidden="true" /></button></div></div>
       {threads.length ? <div className="intake-thread-list">{threads.map((thread) => <button type="button" key={thread.id} className={thread.id === threadId ? "selected" : ""} onClick={() => chooseThread(thread)}><span>{thread.title}</span><small>{projects.find((project) => project.id === thread.project_id)?.name || "Project"}</small></button>)}</div> : <p className="intake-thread-empty">Your conversations will appear here.</p>}
       <div className="intake-threads-note"><p>Stoic drafts handoffs for your review. Your agents pick them up at their next check.</p></div>
     </aside>
     <section className="intake-chat" aria-label="Stoic chat">
-      <header className="intake-chat-header"><div><span className="intake-status-dot" /><strong>Stoic</strong><small>Team coordinator</small></div><span className="intake-privacy">Owner conversation</span></header>
+      <header className="intake-chat-header"><div><span className="intake-status-dot" /><strong>Stoic</strong><small className="sr-only">Team coordinator</small></div><div className="intake-chat-header-actions"><button ref={conversationsToggle} type="button" className="intake-toolbar-button" aria-label={threadsOpen ? "Hide conversations" : "Show conversations"} aria-expanded={threadsOpen} aria-controls="stoic-conversations" title={threadsOpen ? "Hide conversations" : "Show conversations"} onClick={() => setThreadsOpen((open) => !open)}><ChatBubbleLeftRightIcon aria-hidden="true" /></button><button type="button" className="intake-toolbar-button" aria-label="New conversation" title="New conversation" onClick={newChat}><PlusIcon aria-hidden="true" /></button><span className="intake-privacy" role="img" aria-label="Private owner conversation" title="Private owner conversation"><LockClosedIcon aria-hidden="true" /><span className="sr-only">Owner conversation</span></span></div></header>
       <div className="intake-scroll">
         {!visibleTurns.length && <div className="intake-welcome" data-testid="intake-welcome">
           <section className="intake-welcome-copy">
@@ -253,13 +274,20 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
             <div className="intake-start-module-heading"><div><span>TEAM SETUP</span><strong>{guidance.completedSteps} of {guidance.steps.length}</strong></div><div className="intake-progress-track" role="progressbar" aria-label="Team setup progress" aria-valuemin={0} aria-valuemax={guidance.steps.length} aria-valuenow={guidance.completedSteps} aria-valuetext={`${guidance.completedSteps} of ${guidance.steps.length} steps complete`}><span style={{ width: `${Math.round((guidance.completedSteps / guidance.steps.length) * 100)}%` }} /></div></div>
             <div className="intake-start-next"><span>NEXT STEP</span><h2>{guidance.title}</h2><p>{guidance.detail}</p><button type="button" className="button button-small" onClick={followGuidance}>{guidance.tab === "assistant" ? "Draft a handoff" : guidance.buttonLabel}</button></div>
             <details className="intake-setup-details"><summary>View the full setup path</summary><ol>{guidance.steps.map((step) => <li key={step.label} className={step.complete ? "done" : ""}><span>{step.complete ? "Done" : "Next"}</span><strong>{step.label}</strong></li>)}</ol></details>
-            <div className="intake-team-list"><div><strong>Team roster</strong><button type="button" className="subtle-link" onClick={onManageAgents}>Manage agents</button></div>{rosterAgents.slice(0, 3).map((agent) => { const health = agentHealth(agent); const connection = agent.status === "connected" ? `${health.label} · ${lastCheckLabel(agent.last_check_at)}` : agent.last_check_at ? "Recheck connection" : "Finish setup"; return <p key={agent.id}><strong>{agent.name}{agent.id === bossAgentId ? " · lead" : ""}</strong><span>{connection}</span></p>; })}{rosterAgents.length === 0 && <p className="intake-roster-empty">No agents connected yet. Stoic will walk you through adding the first one.</p>}{rosterAgents.length > 3 && <p className="intake-roster-more">+ {rosterAgents.length - 3} more agents</p>}</div>
+            <div className="intake-team-list"><div><strong>Team roster</strong><button type="button" className="subtle-link" onClick={onManageAgents}>Manage agents</button></div>{rosterAgents.slice(0, 3).map((agent) => { const health = agentHealth(agent); const connection = agent.platform === "muse" ? agent.status === "revoked" ? "Revoked" : "Browser relay · not an MCP worker" : agent.status === "connected" ? `${health.label} · ${lastCheckLabel(agent.last_check_at)}` : agent.last_check_at ? "Recheck connection" : "Finish setup"; return <p key={agent.id}><strong>{agent.name}{agent.id === bossAgentId ? " · lead" : ""}</strong><span>{connection}</span></p>; })}{rosterAgents.length === 0 && <p className="intake-roster-empty">No agents connected yet. Stoic will walk you through adding the first one.</p>}{rosterAgents.length > 3 && <p className="intake-roster-more">+ {rosterAgents.length - 3} more agents</p>}</div>
           </aside>
         </div>}
         {visibleTurns.map((turn) => <div className="intake-turn" key={turn.id}>
           <div className="intake-owner-message"><p>{turn.prompt || (turn.transcript ? "Voice message" : "Files shared")}</p>{turn.artifact_ids.length > 0 && <div className="intake-turn-files"><small>{turn.artifact_ids.length} {turn.artifact_ids.length === 1 ? "file" : "files"} attached</small>{turn.artifact_ids.map((id) => { const artifact = turnArtifacts.find((item) => item.id === id); return artifact ? <span key={id}>{artifact.name}<small>{artifact.size_bytes >= 1024 * 1024 ? `${(artifact.size_bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(artifact.size_bytes / 1024))} KB`}</small></span> : null; })}</div>}{turn.transcript && <details><summary>Voice transcript</summary><p>{turn.transcript}</p></details>}</div>
-          <div className="intake-stoic-message"><div>{turn.status === "processing" ? <div className="intake-thinking"><i /><i /><i /><span>Organizing your request…</span></div> : turn.status === "failed" ? <p>Stoic could not finish this message. You can resend your request.</p> : turn.proposal_status === "created" && turn.proposal ? <p>Added to the shared team queue. All {workerCount} connected workers can see it; the first to claim it owns the assignment.</p> : turn.proposal_status === "dismissed" ? <p>Draft dismissed. No handoff was created.</p> : turn.proposal_status === "creating" ? <p>Stoic is checking whether this handoff was added to the queue.</p> : <p>{turn.response}</p>}{turn.status === "completed" && !turn.proposal && workerCount === 0 && <button type="button" className="intake-text-button" onClick={onManageAgents}>Connect a worker</button>}
-            {turn.proposal && turn.status === "completed" && <article className="intake-proposal"><div className="intake-proposal-label"><span>HANDOFF DRAFT</span><span>{turn.proposal_status === "created" ? "SENT TO TEAM QUEUE" : turn.proposal_status === "dismissed" ? "DISMISSED" : turn.proposal_status === "creating" ? "CHECKING QUEUE" : "READY FOR REVIEW"}</span></div><h3>{turn.proposal.title}</h3><p>{turn.proposal.goal}</p><div className="intake-proposal-meta"><span>Available to <strong>{workerCount} connected {workerCount === 1 ? "worker" : "workers"}</strong></span>{turn.artifact_ids.length > 0 && <span>{turn.artifact_ids.length} linked {turn.artifact_ids.length === 1 ? "file" : "files"}</span>}</div>{turn.proposal.constraints && <details><summary>Constraints and approvals</summary><p>{turn.proposal.constraints}</p></details>}{(turn.proposal_status === "pending" || turn.proposal_status === "creating") && <div className="intake-proposal-actions"><button type="button" className="button button-small" disabled={!!deciding} onClick={() => void decide(turn, "create")}>{deciding === turn.id ? "Saving…" : turn.proposal_status === "creating" ? "Check handoff status" : "Add to handoff queue"}</button>{turn.proposal_status === "pending" && <button type="button" className="intake-text-button" disabled={!!deciding} onClick={() => void decide(turn, "dismiss")}>Dismiss draft</button>}</div>}{turn.proposal_status === "created" && <button type="button" className="intake-text-button" onClick={onViewHandoffs}> View handoff</button>}</article>}
+          <div className="intake-stoic-message"><div>{turn.status === "processing" ? <div className="intake-thinking"><i /><i /><i /><span>Organizing your request…</span></div> : turn.status === "failed" ? <p>Stoic could not finish this message. You can resend your request.</p> : turn.proposal_status === "created" && turn.proposal ? <p>Added to the shared team queue. All {workerCount} connected workers can see it; the first to claim it owns the assignment.</p> : turn.proposal_status === "dismissed" ? <p>Draft dismissed. No handoff was created.</p> : turn.proposal_status === "creating" ? <p>Stoic is checking whether this handoff was added to the queue.</p> : <AssistantRichText text={turn.response} />}{turn.status === "completed" && !turn.proposal && workerCount === 0 && <button type="button" className="intake-text-button" onClick={onManageAgents}>Connect a worker</button>}
+            {turn.proposal && turn.status === "completed" && <article className="intake-proposal">
+              <div className="intake-proposal-label"><span>HANDOFF DRAFT</span><span>{turn.proposal_status === "created" ? "SENT TO TEAM QUEUE" : turn.proposal_status === "dismissed" ? "DISMISSED" : turn.proposal_status === "creating" ? "CHECKING QUEUE" : "READY FOR REVIEW"}</span></div>
+              <h3><AssistantRichInline text={turn.proposal.title} /></h3><AssistantRichText text={turn.proposal.goal} />
+              <div className="intake-proposal-meta"><span>Available to <strong>{workerCount} connected {workerCount === 1 ? "worker" : "workers"}</strong></span>{turn.artifact_ids.length > 0 && <span>{turn.artifact_ids.length} linked {turn.artifact_ids.length === 1 ? "file" : "files"}</span>}</div>
+              {turn.proposal.constraints && <details><summary>Constraints and approvals</summary><AssistantRichText text={turn.proposal.constraints} /></details>}
+              {(turn.proposal_status === "pending" || turn.proposal_status === "creating") && <div className="intake-proposal-actions"><button type="button" className="button button-small" disabled={!!deciding} onClick={() => void decide(turn, "create")}>{deciding === turn.id ? "Saving…" : turn.proposal_status === "creating" ? "Check handoff status" : "Add to handoff queue"}</button>{turn.proposal_status === "pending" && <button type="button" className="intake-text-button" disabled={!!deciding} onClick={() => void decide(turn, "dismiss")}>Dismiss draft</button>}</div>}
+              {turn.proposal_status === "created" && <button type="button" className="intake-text-button" onClick={onViewHandoffs}> View handoff</button>}
+            </article>}
           </div></div>
         </div>)}<div ref={scrollEnd} />
       </div>

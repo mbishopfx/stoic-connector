@@ -33,8 +33,8 @@ export async function POST(request: Request) {
         break;
       }
       case "add_agent": {
-        const { name, platform } = agentInput.parse(body);
-        data = await addAgent(user.id, name, platform);
+        const { name, platform, harnessName } = agentInput.parse(body);
+        data = await addAgent(user.id, name, platform, harnessName);
         break;
       }
       case "create_project": {

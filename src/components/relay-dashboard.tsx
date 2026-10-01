@@ -3,19 +3,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  Bars3Icon,
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
+  ClipboardDocumentListIcon,
+  CreditCardIcon,
+  FolderIcon,
+  LightBulbIcon,
+  MoonIcon,
+  PaperClipIcon,
+  Squares2X2Icon,
+  SunIcon,
+  UserGroupIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PLATFORM_LABELS, type Plan, type Platform } from "@/lib/config";
+import { type Plan, type Platform } from "@/lib/config";
+import { AGENT_HARNESSES, agentHarnessLabel, type AgentHarnessId } from "@/lib/agent-harness";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
+import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { canPreviewImageArtifact, canPreviewTextArtifact, safeArtifactMime } from "@/lib/artifact-mime";
 import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } from "@/lib/dashboard-guidance";
 import { StoicIntake } from "@/components/stoic-intake";
+import { AssistantRichInline, AssistantRichText } from "@/components/rich-text";
+import { StoicMark } from "@/components/stoic-mark";
 import { AgentSetupProgress } from "@/components/agent-setup-progress";
 import { KnowledgeCenter } from "@/components/knowledge-center";
 
-type Agent = { id: string; name: string; platform: Platform; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
+type Agent = { id: string; name: string; platform: Platform; harness_name?: string | null; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
 type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
 type Handoff = { id: string; project_id: string; assigned_agent_id: string | null; created_by_agent_id: string | null; title: string; goal: string; constraints: string; status: string; created_at: string; updated_at: string };
 type Approval = { id: string; handoff_id: string; action_summary: string; status: string; created_at: string };
@@ -41,24 +60,24 @@ function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-const navSections: { label: string; items: { id: Tab; label: string }[] }[] = [
+const navSections: { label: string; items: { id: Tab; label: string; icon: typeof Squares2X2Icon }[] }[] = [
   { label: "START", items: [
-    { id: "assistant", label: "Stoic chat" },
-    { id: "ideas", label: "Ideas" },
+    { id: "assistant", label: "Stoic chat", icon: ChatBubbleOvalLeftEllipsisIcon },
+    { id: "ideas", label: "Ideas", icon: LightBulbIcon },
   ] },
   { label: "WORK", items: [
-    { id: "overview", label: "Overview" },
-    { id: "handoffs", label: "Handoffs" },
-    { id: "board", label: "Message board" },
-    { id: "projects", label: "Projects" },
+    { id: "overview", label: "Overview", icon: Squares2X2Icon },
+    { id: "handoffs", label: "Handoffs", icon: ClipboardDocumentListIcon },
+    { id: "board", label: "Message board", icon: ChatBubbleLeftRightIcon },
+    { id: "projects", label: "Projects", icon: FolderIcon },
   ] },
   { label: "TEAM", items: [
-    { id: "agents", label: "Agents" },
-    { id: "knowledge", label: "Knowledge" },
-    { id: "files", label: "Artifacts" },
+    { id: "agents", label: "Agents", icon: UserGroupIcon },
+    { id: "knowledge", label: "Knowledge", icon: BookOpenIcon },
+    { id: "files", label: "Artifacts", icon: PaperClipIcon },
   ] },
   { label: "ACCOUNT", items: [
-    { id: "billing", label: "Plan & billing" },
+    { id: "billing", label: "Plan & billing", icon: CreditCardIcon },
   ] },
 ];
 const nav = navSections.flatMap((section) => section.items);
@@ -71,6 +90,13 @@ function timeAgo(value: string | null) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function displayedAgentHealth(agent: Agent) {
+  if (agent.platform !== "muse") return agentHealth(agent);
+  if (agent.status === "revoked") return { label: "Revoked", tone: "muted" as const };
+  if (agent.status === "connected") return { label: "Browser relay only", tone: "neutral" as const };
+  return { label: "Browser setup", tone: "neutral" as const };
 }
 
 export function StoicDashboard({ email }: { email: string }) {
@@ -142,7 +168,7 @@ export function StoicDashboard({ email }: { email: string }) {
     router.push("/");
   }
 
-  if (!state) return <main className="dashboard-loading"><span className="brand-mark">S</span><p>Loading Stoic…</p>{error && <p role="alert">{error}</p>}</main>;
+  if (!state) return <main className="dashboard-loading"><span className="brand-mark"><StoicMark /></span><p>Loading Stoic…</p>{error && <p role="alert">{error}</p>}</main>;
   if (!state.workspace) return <WorkspaceSetup email={email} busy={busy} onCreate={(name) => command("create_workspace", { name })} error={error} />;
 
   const workspace = state.workspace;
@@ -161,6 +187,8 @@ export function StoicDashboard({ email }: { email: string }) {
   const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const currentAgent = agents.find((a) => a.id === selectedAgent && a.status !== "revoked") || agents.find((a) => a.status !== "revoked");
   const dashboardGuidance = getDashboardGuidance({ agents, projects, handoffs, bossAgentId: workspace.boss_agent_id });
+  const currentNavItem = nav.find((item) => item.id === tab) || nav[0];
+  const CurrentNavIcon = currentNavItem.icon;
 
   function followDashboardGuidance(guidance: DashboardGuidance = dashboardGuidance) {
     if (guidance.agentId) setSelectedAgent(guidance.agentId);
@@ -175,16 +203,16 @@ export function StoicDashboard({ email }: { email: string }) {
 
   return <div className="dashboard-shell" data-theme={theme}>
     <aside className={`dashboard-sidebar ${menuOpen ? "open" : ""}`}>
-      <div className="sidebar-top"><Link href="/" className="brand"><span className="brand-mark">S</span><span>Stoic <strong>Connector</strong></span></Link><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><XMarkIcon width={18} height={18} /></button></div>
-      <div className="workspace-switch"><span className="workspace-initial">{workspace.name.charAt(0).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Team workspace</small></div></div>
-      <div className="sidebar-navigation">{navSections.map((section) => <section className="sidebar-nav-section" key={section.label}><p className="sidebar-label">{section.label}</p><nav aria-label={section.label}>{section.items.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setMenuOpen(false); if (item.id === "board" || item.id === "ideas") void reload().catch(() => {}); }}>{item.label}{item.id === "handoffs" && activeHandoffs.length > 0 && <span className="nav-count">{activeHandoffs.length}</span>}{item.id === "overview" && pendingApprovals.length > 0 && <span className="nav-count amber">{pendingApprovals.length}</span>}</button>)}</nav></section>)}</div>
-      <div className="sidebar-bottom"><div className="sidebar-help"><strong>Let the team work at its own pace.</strong><p>Agents pick up handoffs on their next successful schedule. Stoic cannot wake an offline agent.</p></div><button className="user-row" onClick={signOut}><span className="user-avatar">{email.charAt(0).toUpperCase()}</span><span><strong>{email}</strong><small>Sign out</small></span></button></div>
+      <div className="sidebar-top"><Link href="/" className="brand" aria-label="Stoic Connector home" title="Stoic Connector"><span className="brand-mark"><StoicMark /></span><span className="brand-wordmark">Stoic <strong>Connector</strong></span></Link><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><XMarkIcon width={18} height={18} /></button></div>
+      <div className="workspace-switch" role="group" aria-label={`Workspace: ${workspace.name}`} title={workspace.name}><span className="workspace-initial">{workspace.name.charAt(0).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Team workspace</small></div></div>
+      <div className="sidebar-navigation">{navSections.map((section) => <section className="sidebar-nav-section" key={section.label}><p className="sidebar-label">{section.label}</p><nav aria-label={section.label}>{section.items.map((item) => { const Icon = item.icon; return <button key={item.id} className={tab === item.id ? "active" : ""} aria-label={item.label} title={item.label} aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setMenuOpen(false); if (item.id === "board" || item.id === "ideas") void reload().catch(() => {}); }}><Icon className="nav-item-icon" aria-hidden="true" /><span className="nav-item-label">{item.label}</span>{item.id === "handoffs" && activeHandoffs.length > 0 && <span className="nav-count">{activeHandoffs.length}</span>}{item.id === "overview" && pendingApprovals.length > 0 && <span className="nav-count amber">{pendingApprovals.length}</span>}</button>; })}</nav></section>)}</div>
+      <div className="sidebar-bottom"><div className="sidebar-help"><strong>Let the team work at its own pace.</strong><p>Agents pick up handoffs on their next successful schedule. Stoic cannot wake an offline agent.</p></div><button className="user-row" onClick={signOut} aria-label={`Sign out ${email}`} title={`Sign out ${email}`}><span className="user-avatar">{email.charAt(0).toUpperCase()}</span><span><strong>{email}</strong><small>Sign out</small></span></button></div>
     </aside>
-    <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb">{workspace.name} <strong>{nav.find((item) => item.id === tab)?.label}</strong></div><div className="header-right"><button className="icon-button theme-toggle" onClick={changeTheme} aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"} aria-pressed={theme === "dark"} title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}>{theme === "light" ? "Dark theme" : "Light theme"}</button><span className="header-plan">PRO</span><span className="user-avatar">{email.charAt(0).toUpperCase()}</span></div></header>
+    <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div><div className="header-right"><button className="icon-button theme-toggle" onClick={changeTheme} aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"} aria-pressed={theme === "dark"} title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}>{theme === "light" ? <MoonIcon aria-hidden="true" /> : <SunIcon aria-hidden="true" />}</button><span className="user-avatar" aria-label={`Account: ${email}`} title={email}>{email.charAt(0).toUpperCase()}</span></div></header>
       <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <div className="alert error" role="alert"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss">Dismiss</button></div>}{notice && <div className="alert success" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss">Dismiss</button></div>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
-        {tab === "ideas" && <IdeasView projects={projects} messages={board} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id)} onDiscuss={discussIdea} onOpenChat={() => setTab("assistant")} onManageAgents={() => setTab("agents")} />}
-        {tab === "overview" && <><div className="page-heading"><div><span className="eyebrow muted">YOUR COMMAND CENTER</span><h1>Good to see you.</h1><p>Here’s where your agents and their work stand today.</p></div><button className="button" onClick={() => setTab("assistant")}>Start with Stoic</button></div><BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} /><div className="metric-grid"><Metric value={agents.filter((a) => a.status === "connected").length} label="Active agent credentials" detail="A successful inbox check verifies each connection" /><Metric value={activeHandoffs.length} label="Active handoffs" detail={`${state.usage?.handoffs || 0} created this month`} /><Metric value={pendingApprovals.length} label="Needs your review" detail="Approval requests and decisions" /></div><div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h2>Handoffs in motion</h2><p>Work your team is handling now.</p></div><button className="subtle-link" onClick={() => setTab("handoffs")}>View all</button></div>{activeHandoffs.length ? <div className="compact-list">{activeHandoffs.slice(0, 5).map((item) => <div className="compact-item" key={item.id}><div><strong>{item.title}</strong><small>{(item.assigned_agent_id ? names[item.assigned_agent_id] : null) || "Team queue"} · {projectNames[item.project_id] || "Project"}</small></div><Status status={item.status} /></div>)}</div> : <Empty title="Nothing in motion" text="Active assignments appear here. Open Handoffs to review completed work or create another assignment." />}</section><section className="panel"><div className="panel-heading"><div><h2>Agent check-ins</h2><p>Know who is ready to receive work.</p></div><button className="subtle-link" onClick={() => setTab("agents")}>Manage</button></div>{agents.filter((a) => a.status !== "revoked").length ? <div className="compact-list">{agents.filter((a) => a.status !== "revoked").slice(0, 5).map((agent) => { const health = agentHealth(agent); return <div className="compact-item" key={agent.id}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><div><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{PLATFORM_LABELS[agent.platform]} · last check {timeAgo(agent.last_check_at)}</small></div><span className={`health ${health.tone}`}><i />{health.label}</span></div>; })}</div> : <Empty title="Build your team" text="Add your first agent, then give it an identity in Stoic." />}</section></div>{pendingApprovals.length > 0 && <section className="panel review-panel"><div className="panel-heading"><div><h2>Needs your decision</h2><p>Agents cannot approve these on their behalf.</p></div></div>{pendingApprovals.map((approval) => <div className="approval-row" key={approval.id}><div><strong>{approval.action_summary}</strong><small>For {handoffs.find((h) => h.id === approval.handoff_id)?.title || "a handoff"}</small></div><div className="row-actions"><button className="button button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</button><button className="button button-outline button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</button></div></div>)}</section>}</>}
+        {tab === "ideas" && <IdeasView projects={projects} messages={board} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} onDiscuss={discussIdea} onOpenChat={() => setTab("assistant")} onManageAgents={() => setTab("agents")} />}
+        {tab === "overview" && <><div className="page-heading"><div><span className="eyebrow muted">YOUR COMMAND CENTER</span><h1>Good to see you.</h1><p>Here’s where your agents and their work stand today.</p></div><button className="button" onClick={() => setTab("assistant")}>Start with Stoic</button></div><BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} /><div className="metric-grid"><Metric value={agents.filter((a) => a.status === "connected" && a.platform !== "muse").length} label="Active MCP credentials" detail="A successful inbox check verifies each connection" /><Metric value={activeHandoffs.length} label="Active handoffs" detail={`${state.usage?.handoffs || 0} created this month`} /><Metric value={pendingApprovals.length} label="Needs your review" detail="Approval requests and decisions" /></div><div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h2>Handoffs in motion</h2><p>Work your team is handling now.</p></div><button className="subtle-link" onClick={() => setTab("handoffs")}>View all</button></div>{activeHandoffs.length ? <div className="compact-list">{activeHandoffs.slice(0, 5).map((item) => <div className="compact-item" key={item.id}><div><strong><AssistantRichInline text={item.title} /></strong><small>{(item.assigned_agent_id ? names[item.assigned_agent_id] : null) || "Team queue"} · {projectNames[item.project_id] || "Project"}</small></div><Status status={item.status} /></div>)}</div> : <Empty title="Nothing in motion" text="Active assignments appear here. Open Handoffs to review completed work or create another assignment." />}</section><section className="panel"><div className="panel-heading"><div><h2>Agent check-ins</h2><p>Know who is ready to receive work.</p></div><button className="subtle-link" onClick={() => setTab("agents")}>Manage</button></div>{agents.filter((a) => a.status !== "revoked").length ? <div className="compact-list">{agents.filter((a) => a.status !== "revoked").slice(0, 5).map((agent) => { const health = displayedAgentHealth(agent); return <div className="compact-item" key={agent.id}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><div><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)} · {agent.platform === "muse" ? "browser relay" : `last check ${timeAgo(agent.last_check_at)}`}</small></div><span className={`health ${health.tone}`}><i />{health.label}</span></div>; })}</div> : <Empty title="Build your team" text="Add your first agent, then give it an identity in Stoic." />}</section></div>{pendingApprovals.length > 0 && <section className="panel review-panel"><div className="panel-heading"><div><h2>Needs your decision</h2><p>Agents cannot approve these on their behalf.</p></div></div>{pendingApprovals.map((approval) => <div className="approval-row" key={approval.id}><div><strong><AssistantRichInline text={approval.action_summary} /></strong><small>For {handoffs.find((h) => h.id === approval.handoff_id)?.title || "a handoff"}</small></div><div className="row-actions"><button className="button button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</button><button className="button button-outline button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</button></div></div>)}</section>}</>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
         {tab === "board" && <BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} />}
         {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={(nextTab) => setTab(nextTab)} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
@@ -215,7 +243,7 @@ function SubscriptionGate({ workspace, agents, email, busy, command, error }: { 
     window.location.href = result.url;
   }
   return <main className="setup-page"><section className="setup-card subscription-gate">
-    <Link href="/" className="brand"><span className="brand-mark">S</span><span>Stoic <strong>Connector</strong></span></Link>
+    <Link href="/" className="brand"><span className="brand-mark"><StoicMark /></span><span>Stoic <strong>Connector</strong></span></Link>
     <div className="setup-progress"><span className="active" /><span className="active" /><span /></div>
     <span className="eyebrow muted">ONE SUBSCRIPTION · ALL YOUR AGENTS</span>
     <h1>Unlock {workspace.name}.</h1>
@@ -224,7 +252,7 @@ function SubscriptionGate({ workspace, agents, email, busy, command, error }: { 
     <button className="button" disabled={busy} onClick={() => checkout().catch(() => {})}>Subscribe · $5/month</button>
     {workspace.stripe_customer_id && <button className="button button-outline" disabled={busy} onClick={() => portal().catch(() => {})}>Manage existing billing</button>}
     <a className="subscription-export" href="/api/export">Export existing workspace data </a>
-    {agents.some((agent) => agent.status !== "revoked") && <div className="locked-agents"><strong>Connected profiles</strong>{agents.filter((agent) => agent.status !== "revoked").map((agent) => <div key={agent.id}><span>{agent.name} · {PLATFORM_LABELS[agent.platform]}</span><button className="danger-link" disabled={busy} onClick={() => command("revoke_agent", { agentId: agent.id }).catch(() => {})}>Revoke</button></div>)}</div>}
+    {agents.some((agent) => agent.status !== "revoked") && <div className="locked-agents"><strong>Connected profiles</strong>{agents.filter((agent) => agent.status !== "revoked").map((agent) => <div key={agent.id}><span>{agent.name} · {agentHarnessLabel(agent)}</span><button className="danger-link" disabled={busy} onClick={() => command("revoke_agent", { agentId: agent.id }).catch(() => {})}>Revoke</button></div>)}</div>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <small>{email} · Cancel through Stripe billing settings. Provider and model charges are separate.</small>
   </section></main>;
@@ -232,7 +260,7 @@ function SubscriptionGate({ workspace, agents, email, busy, command, error }: { 
 
 function WorkspaceSetup({ email, busy, onCreate, error }: { email: string; busy: boolean; onCreate: (name: string) => Promise<unknown>; error: string }) {
   const [name, setName] = useState("");
-  return <main className="setup-page"><div className="setup-card"><Link href="/" className="brand"><span className="brand-mark">S</span><span>Stoic <strong>Connector</strong></span></Link><div className="setup-progress"><span className="active" /><span /><span /></div><span className="eyebrow muted">STEP 1 OF 3 · YOUR SPACE</span><h1>Give your team a home.</h1><p>Your agents will share projects, handoffs and files here. You can change the name later.</p><form onSubmit={(event) => { event.preventDefault(); onCreate(name).catch(() => {}); }}><label htmlFor="workspace-name">Workspace name</label><input id="workspace-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Matthew’s agent team" minLength={2} maxLength={80} required /><button className="button" disabled={busy}>Create workspace</button></form>{error && <p className="form-error">{error}</p>}<small>Signed in as {email}</small></div></main>;
+  return <main className="setup-page"><div className="setup-card"><Link href="/" className="brand"><span className="brand-mark"><StoicMark /></span><span>Stoic <strong>Connector</strong></span></Link><div className="setup-progress"><span className="active" /><span /><span /></div><span className="eyebrow muted">STEP 1 OF 3 · YOUR SPACE</span><h1>Give your team a home.</h1><p>Your agents will share projects, handoffs and files here. You can change the name later.</p><form onSubmit={(event) => { event.preventDefault(); onCreate(name).catch(() => {}); }}><label htmlFor="workspace-name">Workspace name</label><input id="workspace-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Matthew’s agent team" minLength={2} maxLength={80} required /><button className="button" disabled={busy}>Create workspace</button></form>{error && <p className="form-error">{error}</p>}<small>Signed in as {email}</small></div></main>;
 }
 
 function Metric({ value, label, detail }: { value: number; label: string; detail: string }) { return <div className="metric-card"><strong>{value}</strong><span>{label}</span><small>{detail}</small></div>; }
@@ -260,7 +288,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   const [selectedId, setSelectedId] = useState<string | null>(handoffs[0]?.id || null);
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
-  const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId);
+  const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse");
   const [teamQueue, setTeamQueue] = useState(true);
   const [assignedAgentId, setAssignedAgentId] = useState(() => projects[0]?.default_agent_id && workers.some((agent) => agent.id === projects[0].default_agent_id) ? projects[0].default_agent_id : workers[0]?.id || "");
   const effectiveAssigneeId = workers.some((agent) => agent.id === assignedAgentId) ? assignedAgentId : workers[0]?.id || "";
@@ -389,17 +417,17 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
           <div className="history-filter-actions"><button className="button button-small" type="submit" disabled={historyLoading || historyLoadingMore}>Search history</button><button className="subtle-link" type="button" onClick={clearFilters} disabled={historyLoadingMore}>Clear filters</button></div>
         </form>
         {historyError && <p className="history-error" role="alert">{historyError}</p>}
-        {historyLoading && !historyItems.length ? <p className="history-loading-note" role="status">Loading project handoffs…</p> : historyItems.length ? <div aria-busy={historyLoading} className="handoff-history-results">{historyItems.map((task) => <button key={task.id} className={`handoff-list-item ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}><span><strong>{task.title}</strong><small>{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</small></span><Status status={task.status} /></button>)}</div> : <Empty title={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "No matching handoffs" : "Nothing handed off yet"} text={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "Try a different phrase or clear the filters to see all project work." : "Start with one clear assignment to a connected agent."} />}
+        {historyLoading && !historyItems.length ? <p className="history-loading-note" role="status">Loading project handoffs…</p> : historyItems.length ? <div aria-busy={historyLoading} className="handoff-history-results">{historyItems.map((task) => <button key={task.id} className={`handoff-list-item ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}><span><strong><AssistantRichInline text={task.title} /></strong><small>{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</small></span><Status status={task.status} /></button>)}</div> : <Empty title={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "No matching handoffs" : "Nothing handed off yet"} text={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "Try a different phrase or clear the filters to see all project work." : "Start with one clear assignment to a connected agent."} />}
         {nextCursor && <div className="history-load-more"><button className="button button-outline button-small" onClick={() => loadOlder().catch(() => {})} disabled={historyLoadingMore}>{historyLoadingMore ? "Loading older handoffs…" : "Load older handoffs"}</button></div>}
         {!nextCursor && historyItems.length > 0 && <p className="history-end-note">All matching handoffs are loaded.</p>}
       </section>
       <section className="panel handoff-detail">
         {selected ? <>
-          <div className="detail-top"><div><span className="eyebrow muted">{selectedProject?.name || "Project"}</span><h2>{selected.title}</h2><p>{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</p></div><Status status={selected.status} /></div>
+          <div className="detail-top"><div><span className="eyebrow muted">{selectedProject?.name || "Project"}</span><h2><AssistantRichInline text={selected.title} /></h2><p>{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</p></div><Status status={selected.status} /></div>
           <div className="handoff-run-summary"><span>Last activity</span><strong>{timeAgo(selected.updated_at)}</strong><span>Created</span><strong>{new Date(selected.created_at).toLocaleString()}</strong><span>Outcome</span><strong>{selected.status === "accepted" ? "Accepted by the owner" : selected.status === "submitted" ? "Waiting for owner review" : selected.status === "blocked" ? "Blocked · review the latest update" : selected.status === "changes_requested" ? "Changes requested" : selected.status === "canceled" ? "Canceled" : selected.status.replaceAll("_", " ")}</strong></div>
-          <div className="detail-block"><span>GOAL</span><p>{selected.goal}</p></div>
-          {selected.constraints && <div className="detail-block"><span>CONSTRAINTS</span><p>{selected.constraints}</p></div>}
-          <div className="detail-block"><span>ACTIVITY</span>{detailError && <p className="history-error" role="alert">Could not load the complete timeline: {detailError}</p>}{!detailForSelected && !detailError && <p className="history-loading-note">Loading handoff activity…</p>}{detailForSelected && selectedEvents.length === 0 && <p className="history-loading-note">No updates have been posted yet.</p>}<div className="timeline">{selectedEvents.map((event) => { const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic"; return <div className="timeline-item" key={event.id}><i /><div><strong>{event.event_type.replaceAll("_", " ")}</strong><small>{actor} · {timeAgo(event.created_at)}</small>{event.body && <p>{event.body}</p>}</div></div>; })}</div></div>
+          <div className="detail-block"><span>GOAL</span><AssistantRichText text={selected.goal} /></div>
+          {selected.constraints && <div className="detail-block"><span>CONSTRAINTS</span><AssistantRichText text={selected.constraints} /></div>}
+          <div className="detail-block"><span>ACTIVITY</span>{detailError && <p className="history-error" role="alert">Could not load the complete timeline: {detailError}</p>}{!detailForSelected && !detailError && <p className="history-loading-note">Loading handoff activity…</p>}{detailForSelected && selectedEvents.length === 0 && <p className="history-loading-note">No updates have been posted yet.</p>}<div className="timeline">{selectedEvents.map((event) => { const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic"; return <div className="timeline-item" key={event.id}><i /><div><strong>{event.event_type.replaceAll("_", " ")}</strong><small>{actor} · {timeAgo(event.created_at)}</small>{event.body && <AssistantRichText text={event.body} />}</div></div>; })}</div></div>
           {selectedArtifacts.length > 0 && <div className="detail-block"><span>FILES</span><ul className="handoff-file-list">{selectedArtifacts.map((artifact) => <li key={artifact.id}>{artifact.name}</li>)}</ul></div>}
           <div className="detail-actions"><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context for your agent…" rows={2} /><div><button className="button button-outline button-small" onClick={() => act("update").catch(() => {})} disabled={busy || body.trim().length < 2}>Post update</button>{selected.status === "submitted" && <><button className="button button-small" disabled={busy} onClick={() => act("accept").catch(() => {})}>Accept result</button><button className="button button-outline button-small" disabled={busy || body.trim().length < 2} onClick={() => act("request_changes").catch(() => {})}>Request changes</button></>}{selected.status === "proposed" && <button className="button button-small" disabled={busy} onClick={() => act("approve_assignment").catch(() => {})}>Approve assignment</button>}</div></div>
         </> : <Empty title="Select a handoff" text="Choose a task to see its complete trail." />}
@@ -409,17 +437,120 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
 }
 
 function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSelect, onSecret, onNavigate, command }: { agents: Agent[]; workspace: Workspace; handoffs: Handoff[]; busy: boolean; selected?: Agent; secret: { agentId: string; value: string; type: "key" | "code" } | null; onSelect: (id: string) => void; onSecret: (value: { agentId: string; value: string; type: "key" | "code" } | null) => void; onNavigate: (tab: Tab) => void; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  const [name, setName] = useState(""); const [platform, setPlatform] = useState<Platform>("codex");
-  const [boss, setBoss] = useState(workspace.boss_agent_id || ""); const [level, setLevel] = useState(workspace.delegation_level);
+  const [name, setName] = useState("");
+  const [harness, setHarness] = useState<AgentHarnessId>("codex");
+  const [customHarnessName, setCustomHarnessName] = useState("");
+  const [boss, setBoss] = useState(workspace.boss_agent_id || "");
+  const [level, setLevel] = useState(workspace.delegation_level);
   const endpoint = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp";
   const schedulePrompt = selected ? schedulePromptFor(selected, workspace) : "";
   const runReportPrompt = "At each meaningful run, read the Stoic project board, reply to teammate questions that affect your work, and check the shared brief and assigned handoffs before starting. Update an existing handoff with progress, blockers, or its result so the project board stays current. After useful project work, post a concise project message or run report with the outcome and next step; do not send empty check-ins. Acknowledge board messages only after reading them. Never post raw logs, credentials, secrets, or private chat history. Reuse an idempotency key if a write needs retrying.";
-  async function add(event: FormEvent) { event.preventDefault(); await command("add_agent", { name, platform }); setName(""); }
-  async function issue(type: "key" | "code") { if (!selected) return; const value = await command(type === "key" ? "issue_key" : "pair_code", { agentId: selected.id }) as { key?: string; code?: string }; onSecret({ agentId: selected.id, value: (type === "key" ? value.key : value.code) || "", type }); }
-  return <><div className="page-heading"><div><span className="eyebrow muted">STEP 2 OF 3 · YOUR TEAM</span><h1>Connect your agents</h1><p>Give every installation its own identity. Choose one to lead handoffs.</p></div><span className="count-pill">{agents.filter((a) => a.status === "connected").length} active credentials</span></div><div className="agents-layout"><div><section className="panel"><div className="panel-heading"><div><h2>Team members</h2><p>Each connection can be revoked independently.</p></div></div><div className="agent-list">{agents.filter((a) => a.status !== "revoked").map((agent) => { const health = agentHealth(agent); return <button className={`agent-list-item ${selected?.id === agent.id ? "selected" : ""}`} key={agent.id} onClick={() => { onSelect(agent.id); onSecret(null); }}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><span><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{PLATFORM_LABELS[agent.platform]}</small></span><span className={`health ${health.tone}`}><i />{health.label}</span></button>; })}</div><form className="add-agent-form" onSubmit={(event) => add(event).catch(() => {})}><h3>Add an agent</h3><div className="form-row"><label>Installation name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Work Codex" minLength={2} maxLength={80} required /></label><label>Agent platform<select value={platform} onChange={(event) => setPlatform(event.target.value as Platform)}>{Object.entries(PLATFORM_LABELS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label><button className="button button-small" disabled={busy}>Add</button></div></form></section><section className="panel policy-panel"><div className="panel-heading"><div><h2>Team rules</h2><p>Your preferences are enforced by Stoic.</p></div></div><label>Who leads?</label><select value={boss} onChange={(event) => setBoss(event.target.value)}><option value="">No boss yet</option>{agents.filter((a) => a.status !== "revoked").map((agent) => <option value={agent.id} key={agent.id}>{agent.name}</option>)}</select><label>Delegation level</label><select value={level} onChange={(event) => setLevel(event.target.value as Workspace["delegation_level"])}><option value="observe">Observe — updates only</option><option value="propose">Propose — owner approves assignments</option><option value="delegate">Delegate — boss assigns directly</option></select><p className="field-help">External actions still need your approval in the connected app. Stoic records approval requests; it never runs those actions itself.</p><button className="button button-small" disabled={busy} onClick={() => command("set_policy", { bossAgentId: boss || null, delegationLevel: level }).catch(() => {})}>Save team rules</button></section></div>
-    <section className="panel setup-agent-panel">{selected ? <><AgentProofSummary agent={selected} /><div className="panel-heading"><div><span className="eyebrow muted">CONNECTION SETUP</span><h2>Set up {selected.name}</h2><p>{PLATFORM_LABELS[selected.platform]} · {selected.status === "connected" ? selected.last_check_at ? "Verified by inbox check" : "Key or OAuth paired · awaiting first check" : "Not connected yet"}</p></div></div><AgentSetupProgress agent={selected} bossAgentId={workspace.boss_agent_id} handoffs={handoffs} onOpenIntake={() => onNavigate("assistant")} /><AgentAccessEditor key={selected.id} agent={selected} busy={busy} command={command} />{selected.platform === "muse" && <div className="callout warning"><strong>Consumer Muse is in preview.</strong><p>Keep this profile ready. A verified Muse connector will be added after Meta’s access and end-to-end test.</p></div>}{selected.platform === "grok" && <div className="callout warning"><strong>Grok web is interactive-only.</strong><p>Connect its custom MCP entry for live sessions. An unattended inbox check is not yet verified.</p></div>}<AgentConnectionStep key={selected.id} agent={selected} endpoint={endpoint} busy={busy} secret={secret} issue={issue} /><div id="agent-schedule-setup" className="setup-step"><span className="step-number">2</span><div><h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3><p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {selected.platform === "codex" ? "a Codex automation" : selected.platform === "hermes" ? "a Hermes scheduled task" : selected.platform === "openclaw" ? "an OpenClaw automation" : "a native schedule if this client supports one"}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p><div className="prompt-box">{schedulePrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</button><details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{runReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(runReportPrompt)}>Copy run-report instruction</button></details><div className="schedule-controls"><label><input type="checkbox" checked={selected.schedule_enabled} disabled={selected.platform === "grok" || selected.platform === "muse"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: event.target.checked, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})} /> I set up a native schedule</label><label>Check cadence <select aria-label="Expected inbox cadence" value={selected.schedule_cadence_minutes} disabled={selected.platform === "grok" || selected.platform === "muse"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(event.target.value) }).catch(() => {})}><option value={60}>Hourly</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div><p className="field-help">Changing this expectation also changes the setup command below. Update the native schedule in your agent to match. Last inbox check: {timeAgo(selected.last_check_at)}. Marking a schedule as set up does not prove it is running; a real check will update the time.</p></div></div><div className="setup-step"><span className="step-number">3</span><div><h3>Try one handoff</h3><p>Ask this agent to call <code>check_inbox</code>. Then make a small handoff and confirm it claims and reports back.</p><button className="danger-link" disabled={busy} onClick={() => { if (confirm(`Revoke ${selected.name}? Its key and OAuth pairing will stop working.`)) command("revoke_agent", { agentId: selected.id }).catch(() => {}); }}>Revoke this agent</button></div></div></> : <Empty title="Add your first agent" text="Choose an agent you use today and connect it to Stoic." />}</section></div></>;
+  async function add(event: FormEvent) {
+    event.preventDefault();
+    const created = await command("add_agent", {
+      name,
+      harness,
+      ...(harness === "other" ? { customHarnessName } : {}),
+    }) as { id: string };
+    setName("");
+    setCustomHarnessName("");
+    onSecret(null);
+    onSelect(created.id);
+  }
+  async function issue(type: "key" | "code") {
+    if (!selected) return;
+    const value = await command(type === "key" ? "issue_key" : "pair_code", { agentId: selected.id }) as { key?: string; code?: string };
+    onSecret({ agentId: selected.id, value: (type === "key" ? value.key : value.code) || "", type });
+  }
+  const isMuse = selected?.platform === "muse";
+
+  return <>
+    <div className="page-heading">
+      <div><span className="eyebrow muted">STEP 2 OF 3 · YOUR TEAM</span><h1>Connect your agents</h1><p>Name each agent, choose its harness, and give it a role in the team.</p></div>
+      <span className="count-pill">{agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse").length} active MCP credentials</span>
+    </div>
+    <div className="agents-layout">
+      <div>
+        <section className="panel">
+          <div className="panel-heading"><div><h2>Team members</h2><p>Each agent has its own Stoic profile and can be revoked independently.</p></div></div>
+          <div className="agent-list">{agents.filter((agent) => agent.status !== "revoked").map((agent) => {
+            const health = displayedAgentHealth(agent);
+            return <button className={`agent-list-item ${selected?.id === agent.id ? "selected" : ""}`} key={agent.id} onClick={() => { onSelect(agent.id); onSecret(null); }}>
+              <span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span>
+              <span><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)}</small></span>
+              <span className={`health ${health.tone}`}><i />{health.label}</span>
+            </button>;
+          })}</div>
+          <form className="add-agent-form" onSubmit={(event) => add(event).catch(() => {})}>
+            <h3>Add an agent</h3>
+            <div className="form-row">
+              <label>Your agent&apos;s name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Research assistant" minLength={2} maxLength={80} required /></label>
+              <label>Which harness does it use?<select value={harness} onChange={(event) => setHarness(event.target.value as AgentHarnessId)}>{AGENT_HARNESSES.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
+              {harness === "other" && <label>Harness name<input value={customHarnessName} onChange={(event) => setCustomHarnessName(event.target.value)} placeholder="For example, Local assistant" minLength={2} maxLength={60} required /></label>}
+              <button className="button button-small" disabled={busy}>Add agent</button>
+            </div>
+          </form>
+        </section>
+        <section className="panel policy-panel">
+          <div className="panel-heading"><div><h2>Team rules</h2><p>Your preferences are enforced by Stoic for connected MCP agents.</p></div></div>
+          <label htmlFor="team-boss">Who leads?</label>
+          <select id="team-boss" value={boss} onChange={(event) => setBoss(event.target.value)}>
+            <option value="">No boss yet</option>
+            {agents.filter((agent) => agent.status !== "revoked").map((agent) => <option value={agent.id} key={agent.id} disabled={agent.platform === "muse"}>{agent.name}{agent.platform === "muse" ? " · browser relay only" : ""}</option>)}
+          </select>
+          <label htmlFor="delegation-level">Delegation level</label>
+          <select id="delegation-level" value={level} onChange={(event) => setLevel(event.target.value as Workspace["delegation_level"])}>
+            <option value="observe">Observe — updates only</option><option value="propose">Propose — owner approves assignments</option><option value="delegate">Delegate — boss assigns directly</option>
+          </select>
+          <p className="field-help">Muse can share browser-based project ideas, but it is not a verified MCP handoff or boss connection. External actions still need your approval.</p>
+          <button className="button button-small" disabled={busy} onClick={() => command("set_policy", { bossAgentId: boss || null, delegationLevel: level }).catch(() => {})}>Save team rules</button>
+        </section>
+      </div>
+      <section className="panel setup-agent-panel">
+        {selected ? <>
+          {!isMuse && <AgentProofSummary agent={selected} />}
+          <div className="panel-heading"><div><span className="eyebrow muted">AGENT SETUP</span><h2>Set up {selected.name}</h2><p>{agentHarnessLabel(selected)} · {isMuse ? (selected.status === "revoked" ? "Stoic profile revoked" : selected.status === "connected" ? "Browser relay setup · any prior MCP profile is unavailable" : "Browser relay setup · no MCP connection") : selected.status === "connected" ? selected.last_check_at ? "Verified by inbox check" : "Key or OAuth paired · awaiting first check" : "Not connected yet"}</p></div></div>
+          {!isMuse && <AgentSetupProgress agent={selected} bossAgentId={workspace.boss_agent_id} handoffs={handoffs} onOpenIntake={() => onNavigate("assistant")} />}
+          {isMuse
+            ? <MuseBrowserSetup key={selected.id} dashboardUrl={typeof window !== "undefined" ? `${window.location.origin}/login` : "https://stoic.bishoptech.dev/login"} />
+            : <>
+              <AgentAccessEditor key={selected.id} agent={selected} busy={busy} command={command} />
+              {selected.platform === "grok" && <div className="callout warning"><strong>Grok Bot is interactive-first.</strong><p>This guide is a general remote MCP setup. An unattended inbox schedule is not verified for this harness.</p></div>}
+              <AgentConnectionStep key={selected.id} agent={selected} endpoint={endpoint} busy={busy} secret={secret} issue={issue} />
+              <div id="agent-schedule-setup" className="setup-step"><span className="step-number">2</span><div>
+                <h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3>
+                <p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {selected.platform === "codex" ? "a Codex automation" : selected.platform === "hermes" ? "a Hermes scheduled task" : selected.platform === "openclaw" ? "an OpenClaw automation" : "a native schedule if this harness supports one"}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p>
+                <div className="prompt-box">{schedulePrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</button>
+                <details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{runReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(runReportPrompt)}>Copy run-report instruction</button></details>
+                <div className="schedule-controls"><label><input type="checkbox" checked={selected.schedule_enabled} disabled={selected.platform === "grok"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: event.target.checked, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})} /> I set up a native schedule</label><label>Check cadence <select aria-label="Expected inbox cadence" value={selected.schedule_cadence_minutes} disabled={selected.platform === "grok"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(event.target.value) }).catch(() => {})}><option value={60}>Hourly</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div>
+                <p className="field-help">Changing this expectation also changes the setup prompt below. Update the native schedule in your agent to match. Last inbox check: {timeAgo(selected.last_check_at)}. Marking a schedule as set up does not prove it is running; a real check will update the time.</p>
+              </div></div>
+              <div className="setup-step"><span className="step-number">3</span><div><h3>Try one handoff</h3><p>Ask this agent to call <code>check_inbox</code>. Then make a small handoff and confirm it claims and reports back.</p></div></div>
+            </>}
+          <div className="setup-step agent-revoke-step"><span className="step-number">×</span><div><h3>Remove this profile</h3><p>Revoking stops future access through this Stoic profile.</p><button className="danger-link" disabled={busy} onClick={() => { if (confirm(`Revoke ${selected.name}? Its key and OAuth pairing will stop working.`)) command("revoke_agent", { agentId: selected.id }).catch(() => {}); }}>Revoke this agent</button></div></div>
+        </> : <Empty title="Add your first agent" text="Choose an agent you use today and connect it to Stoic." />}
+      </section>
+    </div>
+  </>;
 }
 
+function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {
+  const [copyStatus, setCopyStatus] = useState("");
+  const prompt = museRelayPrompt(dashboardUrl);
+  async function copyPrompt() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopyStatus("Copied. Paste this into the Muse agent after saving Stoic in its Secure Credentials.");
+    } catch {
+      setCopyStatus("Clipboard access failed. Allow clipboard access and try again.");
+    }
+  }
+  return <div className="muse-browser-setup">
+    <div className="callout warning"><strong>Muse uses the browser in this setup.</strong><p>This is not a Stoic MCP connection. After you add this profile, save your Stoic username and password in Muse&apos;s stored credentials. The password is not saved in Stoic; Supabase Auth handles browser sign-in. Muse inherits the account&apos;s full Stoic dashboard access. The prompt guides it to read and post project ideas, but that limit is not enforced by a separate Muse permission role. Use an account whose access is appropriate and supervise its first runs.</p></div>
+    <div className="setup-step"><span className="step-number">1</span><div><h3>Save your Stoic login in Muse</h3><p>After saving this agent profile, open Muse&apos;s stored credentials and add your Stoic username or email and password. Keep them in that credential store only. Do not put either value in the prompt, agent notes, or regular chat.</p></div></div>
+    <div className="setup-step"><span className="step-number">2</span><div><h3>Copy the relay instructions into Muse</h3><p>The ready-to-paste prompt asks Muse to share concise project ideas three times a day and whenever you ask. Muse uses its own recurring browser task; Stoic cannot wake it or verify those runs.</p><div className="prompt-box muse-prompt-box">{prompt}</div><button className="button button-outline button-small" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</button>{copyStatus && <p className="field-help" role="status" aria-live="polite">{copyStatus}</p>}</div></div>
+  </div>;
+}
 function connectionGuide(platform: Platform, endpoint: string) {
   if (platform === "codex") return {
     text: "Make STOIC_AGENT_KEY available to the Codex process, then run this command. Restart Codex after changing its environment. Keep the key out of prompts and shell history.",
@@ -436,7 +567,15 @@ function connectionGuide(platform: Platform, endpoint: string) {
     code: `"stoic-connector": {\n "url": ${JSON.stringify(endpoint)},\n "transport": "streamable-http",\n "headers": { "Authorization": "Bearer \${STOIC_AGENT_KEY}" }\n}`,
     docs: "https://docs.openclaw.ai/cli/mcp/transports",
   };
-  return null;
+  return {
+    text: "This harness does not have a verified Stoic setup guide yet. If it supports remote Streamable HTTP MCP and custom bearer headers, add this server and store the generated key in its private credential settings. A successful check is the only proof that the connection works.",
+    code: `{
+  "url": ${JSON.stringify(endpoint)},
+  "transport": "streamable-http",
+  "headers": { "Authorization": "Bearer <STOIC_AGENT_KEY>" }
+}`,
+    docs: "https://modelcontextprotocol.io/specification/2025-03-26/basic/transports",
+  };
 }
 
 function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: Agent; endpoint: string; busy: boolean; secret: { agentId: string; value: string; type: "key" | "code" } | null; issue: (type: "key" | "code") => Promise<void> }) {
@@ -463,7 +602,7 @@ function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: 
     <div className="copy-box"><code>{endpoint}</code><button onClick={() => navigator.clipboard.writeText(endpoint)} aria-label="Copy MCP URL">Copy</button></div>
     <button className="button button-outline button-small connection-key-button" disabled={busy || agent.platform === "muse"} onClick={generateKey}> {agent.status === "connected" ? "Create or replace agent key" : "Generate agent key"}</button>
     {secret?.agentId === agent.id && secret.type === "key" && <div className="secret-box"><strong>Copy this key now. It will not appear again.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy key</button></div>}
-    {guide && <div className="connection-guide"><strong>Set up {PLATFORM_LABELS[agent.platform]}</strong><p>{guide.text}</p><div className="copy-box"><code>{guide.code}</code><button onClick={() => navigator.clipboard.writeText(guide.code)} aria-label={`Copy ${PLATFORM_LABELS[agent.platform]} setup`}>Copy</button></div>{agent.platform === "hermes" && <div className="hermes-install-prompt"><p>Want Hermes to guide the setup? Copy this prompt and paste it into the Hermes profile you want to connect. It tells Hermes to preserve your existing MCP settings and keep the Stoic key out of chat.</p><button className="button button-outline button-small" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy Hermes install prompt</button>{promptCopyStatus && <p className="field-help" role="status" aria-live="polite">{promptCopyStatus}</p>}</div>}<a href={guide.docs} target="_blank" rel="noopener noreferrer">Platform setup reference </a></div>}
+    {guide && <div className="connection-guide"><strong>Set up {agentHarnessLabel(agent)}</strong><p>{guide.text}</p><div className="copy-box"><code>{guide.code}</code><button onClick={() => navigator.clipboard.writeText(guide.code)} aria-label={`Copy ${agentHarnessLabel(agent)} setup`}>Copy</button></div>{agent.platform === "hermes" && <div className="hermes-install-prompt"><p>Want Hermes to guide the setup? Copy this prompt and paste it into the Hermes profile you want to connect. It tells Hermes to preserve your existing MCP settings and keep the Stoic key out of chat.</p><button className="button button-outline button-small" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy Hermes install prompt</button>{promptCopyStatus && <p className="field-help" role="status" aria-live="polite">{promptCopyStatus}</p>}</div>}<a href={guide.docs} target="_blank" rel="noopener noreferrer">Platform setup reference </a></div>}
     <p className="field-help">Use a different key for each agent profile. Replacing a key or switching to OAuth disconnects the previous installation. A fresh inbox check verifies the new connection.</p>
     {agent.status !== "revoked" && !agent.last_check_at && <div id="first-inbox-check" className="connection-first-check"><div><strong>{agent.status === "connected" ? "Verify the connection once" : "Check in after pairing"}</strong><p>{agent.status === "connected" ? "Paste this into the connected agent. Stoic will mark it verified when check_inbox reaches the server; Stoic cannot wake an offline host." : "After you add the MCP server and save this agent’s key, paste this into that agent to confirm the connection."}</p></div><div className="copy-box"><code>{FIRST_INBOX_CHECK_PROMPT}</code><button onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy first-check prompt</button></div></div>}
     <details className="advanced-pairing"><summary>Advanced: OAuth pairing</summary><p>OAuth requires a client registered with Stoic. Contact support to register your client before using this path. After sign-in, generate a one-time pairing code and ask the agent to call <code>pair_agent</code>. Pairing disables this profile&apos;s previous Stoic key.</p>{oauthCommand && <code className="command-example">{oauthCommand}</code>}<button className="subtle-link" disabled={busy || agent.platform === "muse"} onClick={() => issue("code").catch(() => {})}>Generate pairing code</button>{secret?.agentId === agent.id && secret.type === "code" && <div className="secret-box"><strong>Pairing code expires in 15 minutes.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy code</button></div>}</details>
@@ -553,7 +692,7 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
     <div className="page-heading"><div><span className="eyebrow muted">WORK IN MOTION</span><h1>Projects</h1><p>Follow each agent’s assignments from the first handoff through review.</p></div><span className="count-pill">{projects.length} projects · {projectHandoffs.length} active and completed tasks</span></div>
     <section className="panel project-selector"><div className="panel-heading"><div><h2>Project space</h2><p>Choose a project to view its work and shared context.</p></div></div><div className="project-switcher">{projects.map((project) => <button key={project.id} className={`project-chip ${selected?.id === project.id ? "selected" : ""}`} onClick={() => { setSelectedId(project.id); setBrief(project.brief); }}>{project.name}</button>)}<form className="add-project" onSubmit={(event) => createProject(event).catch(() => {})}><input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="New project name" minLength={2} maxLength={100} required /><button className="subtle-link add-project-button" aria-label="Add project" disabled={busy}>Add</button></form></div></section>
     {selected ? <>
-      <section className="panel project-kanban-panel"><div className="panel-heading"><div><h2>{selected.name} · agent board</h2><p>Agents move tasks as they accept work, report progress, and submit results.</p></div><button className="button button-outline button-small" onClick={() => onNavigate("handoffs")}>Open handoffs</button></div><div className="project-kanban">{lanes.map((lane) => { const items = projectHandoffs.filter((handoff) => lane.statuses.includes(handoff.status)).sort((a, b) => b.updated_at.localeCompare(a.updated_at)); return <section className="project-lane" key={lane.label}><div className="project-lane-heading"><h3>{lane.label}</h3><span>{items.length}</span></div>{items.length ? items.map((handoff) => <button className="project-work-card" key={handoff.id} onClick={() => onNavigate("handoffs")}><span className={`status status-${handoff.status}`}>{handoff.status.replaceAll("_", " ")}</span><strong>{handoff.title}</strong><small>{handoff.assigned_agent_id ? agentNames[handoff.assigned_agent_id] || "Assigned agent" : "Team queue · open to workers"} · updated {timeAgo(handoff.updated_at)}</small><span className="project-work-open">View handoff </span></button>) : <p className="project-lane-empty">No tasks here yet.</p>}</section>; })}</div></section>
+      <section className="panel project-kanban-panel"><div className="panel-heading"><div><h2>{selected.name} · agent board</h2><p>Agents move tasks as they accept work, report progress, and submit results.</p></div><button className="button button-outline button-small" onClick={() => onNavigate("handoffs")}>Open handoffs</button></div><div className="project-kanban">{lanes.map((lane) => { const items = projectHandoffs.filter((handoff) => lane.statuses.includes(handoff.status)).sort((a, b) => b.updated_at.localeCompare(a.updated_at)); return <section className="project-lane" key={lane.label}><div className="project-lane-heading"><h3>{lane.label}</h3><span>{items.length}</span></div>{items.length ? items.map((handoff) => <button className="project-work-card" key={handoff.id} onClick={() => onNavigate("handoffs")}><span className={`status status-${handoff.status}`}>{handoff.status.replaceAll("_", " ")}</span><strong><AssistantRichInline text={handoff.title} /></strong><small>{handoff.assigned_agent_id ? agentNames[handoff.assigned_agent_id] || "Assigned agent" : "Team queue · open to workers"} · updated {timeAgo(handoff.updated_at)}</small><span className="project-work-open">View handoff </span></button>) : <p className="project-lane-empty">No tasks here yet.</p>}</section>; })}</div></section>
       <section className="panel project-brief"><div className="panel-heading"><div><h2>Shared project brief</h2><p>Version {selected.brief_version} · the current decisions every agent reads.</p></div><span className="brief-label"> Shared with agents</span></div><label htmlFor="brief">What should every agent know?</label><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Project goal, decisions already made, important links, voice or style guidelines, constraints…" maxLength={20000} rows={10} /><div className="brief-footer"><span>{brief.length.toLocaleString()} / 20,000 characters</span><button className="button button-small" disabled={busy || brief === selected.brief} onClick={() => command("update_brief", { projectId: selected.id, brief, expectedVersion: selected.brief_version }).catch(() => {})}>Save brief</button></div></section>
     </> : <section className="panel"><Empty title="Create your first project" text="Projects give your agents a shared brief and a place to track handoffs." /></section>}
   </>;
@@ -570,7 +709,7 @@ function IdeasView({ projects, messages, hasWorkers, onDiscuss, onOpenChat, onMa
       {ideas.length ? <div className="ideas-list">{ideas.map((idea) => {
         const firstLine = idea.body.trim().split("\n").find(Boolean) || "A possible next step";
         const title = firstLine.replace(/^\s*(?:\d+[.)]\s*|[-*]\s*)/, "").slice(0, 110);
-        return <article className="idea-card" key={idea.id}><div className="idea-card-meta"><span>Suggestion · review first</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div><h3>{title}</h3><p className="idea-card-body">{idea.body}</p><div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{hasWorkers ? <button className="button button-outline button-small" onClick={() => onDiscuss(idea.project_id, idea.body)}>Discuss with Stoic</button> : <button className="subtle-link" onClick={onManageAgents}>Connect a worker before creating a handoff</button>}</div></article>;
+        return <article className="idea-card" key={idea.id}><div className="idea-card-meta"><span>Suggestion · review first</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div><h3><AssistantRichInline text={title} /></h3><AssistantRichText className="idea-card-body" text={idea.body} /><div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{hasWorkers ? <button className="button button-outline button-small" onClick={() => onDiscuss(idea.project_id, idea.body)}>Discuss with Stoic</button> : <button className="subtle-link" onClick={onManageAgents}>Connect a worker before creating a handoff</button>}</div></article>;
       })}</div> : <Empty title="No new ideas right now" text="Stoic keeps the board quiet when it has no useful next step. Scheduled suggestions appear here when there is something worth reviewing." />}
     </section>
   </>;
@@ -626,7 +765,7 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
     return <div className="chat-thread" key={message.id}>
       <article className={`board-message chat-message ${userMessage ? "from-owner" : "from-agent"} ${message.kind !== "message" ? `kind-${message.kind}` : ""}`} style={{ marginLeft: `${Math.min(depth, 3) * 18}px` }}>
         <span className={`chat-avatar ${userMessage ? "owner-avatar" : "agent-avatar"}`}>{author.charAt(0).toUpperCase()}</span>
-        <div className="chat-bubble"><div className="board-message-meta"><strong>{author}</strong><span>{kindLabel} · {timeAgo(message.created_at)}</span></div><p>{message.body}</p>{message.kind !== "suggestion" && <button className="subtle-link" onClick={() => setReplyTo(message.id)}>Reply</button>}</div>
+        <div className="chat-bubble"><div className="board-message-meta"><strong>{author}</strong><span>{kindLabel} · {timeAgo(message.created_at)}</span></div><AssistantRichText text={message.body} />{message.kind !== "suggestion" && <button className="subtle-link" onClick={() => setReplyTo(message.id)}>Reply</button>}</div>
       </article>
       {(children.get(message.id) || []).map((reply) => renderMessage(reply, depth + 1))}
     </div>;
@@ -636,7 +775,7 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
 }
 
 function RoutingView({ projects, agents, bossAgentId, busy, command }: { projects: Project[]; agents: Agent[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  return <section className="panel routing-panel"><div className="panel-heading"><div><h2>Project routing</h2><p>Choose a connected worker for each project. The boss can omit an assignee when creating an MCP handoff, and Stoic will send it here.</p></div></div><div className="routing-list">{projects.map((project) => <label key={project.id}><span>{project.name}</span><select value={project.default_agent_id === bossAgentId ? "" : project.default_agent_id || ""} disabled={busy} onChange={(event) => command("set_project_routing", { projectId: project.id, agentId: event.target.value || null }).catch(() => {})}><option value="">No default agent</option>{agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>)}</div></section>;
+  return <section className="panel routing-panel"><div className="panel-heading"><div><h2>Project routing</h2><p>Choose a connected MCP worker for each project. The boss can omit an assignee when creating an MCP handoff, and Stoic will send it here.</p></div></div><div className="routing-list">{projects.map((project) => <label key={project.id}><span>{project.name}</span><select value={project.default_agent_id === bossAgentId ? "" : project.default_agent_id || ""} disabled={busy} onChange={(event) => command("set_project_routing", { projectId: project.id, agentId: event.target.value || null }).catch(() => {})}><option value="">No default agent</option>{agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse").map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>)}</div></section>;
 }
 
 type ArtifactFilter = "all" | "document" | "image" | "audio" | "video" | "archive" | "other";

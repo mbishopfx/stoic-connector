@@ -1,12 +1,21 @@
 import { z } from "zod";
+import { resolveAgentHarness } from "@/lib/agent-harness";
 
 export const uuid = z.uuid();
 export const idempotencyKey = z.string().min(8).max(128).regex(/^[a-zA-Z0-9._:-]+$/);
 export const workspaceInput = z.object({ name: z.string().trim().min(2).max(80) });
 export const agentInput = z.object({
   name: z.string().trim().min(2).max(80),
-  platform: z.enum(["codex", "hermes", "openclaw", "grok", "muse", "other"]),
-});
+  harness: z.enum(["claude", "codex", "hermes", "openclaw", "grok", "muse", "chatgpt", "gemini", "other"]),
+  customHarnessName: z.string().trim().min(2).max(60).optional(),
+}).superRefine((value, context) => {
+  if (value.harness === "other" && !value.customHarnessName) {
+    context.addIssue({ code: "custom", message: "Enter the harness name", path: ["customHarnessName"] });
+  }
+}).transform(({ name, harness, customHarnessName }) => ({
+  name,
+  ...resolveAgentHarness(harness, customHarnessName),
+}));
 export const projectInput = z.object({ name: z.string().trim().min(2).max(100) });
 export const handoffInput = z.object({
   projectId: uuid,

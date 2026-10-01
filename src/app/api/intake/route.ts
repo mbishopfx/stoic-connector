@@ -105,11 +105,11 @@ export async function POST(request: Request) {
         return Response.json({ turn: saved.data }, { headers: { "Cache-Control": "no-store" } });
       };
       const [agents, recent] = await Promise.all([
-        db.from("agents").select("id,name,platform,access_notes,status").eq("workspace_id", workspace.id).neq("status", "revoked").limit(100),
+        db.from("agents").select("id,name,platform,harness_name,access_notes,status").eq("workspace_id", workspace.id).neq("status", "revoked").limit(100),
         db.from("intake_turns").select("prompt,response").eq("workspace_id", workspace.id).eq("thread_id", input.threadId).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
       ]);
       if (agents.error || recent.error) throw agents.error || recent.error;
-      const workers = (agents.data || []).filter((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id);
+      const workers = (agents.data || []).filter((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse");
       if (!workers.length) {
         const response = "I saved this note and its files with the project, but there is no connected worker to receive an assignment yet. Connect a worker and have it complete a successful Stoic inbox check; then I can prepare a handoff for your review. No handoff was created.";
         return await finishTurn(response);

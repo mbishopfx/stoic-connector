@@ -10,12 +10,14 @@ import { AppError, adminDb, responseError } from "@/lib/supabase";
 import { acknowledgeBoardMessage, listBoard, postBoardMessage } from "@/lib/board";
 import { artifactInput, idempotencyKey } from "@/lib/validation";
 import { stoicMcpAppHtml } from "@/lib/mcp-app-resource";
+import { STOIC_DASHBOARD_RESOURCE_URI, stoicDashboardResourceMetadata, stoicDashboardToolMetadata } from "@/lib/chatgpt-app-metadata";
 import { addOAuthSecurityToMcpResponse } from "@/lib/mcp-metadata";
 import { KNOWLEDGE_KINDS, KNOWLEDGE_STATUSES } from "@/lib/knowledge";
 import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, readKnowledgeNote, searchProjectKnowledge } from "@/lib/knowledge-store";
+import { draftIntakeForAgent, intakeDraftInputSchema } from "@/lib/intake-drafts";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 90;
 
 type ToolContext = { http?: { authInfo?: { token: string; clientId: string; scopes: string[]; expiresAt?: number } } };
 const pageOffset = z.number().int().min(0).default(0);
@@ -28,6 +30,12 @@ const profileOutputSchema = z.object({
   id: z.string().min(1),
   name: z.string().optional(),
   nickname: z.string().optional(),
+});
+const dashboardOutputSchema = z.object({
+  workspace: z.string().min(1),
+  role: z.enum(["boss", "worker"]),
+  connectedAgentCount: z.number().int().nonnegative(),
+  projectCount: z.number().int().nonnegative(),
 });
 
 function result(value: unknown) {
@@ -51,30 +59,43 @@ async function run(ctx: ToolContext, fn: (agent: Awaited<ReturnType<typeof ident
 }
 
 const handler = createMcpHandler((server) => {
-  const mcpAppUri = "ui://stoic/dashboard.html";
+  const mcpAppUri = STOIC_DASHBOARD_RESOURCE_URI;
   const widgetOrigin = new URL(appOrigin()).origin;
+  const widgetMetadata = stoicDashboardResourceMetadata(widgetOrigin, process.env.NEXT_PUBLIC_SUPABASE_URL);
   registerAppResource(server, "Stoic Connector workspace", mcpAppUri, {
-    description: "Interactive workspace widget for project discussions and handoffs.",
-    _meta: { ui: { csp: { resourceDomains: [widgetOrigin] } } },
+    description: "Interactive Stoic workspace for reviewing project discussions, handoffs, and agent activity.",
+    _meta: widgetMetadata,
   }, async () => ({
     contents: [{
       uri: mcpAppUri,
       mimeType: RESOURCE_MIME_TYPE,
       text: stoicMcpAppHtml(widgetOrigin),
-      _meta: { ui: { csp: { resourceDomains: [widgetOrigin] } } },
+      _meta: widgetMetadata,
     }],
   }));
 
   registerAppTool(server, "open_stoic_dashboard", {
     annotations: readAnnotations,
-    title: "Open the Stoic workspace",
-    description: "Open an interactive workspace widget to review project handoffs, discuss project work, and create boss-approved assignments. The widget uses this agent's existing Stoic permissions.",
+    title: "Open Stoic",
+    description: "Open the interactive Stoic workspace to review project handoffs, shared discussions, and agent activity. The workspace uses this installation's existing permissions. Users can post updates or create assignments when their paired role allows it. Stoic does not wake offline agents; each agent checks for work on its own schedule.",
     inputSchema: z.object({}),
-    _meta: { ui: { resourceUri: mcpAppUri } },
-  }, async (_args, ctx) => run(ctx, async (agent) => {
-    const context = await teamContext(agent);
-    return { workspace: context.workspace.name, role: context.self.role, projectCount: context.projects.length };
-  }));
+    outputSchema: dashboardOutputSchema,
+    _meta: stoicDashboardToolMetadata,
+  }, async (_args, ctx) => {
+    try {
+      const agent = await identityFromVerified(ctx.http?.authInfo);
+      const context = await teamContext(agent);
+      const summary = {
+        workspace: context.workspace.name,
+        role: context.self.role,
+        connectedAgentCount: context.agents.filter((item) => item.status === "connected").length,
+        projectCount: context.projects.length,
+      };
+      return { ...result(summary), structuredContent: summary };
+    } catch (error) {
+      return { ...result({ error: toolError(error, "Could not open the Stoic workspace") }), isError: true };
+    }
+  });
 
   server.registerTool("pair_agent", {
     annotations: destructiveAnnotations,
@@ -247,6 +268,13 @@ const handler = createMcpHandler((server) => {
     description: "Boss only. Choose a connected worker as the default assignee for a project, or pass null to remove the default. This does not change existing handoffs.",
     inputSchema: z.object({ projectId: z.uuid(), defaultAgentId: z.uuid().nullable() }),
   }, async ({ projectId, defaultAgentId }, ctx) => run(ctx, (agent) => setAgentProjectRouting(agent, projectId, defaultAgentId)));
+
+  server.registerTool("draft_handoff", {
+    annotations: readAnnotations,
+    title: "Draft a handoff with Stoic",
+    description: "Boss only. Turn a natural-language request and optional project files into a handoff draft. This call does not save a private conversation and does not create an assignment; the user must review the draft and explicitly confirm with create_handoff. In observe mode this is unavailable. The worker receives confirmed work at its next successful inbox check.",
+    inputSchema: intakeDraftInputSchema,
+  }, async (args, ctx) => run(ctx, (agent) => draftIntakeForAgent(agent, args)));
 
   server.registerTool("create_handoff", {
     annotations: writeAnnotations,

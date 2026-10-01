@@ -20,6 +20,79 @@ begin
   end if;
 end
 $$;
+
+insert into stoic_private.mcp_oauth_clients(client_id, enabled) values
+  ('stoic-test-oauth-client', true),
+  ('stoic-test-disabled-client', false);
+
+set role supabase_auth_admin;
+do $$
+declare
+  oauth_event jsonb := jsonb_build_object(
+    'user_id', '10000000-0000-0000-0000-000000000001',
+    'authentication_method', 'oauth',
+    'claims', jsonb_build_object(
+      'sub', '10000000-0000-0000-0000-000000000001',
+      'aud', 'authenticated',
+      'client_id', 'stoic-test-oauth-client',
+      'role', 'authenticated',
+      'email', 'pilot@example.test'
+    )
+  );
+  mapped_event jsonb;
+  unmapped_event jsonb := jsonb_build_object(
+    'authentication_method', 'oauth',
+    'claims', jsonb_build_object('aud', 'authenticated', 'client_id', 'other-oauth-client')
+  );
+  disabled_event jsonb := jsonb_build_object(
+    'authentication_method', 'oauth',
+    'claims', jsonb_build_object('aud', 'authenticated', 'client_id', 'stoic-test-disabled-client')
+  );
+  password_event jsonb := jsonb_build_object(
+    'authentication_method', 'password',
+    'claims', jsonb_build_object('aud', 'authenticated', 'sub', '10000000-0000-0000-0000-000000000001')
+  );
+begin
+  mapped_event := stoic_private.custom_access_token_hook(oauth_event);
+  if mapped_event #>> '{claims,aud}' is distinct from 'https://stoic.bishoptech.dev/api/mcp' then
+    raise exception 'enabled OAuth client did not receive the Stoic MCP audience';
+  end if;
+  if (mapped_event - 'claims') is distinct from (oauth_event - 'claims')
+    or ((mapped_event -> 'claims') - 'aud') is distinct from ((oauth_event -> 'claims') - 'aud') then
+    raise exception 'OAuth hook changed claims other than aud';
+  end if;
+  if stoic_private.custom_access_token_hook(unmapped_event) is distinct from unmapped_event then
+    raise exception 'unmapped OAuth client event was modified';
+  end if;
+  if stoic_private.custom_access_token_hook(disabled_event) is distinct from disabled_event then
+    raise exception 'disabled OAuth client event was modified';
+  end if;
+  if stoic_private.custom_access_token_hook(password_event) is distinct from password_event then
+    raise exception 'non-OAuth event was modified';
+  end if;
+
+  if not has_schema_privilege('supabase_auth_admin', 'stoic_private', 'USAGE')
+    or has_schema_privilege('anon', 'stoic_private', 'USAGE')
+    or has_schema_privilege('authenticated', 'stoic_private', 'USAGE')
+    or has_schema_privilege('service_role', 'stoic_private', 'USAGE') then
+    raise exception 'Stoic OAuth hook schema permissions are not least-privilege';
+  end if;
+  if not has_table_privilege('supabase_auth_admin', 'stoic_private.mcp_oauth_clients', 'SELECT')
+    or has_table_privilege('supabase_auth_admin', 'stoic_private.mcp_oauth_clients', 'INSERT')
+    or has_table_privilege('anon', 'stoic_private.mcp_oauth_clients', 'SELECT')
+    or has_table_privilege('authenticated', 'stoic_private.mcp_oauth_clients', 'SELECT')
+    or has_table_privilege('service_role', 'stoic_private.mcp_oauth_clients', 'SELECT') then
+    raise exception 'OAuth client registry table permissions are not least-privilege';
+  end if;
+  if not has_function_privilege('supabase_auth_admin', 'stoic_private.custom_access_token_hook(jsonb)', 'EXECUTE')
+    or has_function_privilege('anon', 'stoic_private.custom_access_token_hook(jsonb)', 'EXECUTE')
+    or has_function_privilege('authenticated', 'stoic_private.custom_access_token_hook(jsonb)', 'EXECUTE')
+    or has_function_privilege('service_role', 'stoic_private.custom_access_token_hook(jsonb)', 'EXECUTE') then
+    raise exception 'OAuth hook function permissions are not least-privilege';
+  end if;
+end
+$$;
+reset role;
 delete from public.workspaces where owner_id in (
   '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002'
 );
@@ -31,6 +104,13 @@ insert into public.agents(id, workspace_id, name, platform, status, oauth_client
   ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Worker', 'hermes', 'connected', null),
   ('30000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001', 'Worker Two', 'openclaw', 'connected', null),
   ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', 'Other boss', 'openclaw', 'connected', 'shared-client');
+do $$
+begin
+  if exists (select 1 from public.agents where harness_name is null or char_length(btrim(harness_name)) not between 2 and 60) then
+    raise exception 'agent harness name default or validation failed';
+  end if;
+end
+$$;
 update public.workspaces set boss_agent_id = '30000000-0000-0000-0000-000000000001' where id = '20000000-0000-0000-0000-000000000001';
 update public.workspaces set boss_agent_id = '30000000-0000-0000-0000-000000000003' where id = '20000000-0000-0000-0000-000000000002';
 insert into public.projects(id, workspace_id, name) values

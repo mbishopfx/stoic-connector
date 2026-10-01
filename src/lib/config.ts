@@ -5,7 +5,26 @@ export function requiredEnv(name: string): string {
 }
 
 export function appOrigin(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configuredOrigin && configuredOrigin !== '""' && configuredOrigin !== "''") {
+    return publicOrigin(configuredOrigin);
+  }
+
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return publicOrigin(vercelUrl);
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_APP_URL must be configured for production");
+  }
+  return "http://localhost:3000";
+}
+
+function publicOrigin(value: string): string {
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  const url = new URL(candidate);
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("App URL must use HTTP or HTTPS");
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") throw new Error("App URL must use HTTPS in production");
+  return url.origin;
 }
 
 export function mcpResourceUri(): string {

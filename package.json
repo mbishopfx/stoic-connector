@@ -6,6 +6,7 @@
     "dev": "next dev",
     "prebuild": "npm run build:mcp-app",
     "build:mcp-app": "node scripts/build-mcp-app.mjs",
+    "package:openai-plugin": "node scripts/package-openai-plugin.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",

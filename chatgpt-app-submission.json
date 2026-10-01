@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "$schema": "https://developers.openai.com/plugins/schemas/chatgpt-app-submission.v1.json",
   "schema_version": 1,
   "app_info": {
     "display_name": "Stoic Connector",
@@ -38,6 +38,46 @@
         "read_only_justification": "Retrieves the current owner- and boss-maintained brief for a project the agent can access.",
         "open_world_justification": "Only reads a project in the connected private workspace.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "list_project_knowledge": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Lists validated Markdown knowledge notes for a project the connected agent may access, including their status and provenance.",
+        "open_world_justification": "Only lists notes for a project in the connected private workspace.",
+        "destructive_justification": "Does not modify notes, project decisions, assignments, or access."
+      }
+    },
+    "search_project_knowledge": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Searches bounded project knowledge-note titles and bodies for context, returning metadata and provenance.",
+        "open_world_justification": "Searches only notes for a project in the connected private workspace.",
+        "destructive_justification": "Does not modify notes, project decisions, assignments, or access."
+      }
+    },
+    "read_knowledge_note": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Reads one validated knowledge note and its provenance, related links, and evidence references.",
+        "open_world_justification": "Only reads a knowledge note in the connected private workspace and project.",
+        "destructive_justification": "Does not modify the note, project decisions, assignments, or access."
+      }
+    },
+    "get_knowledge_evidence": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Resolves bounded source references attached to a knowledge note under the connected agent’s existing access rules.",
+        "open_world_justification": "Resolves only references available within the connected private workspace; unknown external references remain unresolved.",
+        "destructive_justification": "Does not modify notes, referenced records, project decisions, assignments, or access."
+      }
+    },
+    "get_project_knowledge_graph": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Reads the deterministic graph derived from validated project notes, including typed edges and stale or orphaned nodes.",
+        "open_world_justification": "Only reads validated notes and their links for a project in the connected private workspace.",
+        "destructive_justification": "Does not modify notes, project decisions, assignments, or access."
       }
     },
     "read_project_board": {
