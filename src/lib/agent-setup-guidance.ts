@@ -1,5 +1,5 @@
 import type { Platform } from "@/lib/config";
-import { harnessHasDocumentedScheduler, isGrokBotHarness } from "@/lib/agent-harness";
+import { harnessHasDocumentedScheduler, isGrokBotHarness, resolveAgentHarnessId } from "@/lib/agent-harness";
 
 export function hermesInstallPrompt(endpoint: string) {
   const keyReference = "${STOIC_AGENT_KEY}";
@@ -26,7 +26,7 @@ After the entry is saved, reload MCP or restart Hermes as needed, run hermes mcp
 }
 
 export type AgentSetupStep = {
-  id: "connection" | "inbox_check" | "schedule" | "handoff";
+  id: "connection" | "inbox_check" | "schedule" | "handoff" | "browser_relay";
   label: string;
   detail: string;
   complete: boolean;
@@ -50,14 +50,32 @@ type AgentSetupInput = {
 };
 
 export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSetupInput) {
+  const isMuseBrowserRelay = agent.platform === "muse";
+  if (isMuseBrowserRelay) {
+    const steps: AgentSetupStep[] = [
+      {
+        id: "connection",
+        label: "Save your Stoic login in Muse",
+        complete: false,
+        detail: "Store the login in Muse's credential manager. Stoic cannot inspect or verify browser-stored credentials.",
+      },
+      {
+        id: "browser_relay",
+        label: "Run a supervised browser relay",
+        complete: false,
+        detail: "Use the copied Muse prompt to review ideas and record confirmed contacts in Stoic. Verify any recurring task in Muse; browser visits do not call the MCP inbox and do not complete handoffs, so Stoic cannot confirm them.",
+      },
+    ];
+    return { steps, completedSteps: 0, nextStep: steps[0] };
+  }
+
   const connected = agent.status === "connected";
   const isBoss = agent.id === bossAgentId;
+  const harness = resolveAgentHarnessId(agent.harness_name, agent.platform);
   const completedHandoff = handoffs.some((handoff) =>
     handoff.status === "accepted"
     && (isBoss ? handoff.created_by_agent_id === agent.id : handoff.assigned_agent_id === agent.id),
   );
-  const isMuseBrowserRelay = agent.platform === "muse";
-
   const steps: AgentSetupStep[] = [
     {
       id: "connection",
@@ -65,9 +83,7 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
       complete: connected,
       detail: connected
         ? "A Stoic identity is paired. The first server inbox check confirms that this installation can reach Stoic."
-        : isMuseBrowserRelay
-          ? "Save your Stoic login in Muse's stored credentials, then use its browser relay prompt. Muse does not connect through Stoic MCP."
-          : "Create a separate Stoic credential for this profile, then add the MCP server to this agent installation.",
+        : "Create a separate Stoic credential for this profile, then add the MCP server to this agent installation.",
     },
     {
       id: "inbox_check",
@@ -85,7 +101,9 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
         ? "You marked the schedule as configured. This is your declaration; successful inbox checks are the evidence that it ran."
         : isGrokBotHarness(agent.harness_name)
           ? "After the first check, create one personal Grok Bot routine that calls get_team_context and check_inbox. It runs as you and reports in your Bot conversation, not across a whole team."
-          : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
+          : harness === "claude"
+            ? "After the first check, use the copied provider-specific prompt to create a Claude Cowork Scheduled task or Claude Code Routine only if this account supports Stoic in that task. Confirm a saved schedule and one successful inbox run; otherwise keep it interactive."
+            : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
     }] : []),
     {
       id: "handoff",

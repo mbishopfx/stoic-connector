@@ -15,7 +15,7 @@ import { requireActiveWorkspace } from "@/lib/account";
 import { AppError, adminDb } from "@/lib/supabase";
 import type { AgentIdentity } from "@/lib/identity";
 import { canReadScopedHandoff } from "@/lib/handoff-access";
-import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { redactSensitiveText } from "@/lib/model-input";
 import {
   KNOWLEDGE_SOURCE_SCOPES,
   knowledgeSearchPattern,
@@ -299,7 +299,7 @@ async function resolveEvidence(agent: AgentIdentity, project: KnowledgeProject, 
         .eq("workspace_id", agent.workspaceId).eq("project_id", project.id).eq("id", value).maybeSingle();
       if (error) throw error;
       resolved.push(data
-        ? { reference, type: "project_board_message", accessible: true, message: { id: data.id, author_key: data.author_key, kind: data.kind, excerpt: redactSynthesisSecrets(data.body).slice(0, 500), created_at: data.created_at } }
+        ? { reference, type: "project_board_message", accessible: true, message: { id: data.id, author_key: data.author_key, kind: data.kind, excerpt: redactSensitiveText(data.body).slice(0, 500), created_at: data.created_at } }
         : { reference, type, accessible: false, reason: "not_found_or_project_scope" });
       continue;
     }
@@ -319,7 +319,7 @@ async function resolveEvidence(agent: AgentIdentity, project: KnowledgeProject, 
       if (!handoff || !await canReadScopedHandoff(agent, handoff)) {
         resolved.push({ reference, type, accessible: false, reason: "not_found_or_assignment_scope" });
       } else {
-        resolved.push({ reference, type: "task_event", accessible: true, event: { id: data.id, handoff_id: data.handoff_id, event_type: data.event_type, excerpt: redactSynthesisSecrets(data.body).slice(0, 500), created_at: data.created_at } });
+        resolved.push({ reference, type: "task_event", accessible: true, event: { id: data.id, handoff_id: data.handoff_id, event_type: data.event_type, excerpt: redactSensitiveText(data.body).slice(0, 500), created_at: data.created_at } });
       }
       continue;
     }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { redactSynthesisSecrets } from "./synthesis-input";
+import { redactSensitiveText } from "./model-input";
 import type { KnowledgeSourceScope } from "./knowledge-boundary";
 
 export const knowledgeStewardReply = z.object({
@@ -36,7 +36,7 @@ const MAX_INPUT_CHARACTERS = 28_000;
 export function buildKnowledgeStewardInput(context: StewardContext): StewardInput {
   const scopes = new Set(context.scopes);
   const payload: Record<string, unknown> = {
-    project: { name: redactSynthesisSecrets(context.project.name).slice(0, 160) },
+    project: { name: redactSensitiveText(context.project.name).slice(0, 160) },
     sources: {},
   };
   const sources = payload.sources as Record<string, unknown>;
@@ -54,7 +54,7 @@ export function buildKnowledgeStewardInput(context: StewardContext): StewardInpu
   };
 
   if (scopes.has("brief") && context.project.brief.trim()) {
-    const brief = { reference: `brief:version-${context.project.brief_version}`, text: redactSynthesisSecrets(context.project.brief).slice(0, 3000) };
+    const brief = { reference: `brief:version-${context.project.brief_version}`, text: redactSensitiveText(context.project.brief).slice(0, 3000) };
     sources.projectBrief = brief;
     refs.add(brief.reference);
   }
@@ -65,30 +65,30 @@ export function buildKnowledgeStewardInput(context: StewardContext): StewardInpu
       || (scopes.has("decisions") && note.kind === "decision" && !["archived", "superseded"].includes(note.status)));
     addBounded("knowledgeNotes", selected.map((note) => ({
       reference: `note:${note.id}`,
-      title: redactSynthesisSecrets(note.title).slice(0, 160),
+      title: redactSensitiveText(note.title).slice(0, 160),
       kind: note.kind,
       status: note.status,
       updatedAt: note.updated_at,
-      summary: redactSynthesisSecrets(note.body).slice(0, 400),
+      summary: redactSensitiveText(note.body).slice(0, 400),
     })), (row) => (row as { reference: string }).reference, 30);
   }
 
   if (scopes.has("board")) {
     addBounded("boardMessages", context.messages.map((message) => ({
       reference: `message:${message.id}`,
-      author: redactSynthesisSecrets(message.author_key).slice(0, 100),
+      author: redactSensitiveText(message.author_key).slice(0, 100),
       kind: message.kind,
       at: message.created_at,
-      excerpt: redactSynthesisSecrets(message.body).slice(0, 450),
+      excerpt: redactSensitiveText(message.body).slice(0, 450),
     })), (row) => (row as { reference: string }).reference, 16);
   }
 
   if (scopes.has("handoffs")) {
     addBounded("handoffs", context.handoffs.map((handoff) => ({
       reference: `handoff:${handoff.id}`,
-      title: redactSynthesisSecrets(handoff.title).slice(0, 160),
-      goal: redactSynthesisSecrets(handoff.goal).slice(0, 500),
-      constraints: redactSynthesisSecrets(handoff.constraints).slice(0, 300),
+      title: redactSensitiveText(handoff.title).slice(0, 160),
+      goal: redactSensitiveText(handoff.goal).slice(0, 500),
+      constraints: redactSensitiveText(handoff.constraints).slice(0, 300),
       status: handoff.status,
       updatedAt: handoff.updated_at,
     })), (row) => (row as { reference: string }).reference, 12);
@@ -97,14 +97,14 @@ export function buildKnowledgeStewardInput(context: StewardContext): StewardInpu
       handoffReference: `handoff:${event.handoff_id}`,
       kind: event.event_type,
       at: event.created_at,
-      excerpt: redactSynthesisSecrets(event.body).slice(0, 350),
+      excerpt: redactSensitiveText(event.body).slice(0, 350),
     })), (row) => (row as { reference: string }).reference, 24);
   }
 
   if (scopes.has("artifacts")) {
     addBounded("artifactMetadata", context.artifacts.map((artifact) => ({
       reference: `artifact:${artifact.id}`,
-      name: redactSynthesisSecrets(artifact.name).slice(0, 160),
+      name: redactSensitiveText(artifact.name).slice(0, 160),
       mimeType: artifact.mime_type,
       sizeBytes: artifact.size_bytes,
       handoffReference: artifact.handoff_id ? `handoff:${artifact.handoff_id}` : null,
@@ -115,7 +115,7 @@ export function buildKnowledgeStewardInput(context: StewardContext): StewardInpu
   if (scopes.has("agents")) {
     addBounded("agentProfiles", context.agents.map((agent) => ({
       reference: `agent:${agent.id}`,
-      name: redactSynthesisSecrets(agent.name).slice(0, 80),
+      name: redactSensitiveText(agent.name).slice(0, 80),
       platform: agent.platform,
       status: agent.status,
       scheduledCheckEnabled: agent.schedule_enabled,

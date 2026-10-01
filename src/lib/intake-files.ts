@@ -7,7 +7,7 @@ import { canPreviewImageArtifact, canPreviewTextArtifact } from "@/lib/artifact-
 import { canPreviewOfficeArtifact, extractOfficePreview } from "@/lib/office-preview";
 import { extractRtfPreview } from "@/lib/rtf-preview";
 import { adminDb, AppError } from "@/lib/supabase";
-import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { redactSensitiveText } from "@/lib/model-input";
 import type { IntakeImage } from "@/lib/intake-model";
 
 type StoredFile = { id: string; name: string; mime_type: string; size_bytes: number; storage_path: string };
@@ -125,7 +125,7 @@ export async function readIntakeFiles(workspaceId: string, projectId: string, id
         result.warnings.push(`${file.name}: Stoic could not preview its contents. The file remains attached for your agents.`);
       }
     }
-    result.notes.push({ id, name: file.name, note: redactSynthesisSecrets(note).slice(0, 5000) });
+    result.notes.push({ id, name: file.name, note: redactSensitiveText(note).slice(0, 5000) });
   }
   return result;
 }

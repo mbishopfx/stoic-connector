@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentInstallPrompt, stoicAgentInstructions } from "../src/lib/agent-install-guidance";
+import { agentConnectionGuide } from "../src/lib/agent-connection-guidance";
 
 describe("agent-agnostic install instructions", () => {
   it("includes the ideas and contact boundaries in every harness setup prompt", () => {
@@ -19,6 +20,8 @@ describe("agent-agnostic install instructions", () => {
     expect(agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp")).toContain("Create one new Grok Bot routine");
     expect(agentInstallPrompt("Grok web", "https://stoic.example.com/api/mcp")).toContain("Grok web custom MCP is interactive");
     expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("First identify the Claude surface");
+    expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("Eligible paid Claude Cowork accounts support recurring Scheduled tasks");
+    expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("confirming Stoic is available in that task");
     expect(agentInstallPrompt("ChatGPT", "https://stoic.example.com/api/mcp")).toContain("do not assume a custom MCP app is available");
   });
 
@@ -30,6 +33,8 @@ describe("agent-agnostic install instructions", () => {
 
     const grokBot = agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp");
     expect(grokBot).toContain("Remote HTTPS option");
+    expect(grokBot).toContain("A Team Bot's own key is shared");
+    expect(grokBot).toContain("use Stoic OAuth");
     expect(grokBot).toContain("Routines belong to the person");
     expect(grokBot).toContain("not team-wide schedules");
 
@@ -41,6 +46,16 @@ describe("agent-agnostic install instructions", () => {
     const openclaw = agentInstallPrompt("OpenClaw", "https://stoic.example.com/api/mcp");
     expect(openclaw).toContain("openclaw mcp doctor stoic-connector --probe");
     expect(openclaw).toContain("literal sensitive headers");
+  });
+
+  it("routes Muse through its stored-credential browser relay, never generic MCP setup", () => {
+    const prompt = agentInstallPrompt("Muse", "https://stoic.example.com/api/mcp");
+    expect(prompt).toContain("https://stoic.example.com/login");
+    expect(prompt).toContain("Muse's stored credentials");
+    expect(prompt).toContain("not a native Stoic MCP connection");
+    expect(prompt).not.toContain("STOIC_AGENT_KEY");
+    expect(prompt).not.toContain("check_inbox");
+    expect(agentConnectionGuide("muse", "https://stoic.example.com/api/mcp", "Muse")).toBeNull();
   });
 
   it("keeps the Claude bearer environment reference literal and names the owner-only idea review rule", () => {

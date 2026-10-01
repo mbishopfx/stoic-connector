@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { AppError, adminDb } from "@/lib/supabase";
 import { type DelegationLevel, type Platform } from "@/lib/config";
-import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { redactSensitiveText } from "@/lib/model-input";
 import { isGrokBotHarness } from "@/lib/agent-harness";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -157,7 +157,7 @@ export async function setAgentAccessNotes(ownerId: string, agentId: string, raw:
   const workspace = await requireActiveWorkspace(ownerId);
   const notes = raw.trim();
   if (notes.length > 2000) throw new AppError("Keep access notes under 2,000 characters", 400);
-  if (redactSynthesisSecrets(notes) !== notes) throw new AppError("Remove credentials and secrets from access notes", 400);
+  if (redactSensitiveText(notes) !== notes) throw new AppError("Remove credentials and secrets from access notes", 400);
   const db = adminDb();
   const { data, error } = await db.from("agents").update({ access_notes: notes })
     .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked")

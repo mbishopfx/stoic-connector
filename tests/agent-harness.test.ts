@@ -44,6 +44,8 @@ describe("agent harness profiles", () => {
     expect(harnessHasDocumentedScheduler("Grok Bot", "grok")).toBe(true);
     expect(harnessHasDocumentedScheduler("Grok web", "grok")).toBe(false);
     expect(harnessHasDocumentedScheduler(null, "grok")).toBe(false);
+    expect(harnessHasDocumentedScheduler("Claude", "other")).toBe(true);
+    expect(harnessHasDocumentedScheduler("Custom runner", "other")).toBe(false);
   });
 
   it("describes schedule setup only when the selected harness has a conditional or native path", () => {
@@ -69,6 +71,9 @@ describe("Muse browser relay prompt", () => {
     expect(prompt).toContain("choose “Suggestion · review first” as the post type");
     expect(prompt).toContain("at most one per run");
     expect(prompt).toContain("Do not repeat a recent suggestion");
+    expect(prompt).toContain("open Contacts → Import a CSV");
+    expect(prompt).toContain("Never choose an unrelated local file");
+    expect(prompt).toContain("without sending contact row values to its Codex session");
     expect(prompt).not.toContain("<password>");
   });
 });

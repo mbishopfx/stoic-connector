@@ -74,15 +74,29 @@ describe("per-agent setup guidance", () => {
     expect(progress.steps.find((step) => step.id === "schedule")?.detail).toContain("personal Grok Bot routine");
   });
 
-  it("describes Muse as a stored-credential browser relay rather than an MCP pairing", () => {
+  it("offers Claude's account-conditional scheduler without treating setup as complete", () => {
     const progress = getAgentSetupGuidance({
-      agent: { ...worker, platform: "muse", status: "pending", last_check_at: null },
+      agent: { ...worker, platform: "other", harness_name: "Claude", schedule_enabled: false },
+      bossAgentId: "boss",
+      handoffs: [],
+    });
+
+    expect(progress.steps.find((step) => step.id === "schedule")?.complete).toBe(false);
+    expect(progress.steps.find((step) => step.id === "schedule")?.detail).toContain("only if this account supports Stoic in that task");
+  });
+
+  it("describes Muse as a stored-credential browser relay without MCP inbox or handoff steps", () => {
+    const progress = getAgentSetupGuidance({
+      agent: { ...worker, platform: "muse", status: "connected", last_check_at: "2026-09-28T12:00:00Z" },
       bossAgentId: null,
       handoffs: [],
     });
 
-    expect(progress.steps[0].detail).toContain("stored credentials");
-    expect(progress.steps[0].detail).toContain("does not connect through Stoic MCP");
+    expect(progress.steps.map((step) => step.id)).toEqual(["connection", "browser_relay"]);
+    expect(progress.steps[0].detail).toContain("cannot inspect or verify");
+    expect(progress.steps[1].detail).toContain("do not call the MCP inbox");
+    expect(progress.steps[1].detail).toContain("do not complete handoffs");
+    expect(progress.steps.some((step) => step.id === "inbox_check" || step.id === "handoff")).toBe(false);
     expect(progress.steps.map((step) => step.id)).not.toContain("schedule");
   });
 });

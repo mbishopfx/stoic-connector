@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AppError, adminDb } from "@/lib/supabase";
 import { requireActiveWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
-import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { redactSensitiveText } from "@/lib/model-input";
 import { runManagedCodexJson } from "@/lib/managed-codex";
 
 const outputSchema = {
@@ -52,20 +52,40 @@ Keep the ideas calm, clear, practical, and concise. Prefer work that reduces con
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const PHONE_PATTERN = /(?<!\w)(?:\+?\d[\d().\s-]{7,}\d)(?!\w)/g;
 
+type IdeaEvidence = Record<string, unknown> & { id: string; projectId: string; at?: string };
+type IdeaProject = { id: string; created_at: string; activity_at: string };
+
 function redactIdeaText(value: string) {
-  return redactSynthesisSecrets(value).replace(EMAIL_PATTERN, "[email omitted]").replace(PHONE_PATTERN, "[phone omitted]");
+  return redactSensitiveText(value).replace(EMAIL_PATTERN, "[email omitted]").replace(PHONE_PATTERN, "[phone omitted]");
 }
 
 function fingerprint(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function prioritizeIdeaEvidence(projectBriefs: IdeaEvidence[], recentEvidence: IdeaEvidence[], maxEvidence = 120) {
+  const activityLimit = Math.max(0, maxEvidence - projectBriefs.length);
+  const recent = recentEvidence.map((item, index) => ({ item, index, timestamp: Date.parse(item.at || "") || 0 }))
+    .sort((left, right) => right.timestamp - left.timestamp || left.index - right.index)
+    .slice(0, activityLimit)
+    .map(({ item }) => item);
+  return [...projectBriefs, ...recent];
+}
+
+export function prioritizeIdeaProjects<T extends IdeaProject>(projects: T[], limit = 30) {
+  return [...projects]
+    .sort((left, right) => Date.parse(right.activity_at) - Date.parse(left.activity_at)
+      || Date.parse(right.created_at) - Date.parse(left.created_at)
+      || left.id.localeCompare(right.id))
+    .slice(0, limit);
+}
+
 async function collectIdeaContext(workspaceId: string, localDate: string, timezone: string) {
   const db = adminDb();
   const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
   const [projectsResult, messagesResult, handoffsResult, notesResult, contactsResult, ideasResult] = await Promise.all([
-    db.from("projects").select("id,name,brief,brief_version").eq("workspace_id", workspaceId)
-      .is("archived_at", null).order("created_at", { ascending: true }).limit(30),
+    db.from("projects").select("id,name,brief,brief_version,created_at").eq("workspace_id", workspaceId)
+      .is("archived_at", null).order("created_at", { ascending: false }).limit(30),
     db.from("board_messages").select("id,project_id,author_key,kind,body,created_at")
       .eq("workspace_id", workspaceId).neq("kind", "suggestion").gte("created_at", since)
       .order("created_at", { ascending: false }).limit(40),
@@ -82,10 +102,36 @@ async function collectIdeaContext(workspaceId: string, localDate: string, timezo
   ]);
   const error = projectsResult.error || messagesResult.error || handoffsResult.error || notesResult.error || contactsResult.error || ideasResult.error;
   if (error) throw error;
-  const projects = (projectsResult.data || []) as { id: string; name: string; brief: string; brief_version: number }[];
-  if (!projects.length) throw new AppError("Create a project before Stoic can prepare daily ideas", 409);
-
+  const initialProjects = (projectsResult.data || []) as { id: string; name: string; brief: string; brief_version: number; created_at: string }[];
   const handoffs = (handoffsResult.data || []) as { id: string; project_id: string; title: string; goal: string; constraints: string; status: string; updated_at: string }[];
+
+  const activityAtByProject = new Map<string, string>();
+  const markProjectActivity = (projectId: string, at: string) => {
+    const previous = activityAtByProject.get(projectId);
+    if (!previous || Date.parse(at) > Date.parse(previous)) activityAtByProject.set(projectId, at);
+  };
+  for (const message of (messagesResult.data || []) as { project_id: string; created_at: string }[]) markProjectActivity(message.project_id, message.created_at);
+  for (const handoff of handoffs) markProjectActivity(handoff.project_id, handoff.updated_at);
+  for (const note of (notesResult.data || []) as { project_id: string; note_updated_at: string }[]) markProjectActivity(note.project_id, note.note_updated_at);
+
+  const initialProjectIds = new Set(initialProjects.map((project) => project.id));
+  const additionalProjectIds = [...activityAtByProject.keys()].filter((id) => !initialProjectIds.has(id));
+  const additionalProjectsResult = additionalProjectIds.length
+    ? await db.from("projects").select("id,name,brief,brief_version,created_at").eq("workspace_id", workspaceId)
+      .is("archived_at", null).in("id", additionalProjectIds)
+    : { data: [], error: null };
+  if (additionalProjectsResult.error) throw additionalProjectsResult.error;
+  const projectCandidates = [
+    ...initialProjects,
+    ...((additionalProjectsResult.data || []) as { id: string; name: string; brief: string; brief_version: number; created_at: string }[]),
+  ].map((project) => ({
+    ...project,
+    activity_at: Date.parse(activityAtByProject.get(project.id) || "") > Date.parse(project.created_at)
+      ? activityAtByProject.get(project.id)!
+      : project.created_at,
+  }));
+  const projects = prioritizeIdeaProjects(projectCandidates, 30);
+  if (!projects.length) throw new AppError("Create a project before Stoic can prepare daily ideas", 409);
   const handoffIds = handoffs.map((handoff) => handoff.id);
   const eventsResult = handoffIds.length
     ? await db.from("task_events").select("id,handoff_id,event_type,body,created_at")
@@ -96,37 +142,38 @@ async function collectIdeaContext(workspaceId: string, localDate: string, timezo
 
   const projectIds = new Set(projects.map((project) => project.id));
   const evidenceProjects = new Map<string, string>();
-  const evidence: Record<string, unknown>[] = [];
+  const projectBriefs: IdeaEvidence[] = [];
+  const recentEvidence: IdeaEvidence[] = [];
   for (const project of projects) {
     const id = `brief:${project.id}:v${project.brief_version}`;
     evidenceProjects.set(id, project.id);
-    evidence.push({ id, projectId: project.id, type: "project_brief", title: redactIdeaText(project.name).slice(0, 160), text: redactIdeaText(project.brief).slice(0, 3000) });
+    projectBriefs.push({ id, projectId: project.id, type: "project_brief", title: redactIdeaText(project.name).slice(0, 160), text: redactIdeaText(project.brief).slice(0, 3000) });
   }
   for (const message of (messagesResult.data || []) as { id: string; project_id: string; author_key: string; kind: string; body: string; created_at: string }[]) {
     if (!projectIds.has(message.project_id)) continue;
     const id = `message:${message.id}`;
     evidenceProjects.set(id, message.project_id);
-    evidence.push({ id, projectId: message.project_id, type: message.kind, author: message.author_key, at: message.created_at, text: redactIdeaText(message.body).slice(0, 900) });
+    recentEvidence.push({ id, projectId: message.project_id, type: message.kind, author: message.author_key, at: message.created_at, text: redactIdeaText(message.body).slice(0, 900) });
   }
   for (const handoff of handoffs) {
     if (!projectIds.has(handoff.project_id)) continue;
     const id = `handoff:${handoff.id}`;
     evidenceProjects.set(id, handoff.project_id);
-    evidence.push({ id, projectId: handoff.project_id, type: "handoff", status: handoff.status, at: handoff.updated_at,
+    recentEvidence.push({ id, projectId: handoff.project_id, type: "handoff", status: handoff.status, at: handoff.updated_at,
       title: redactIdeaText(handoff.title).slice(0, 160), goal: redactIdeaText(handoff.goal).slice(0, 900), constraints: redactIdeaText(handoff.constraints).slice(0, 500) });
   }
   for (const event of (eventsResult.data || []) as { id: string; handoff_id: string; event_type: string; body: string; created_at: string }[]) {
     const handoff = handoffs.find((item) => item.id === event.handoff_id);
-    if (!handoff) continue;
+    if (!handoff || !projectIds.has(handoff.project_id)) continue;
     const id = `event:${event.id}`;
     evidenceProjects.set(id, handoff.project_id);
-    evidence.push({ id, projectId: handoff.project_id, type: event.event_type, at: event.created_at, text: redactIdeaText(event.body).slice(0, 650) });
+    recentEvidence.push({ id, projectId: handoff.project_id, type: event.event_type, at: event.created_at, text: redactIdeaText(event.body).slice(0, 650) });
   }
   for (const note of (notesResult.data || []) as { id: string; project_id: string; title: string; kind: string; status: string; body: string; note_updated_at: string }[]) {
     if (!projectIds.has(note.project_id)) continue;
     const id = `knowledge:${note.id}`;
     evidenceProjects.set(id, note.project_id);
-    evidence.push({ id, projectId: note.project_id, type: note.kind, status: note.status, at: note.note_updated_at,
+    recentEvidence.push({ id, projectId: note.project_id, type: note.kind, status: note.status, at: note.note_updated_at,
       title: redactIdeaText(note.title).slice(0, 160), text: redactIdeaText(note.body).slice(0, 800) });
   }
 
@@ -134,7 +181,7 @@ async function collectIdeaContext(workspaceId: string, localDate: string, timezo
     date: localDate,
     timezone,
     projects: projects.map((project) => ({ id: project.id, name: redactIdeaText(project.name).slice(0, 160), briefVersion: project.brief_version })),
-    evidence: evidence.slice(0, 120),
+    evidence: prioritizeIdeaEvidence(projectBriefs, recentEvidence),
     contactCountLast45Days: contactsResult.count || 0,
     recentIdeas: (ideasResult.data || []).map((idea) => ({ title: redactIdeaText(idea.title).slice(0, 160), status: idea.status })),
   });

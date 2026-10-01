@@ -51,9 +51,13 @@ describe("scheduled check health", () => {
     expect(grokWeb.host).toMatchObject({ posture: "interactive_only", label: "Grok web · interactive only" });
   });
 
-  it("keeps preview platforms out of unattended-check claims", () => {
+  it("keeps Muse browser relay outside MCP authentication, inbox, and schedule claims", () => {
     const summary = agentConnectionSummary({ ...connectedRecord, platform: "muse", last_check_at: null }, now);
     expect(summary.host).toMatchObject({ posture: "preview" });
-    expect(summary.proof).toMatchObject({ label: "Awaiting first check", evidence: "none" });
+    expect(summary.auth).toMatchObject({ label: "Browser credentials are outside Stoic", evidence: "missing" });
+    expect(summary.transport).toMatchObject({ label: "Browser relay · no MCP" });
+    expect(summary.schedule).toMatchObject({ label: "Verify schedule in Muse", evidence: "none" });
+    expect(summary.proof).toMatchObject({ label: "Not verified by Stoic", evidence: "none" });
+    expect(summary.proof.detail).toContain("do not call Stoic's MCP inbox");
   });
 });

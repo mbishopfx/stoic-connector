@@ -34,9 +34,9 @@ type HostPosture = "pilot_guided" | "interactive_only" | "preview" | "generic";
 
 type AgentConnectionSummary = {
   auth: { label: string; evidence: "server_record" | "missing"; tone: AgentHealthTone };
-  transport: { label: "Streamable HTTP MCP"; evidence: "product_config" };
+  transport: { label: string; evidence: "product_config" };
   host: { label: string; posture: HostPosture; note: string };
-  schedule: { label: string; evidence: "owner_declared" | "server_record"; tone: AgentHealthTone };
+  schedule: { label: string; evidence: "owner_declared" | "server_record" | "none"; tone: AgentHealthTone };
   proof: { label: string; evidence: "server_check" | "none"; tone: AgentHealthTone; detail: string };
   access: { label: string; evidence: "owner_declared" | "missing"; tone: AgentHealthTone };
 };
@@ -51,6 +51,25 @@ const hostPosture: Record<Platform, { posture: HostPosture; label: string; note:
 };
 
 export function agentConnectionSummary(agent: AgentConnectionRecord, now = Date.now()): AgentConnectionSummary {
+  if (agent.platform === "muse") {
+    const hasAccessNotes = Boolean(agent.access_notes?.trim());
+    return {
+      auth: { label: "Browser credentials are outside Stoic", evidence: "missing", tone: "neutral" },
+      transport: { label: "Browser relay · no MCP", evidence: "product_config" },
+      host: hostPosture.muse,
+      schedule: { label: "Verify schedule in Muse", evidence: "none", tone: "neutral" },
+      proof: {
+        label: "Not verified by Stoic",
+        evidence: "none",
+        tone: "neutral",
+        detail: "Muse browser visits do not call Stoic's MCP inbox. Confirm browser sign-in and any recurring task in Muse itself.",
+      },
+      access: hasAccessNotes
+        ? { label: "Owner notes provided", evidence: "owner_declared", tone: "neutral" }
+        : { label: "No owner notes yet", evidence: "missing", tone: "warning" },
+    };
+  }
+
   const health = agentHealth(agent, now);
   const host = agent.platform === "grok" && isGrokBotHarness(agent.harness_name)
     ? { posture: "pilot_guided" as const, label: "Grok Bot · guided pilot path", note: "Remote HTTPS MCP and personal routines are documented; verify this account with a real Stoic inbox check." }

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import { AppError, adminDb } from "@/lib/supabase";
 import { requireActiveWorkspace } from "@/lib/account";
-import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { redactSensitiveText } from "@/lib/model-input";
 import { getOwnerKnowledgeSettings } from "@/lib/knowledge-store";
 import { dueKnowledgeSlots, localKnowledgeClock } from "./knowledge-schedule";
 import {
@@ -327,14 +327,14 @@ async function refreshProject(workspaceId: string, projectId: string, identity: 
         rejectedCount += 1;
         continue;
       }
-      const body = redactSynthesisSecrets(candidate.body).trim();
+      const body = redactSensitiveText(candidate.body).trim();
       const id = `steward-${sha256(normalizedContent(candidate.title, body, evidence)).slice(0, 32)}`;
       const note: KnowledgeNote = {
         contract_version: KNOWLEDGE_CONTRACT_VERSION,
         id,
         project_id: projectId,
         kind: candidate.kind,
-        title: redactSynthesisSecrets(candidate.title).trim(),
+        title: redactSensitiveText(candidate.title).trim(),
         status: "proposed",
         created_at: now,
         updated_at: now,

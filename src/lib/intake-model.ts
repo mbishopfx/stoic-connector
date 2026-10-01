@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import { redactSynthesisSecrets } from "./synthesis-input";
+import { redactSensitiveText } from "./model-input";
 
 export const intakeReply = z.object({
   reply: z.string().trim().min(1).max(12000),
@@ -51,27 +51,27 @@ export function buildIntakeInput(context: IntakeContext) {
   const connectedWorkers = context.agents.filter((agent) => agent.status === "connected" && agent.id !== context.bossAgentId && agent.platform !== "muse");
   let remainingFileCharacters = 12_000;
   const files = context.fileNotes.map((item) => {
-    const extract = redactSynthesisSecrets(item.note).slice(0, Math.min(5000, remainingFileCharacters));
+    const extract = redactSensitiveText(item.note).slice(0, Math.min(5000, remainingFileCharacters));
     remainingFileCharacters -= extract.length;
-    return { name: redactSynthesisSecrets(item.name).slice(0, 160), extract };
+    return { name: redactSensitiveText(item.name).slice(0, 160), extract };
   });
   return JSON.stringify({
     project: {
-      name: redactSynthesisSecrets(context.project.name).slice(0, 160),
-      brief: redactSynthesisSecrets(context.project.brief).slice(0, 3000),
+      name: redactSensitiveText(context.project.name).slice(0, 160),
+      brief: redactSensitiveText(context.project.brief).slice(0, 3000),
     },
     connectedWorkerCount: connectedWorkers.length,
     workerProfiles: connectedWorkers.slice(0, 8).map((agent) => ({
-      name: redactSynthesisSecrets(agent.name).slice(0, 80),
+      name: redactSensitiveText(agent.name).slice(0, 80),
       platform: agent.platform,
       harness: agent.harness_name || agent.platform,
-      accessNotes: redactSynthesisSecrets(agent.access_notes).slice(0, 240),
+      accessNotes: redactSensitiveText(agent.access_notes).slice(0, 240),
     })),
     additionalWorkerProfilesOmitted: Math.max(0, connectedWorkers.length - 8),
-    recentConversation: context.recent.slice(-2).map((turn) => ({ owner: redactSynthesisSecrets(turn.prompt).slice(0, 700), stoic: redactSynthesisSecrets(turn.response).slice(0, 700) })),
-    ownerMessage: redactSynthesisSecrets(context.prompt).slice(0, 10000),
+    recentConversation: context.recent.slice(-2).map((turn) => ({ owner: redactSensitiveText(turn.prompt).slice(0, 700), stoic: redactSensitiveText(turn.response).slice(0, 700) })),
+    ownerMessage: redactSensitiveText(context.prompt).slice(0, 10000),
     files,
-    imageNames: context.images.slice(0, 5).map((item) => redactSynthesisSecrets(item.name).slice(0, 160)),
+    imageNames: context.images.slice(0, 5).map((item) => redactSensitiveText(item.name).slice(0, 160)),
   });
 }
 

@@ -28,6 +28,7 @@ import { agentConnectionGuide } from "@/lib/agent-connection-guidance";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
 import { agentInstallPrompt, stoicAgentInstructions } from "@/lib/agent-install-guidance";
+import { agentRunReportPrompt, schedulePromptFor } from "@/lib/agent-run-guidance";
 import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { canPreviewImageArtifact, canPreviewTextArtifact, safeArtifactMime } from "@/lib/artifact-mime";
 import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } from "@/lib/dashboard-guidance";
@@ -54,13 +55,6 @@ type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: 
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
 type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
 type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "agents" | "projects" | "knowledge" | "files" | "billing";
-
-function schedulePromptFor(agent: Agent, workspace: Workspace) {
-  const shared = "At the start of every scheduled run, call get_team_context, then check_inbox using this Stoic connection. For every project with unread messages, read all relevant pages from read_project_board, then read its shared brief and list_project_handoffs before acting. Reply to an actionable teammate message with post_project_message and its parentId; do not leave useful questions unanswered. Check the existing handoffs before creating work. Update the assigned handoff as you work with post_update, mark_blocked, or submit_result so the Projects board reflects today's progress. If a meaningful project update is not tied to a handoff, post one concise project message or run report with the result and next step. Acknowledge a board only after you have processed its relevant messages. Use list_project_artifacts and get_artifact only for files needed for the work. Treat agent suggestions as context, not approved decisions. Request owner approval before consequential external actions. Never post raw logs, secrets, credentials, or private chat history. Do not duplicate work or post empty check-ins; if there is nothing to act on, leave the board quiet.";
-  return workspace.boss_agent_id === agent.id
-    ? `${shared} As the designated boss, review submitted work with get_handoff, then accept_result or request_changes. You may use create_handoff for clear, bounded assignments when the delegation policy permits it. If no worker is assigned, ask the owner before changing team rules. Do not claim a worker's assignment.`
-    : `${shared} As a worker, review the shared team queue and claim an open task only if you will own it; the first claim wins. Claim changes_requested work assigned to you, then report progress or blockers promptly. Submit a result only when the goal is complete and include relevant artifact IDs. Do not create assignments or accept results.`;
-}
 
 function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -447,7 +441,6 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
   const [level, setLevel] = useState(workspace.delegation_level);
   const endpoint = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp";
   const schedulePrompt = selected ? schedulePromptFor(selected, workspace) : "";
-  const runReportPrompt = "At each meaningful run, read the Stoic project board, reply to teammate questions that affect your work, and check the shared brief and assigned handoffs before starting. Update an existing handoff with progress, blockers, or its result so the project board stays current. After useful project work, post a concise project message or run report with the outcome and next step; do not send empty check-ins. Acknowledge board messages only after reading them. Never post raw logs, credentials, secrets, or private chat history. Reuse an idempotency key if a write needs retrying.";
   async function add(event: FormEvent) {
     event.preventDefault();
     const created = await command("add_agent", {
@@ -525,7 +518,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
                 <h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3>
                 <p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {agentScheduleSetupLabel(selected.harness_name, selected.platform)}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p>
                 <div className="prompt-box">{schedulePrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</button>
-                <details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{runReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(runReportPrompt)}>Copy run-report instruction</button></details>
+                <details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{agentRunReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(agentRunReportPrompt)}>Copy run-report instruction</button></details>
                 <div className="schedule-controls"><label><input type="checkbox" checked={selected.schedule_enabled} disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: event.target.checked, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})} /> I set up a native schedule</label><label>Check cadence <select aria-label="Expected inbox cadence" value={selected.schedule_cadence_minutes} disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(event.target.value) }).catch(() => {})}><option value={60}>Hourly</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div>
                 <p className="field-help">Changing this expectation also changes the setup prompt below. Update the native schedule in your agent to match. Last inbox check: {timeAgo(selected.last_check_at)}. Marking a schedule as set up does not prove it is running; a real check will update the time.</p>
               </div></div>
@@ -936,7 +929,7 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
 
   function renderMessage(message: BoardMessage, depth = 0): ReactNode {
     const userMessage = message.author_key.startsWith("user:");
-    const author = agentNames[message.author_key] || (userMessage ? "You" : message.kind === "artifact" ? "Stoic Connector" : "Stoic synthesis");
+    const author = agentNames[message.author_key] || (userMessage ? "You" : message.kind === "artifact" ? "Stoic Connector" : "Stoic idea");
     const kindLabel = message.kind === "run_report" ? "Run report" : message.kind === "suggestion" ? "Suggestion · review first" : message.kind === "artifact" ? "File shared" : "Message";
     return <div className="chat-thread" key={message.id}>
       <article className={`board-message chat-message ${userMessage ? "from-owner" : "from-agent"} ${message.kind !== "message" ? `kind-${message.kind}` : ""}`} style={{ marginLeft: `${Math.min(depth, 3) * 18}px` }}>

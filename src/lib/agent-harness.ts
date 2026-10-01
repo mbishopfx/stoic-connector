@@ -42,6 +42,7 @@ export function isGrokBotHarness(harnessName: string | null | undefined) {
 
 export function harnessHasDocumentedScheduler(harnessName: string | null | undefined, platform: Platform) {
   if (["codex", "hermes", "openclaw"].includes(platform)) return true;
+  if (resolveAgentHarnessId(harnessName, platform) === "claude") return true;
   return platform === "grok" && isGrokBotHarness(harnessName);
 }
 

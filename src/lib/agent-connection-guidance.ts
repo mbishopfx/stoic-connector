@@ -11,8 +11,10 @@ function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function agentConnectionGuide(platform: Platform, endpoint: string, harnessName: string): AgentConnectionGuide {
+export function agentConnectionGuide(platform: Platform, endpoint: string, harnessName: string): AgentConnectionGuide | null {
   const harness = resolveAgentHarnessId(harnessName, platform);
+
+  if (harness === "muse") return null;
 
   if (harness === "claude") return {
     text: "Claude Code can connect directly to Stoic over remote HTTP MCP. Keep STOIC_AGENT_KEY in a private environment store; Claude Code expands its reference in the Authorization header below. Claude on the web, Cowork, and Claude Desktop use Claude's remote custom connector flow; Stoic must have that Claude OAuth client registered before sign-in. Never put a Stoic password or bearer key in a Claude chat.",
@@ -25,7 +27,7 @@ export function agentConnectionGuide(platform: Platform, endpoint: string, harne
     }
   }
 }`,
-    docs: "https://code.claude.com/docs/en/mcp",
+    docs: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
   };
 
   if (harness === "chatgpt") return {
@@ -41,9 +43,9 @@ export function agentConnectionGuide(platform: Platform, endpoint: string, harne
   };
 
   if (harness === "grok" && isGrokBotHarness(harnessName)) return {
-    text: "Grok Bot supports remote HTTPS MCP plugins and personal scheduled routines. Add Stoic to this Bot through its plugin/setup flow, keep the profile credential in its private credential field or use registered OAuth, then verify one Stoic inbox check. Its routine belongs to the person who creates it and reports in that person's Bot conversation; it does not run for a whole team.",
+    text: "Grok Bot supports Remote HTTPS MCP plugins and personal routines. For a personal Bot, add this profile key through protected credential setup. A Team Bot key is shared across teammates, so use Stoic OAuth for per-user access or pause before adding a shared key. Verify one Stoic inbox check. Its routine belongs to the person who creates it and reports in that person's Bot conversation; it does not run for a whole team.",
     code: endpoint,
-    docs: "https://docs.x.ai/grok-bot/skills-routines-and-automations",
+    docs: "https://docs.x.ai/grok-bot/team-bots",
   };
 
   if (harness === "grok") return {
@@ -55,7 +57,7 @@ export function agentConnectionGuide(platform: Platform, endpoint: string, harne
   if (harness === "codex") return {
     text: "Make STOIC_AGENT_KEY available to the Codex process, then add the server. Restart Codex after changing its environment. Keep the key out of prompts and shell history.",
     code: `codex mcp add stoic-connector --url ${shellQuote(endpoint)} --bearer-token-env-var STOIC_AGENT_KEY`,
-    docs: "https://developers.openai.com/learn/docs-mcp",
+    docs: "https://developers.openai.com/codex/mcp",
   };
 
   if (harness === "hermes") return {
