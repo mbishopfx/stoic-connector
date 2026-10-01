@@ -517,7 +517,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
             ? <MuseBrowserSetup key={selected.id} dashboardUrl={typeof window !== "undefined" ? `${window.location.origin}/login` : "https://stoic.bishoptech.dev/login"} />
             : <>
               <AgentAccessEditor key={selected.id} agent={selected} busy={busy} command={command} />
-              {selected.platform === "grok" && <div className="callout warning"><strong>Grok Bot is interactive-first.</strong><p>This guide is a general remote MCP setup. An unattended inbox schedule is not verified for this harness.</p></div>}
+              {selected.platform === "grok" && <div className="callout warning"><strong>Grok custom MCP is interactive-first.</strong><p>Add Stoic through grok.com/connectors. A Business or Enterprise admin may need to provision the connector first. Stoic has not verified an unattended inbox schedule for Grok.</p></div>}
               <AgentConnectionStep key={selected.id} agent={selected} endpoint={endpoint} busy={busy} secret={secret} issue={issue} />
               <div id="agent-schedule-setup" className="setup-step"><span className="step-number">2</span><div>
                 <h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3>
@@ -550,10 +550,21 @@ function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {
   return <div className="muse-browser-setup">
     <div className="callout warning"><strong>Muse uses the browser in this setup.</strong><p>This is not a Stoic MCP connection. After you add this profile, save your Stoic username and password in Muse&apos;s stored credentials. The password is not saved in Stoic; Supabase Auth handles browser sign-in. Muse inherits the account&apos;s full Stoic dashboard access. The prompt guides it to read and post project ideas, but that limit is not enforced by a separate Muse permission role. Use an account whose access is appropriate and supervise its first runs.</p></div>
     <div className="setup-step"><span className="step-number">1</span><div><h3>Save your Stoic login in Muse</h3><p>After saving this agent profile, open Muse&apos;s stored credentials and add your Stoic username or email and password. Keep them in that credential store only. Do not put either value in the prompt, agent notes, or regular chat.</p></div></div>
-    <div className="setup-step"><span className="step-number">2</span><div><h3>Copy the relay instructions into Muse</h3><p>The ready-to-paste prompt asks Muse to share concise project ideas three times a day and whenever you ask. Muse uses its own recurring browser task; Stoic cannot wake it or verify those runs.</p><div className="prompt-box muse-prompt-box">{prompt}</div><button className="button button-outline button-small" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</button>{copyStatus && <p className="field-help" role="status" aria-live="polite">{copyStatus}</p>}</div></div>
+    <div className="setup-step"><span className="step-number">2</span><div><h3>Copy the relay instructions into Muse</h3><p>The ready-to-paste prompt asks Muse to share concise project ideas three times a day and whenever you ask. Use a recurring browser task only if this Muse account visibly offers one, then verify its saved schedule and run history. Stoic cannot wake Muse or verify those runs.</p><div className="prompt-box muse-prompt-box">{prompt}</div><button className="button button-outline button-small" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</button>{copyStatus && <p className="field-help" role="status" aria-live="polite">{copyStatus}</p>}</div></div>
   </div>;
 }
-function connectionGuide(platform: Platform, endpoint: string) {
+function connectionGuide(platform: Platform, endpoint: string, harnessName: string) {
+  const harness = harnessName.trim().toLowerCase();
+  if (harness === "gemini" || harness === "gemini cli") return {
+    text: "Gemini CLI supports remote HTTP MCP. Add the endpoint, then have the owner enter this profile's bearer key directly in its private user settings as an Authorization header. The documented CLI header option stores static credentials locally, so never pass the real key as a command argument or save it in a shared project file.",
+    code: `gemini mcp add --transport http stoic-connector ${shellQuote(endpoint)}\n\nAfterward, add the bearer header in the private Gemini user settings, restart Gemini CLI, then verify with gemini mcp list and a Stoic check_inbox.`,
+    docs: "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
+  };
+  if (platform === "grok") return {
+    text: "Grok supports custom MCP connectors for interactive conversations. Add this public endpoint under grok.com/connectors → New Connector → Custom. A Grok Business or Enterprise admin may need to provision it first. Stoic has not verified unattended Grok schedules.",
+    code: endpoint,
+    docs: "https://docs.x.ai/grok/connectors",
+  };
   if (platform === "codex") return {
     text: "Make STOIC_AGENT_KEY available to the Codex process, then run this command. Restart Codex after changing its environment. Keep the key out of prompts and shell history.",
     code: `codex mcp add stoic-connector --url ${shellQuote(endpoint)} --bearer-token-env-var STOIC_AGENT_KEY`,
@@ -582,7 +593,7 @@ function connectionGuide(platform: Platform, endpoint: string) {
 
 function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: Agent; endpoint: string; busy: boolean; secret: { agentId: string; value: string; type: "key" | "code" } | null; issue: (type: "key" | "code") => Promise<void> }) {
   const [promptCopyStatus, setPromptCopyStatus] = useState("");
-  const guide = connectionGuide(agent.platform, endpoint);
+  const guide = connectionGuide(agent.platform, endpoint, agent.harness_name || agentHarnessLabel(agent));
   const installPrompt = agentInstallPrompt(agent.harness_name || agentHarnessLabel(agent), endpoint, agent.schedule_cadence_minutes);
   const oauthCommand = agent.platform === "codex" ? `codex mcp add stoic-connector --url ${endpoint}`
     : agent.platform === "hermes" ? `hermes mcp add stoic-connector --url ${endpoint} --auth oauth`
@@ -708,10 +719,50 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
   const [projectId, setProjectId] = useState("all");
   const [status, setStatus] = useState<Idea["status"] | "all">("pending");
   const [timezone, setTimezone] = useState(workspace.ideas_timezone || "UTC");
+  const [olderIdeas, setOlderIdeas] = useState<Idea[]>([]);
+  const [ideaOverrides, setIdeaOverrides] = useState<Map<string, Idea>>(() => new Map());
+  const [nextOffset, setNextOffset] = useState<number | null>(ideas.length === 200 ? 200 : null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const initializedTimezone = useRef(false);
   const projectNames = Object.fromEntries(projects.map((project) => [project.id, project.name]));
-  const visibleIdeas = ideas.filter((idea) => (projectId === "all" || idea.project_id === projectId) && (status === "all" || idea.status === status))
+  const loadedIdeas = useMemo(() => {
+    const merged = new Map<string, Idea>();
+    for (const idea of olderIdeas) merged.set(idea.id, idea);
+    for (const idea of ideas) merged.set(idea.id, idea);
+    for (const [id, idea] of ideaOverrides) merged.set(id, idea);
+    return [...merged.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [ideas, ideaOverrides, olderIdeas]);
+  const visibleIdeas = loadedIdeas.filter((idea) => (projectId === "all" || idea.project_id === projectId) && (status === "all" || idea.status === status))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  const loadOlderIdeas = useCallback(async () => {
+    if (nextOffset === null || historyLoading) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await fetch(`/api/ideas?offset=${nextOffset}`, { cache: "no-store" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not load older ideas");
+      const page = json.data as Idea[];
+      setOlderIdeas((current) => {
+        const merged = new Map(current.map((idea) => [idea.id, idea]));
+        for (const idea of page) merged.set(idea.id, idea);
+        return [...merged.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
+      });
+      setNextOffset(typeof json.nextOffset === "number" ? json.nextOffset : null);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Could not load older ideas");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyLoading, nextOffset]);
+
+  async function reviewIdea(ideaId: string, action: "accept_idea" | "archive_idea") {
+    const result = await command(action, { ideaId });
+    const updated = action === "accept_idea" ? (result as { idea?: Idea })?.idea : result as Idea;
+    if (updated?.id) setIdeaOverrides((current) => new Map(current).set(ideaId, updated));
+  }
 
   useEffect(() => {
     if (workspace.ideas_timezone || initializedTimezone.current) return;
@@ -732,7 +783,7 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
         <div><h2>For your review</h2><p>{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"}</p></div>
         <label>Project <select aria-label="Filter ideas by project" value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
       </div>
-      <div className="ideas-filters" role="group" aria-label="Filter ideas by status">{(["pending", "accepted", "archived", "all"] as const).map((item) => <button type="button" className={status === item ? "active" : ""} key={item} onClick={() => setStatus(item)}>{item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <span>{ideas.filter((idea) => idea.status === item).length}</span>}</button>)}</div>
+      <div className="ideas-filters" role="group" aria-label="Filter ideas by status">{(["pending", "accepted", "archived", "all"] as const).map((item) => <button type="button" className={status === item ? "active" : ""} key={item} onClick={() => setStatus(item)}>{item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <span>{loadedIdeas.filter((idea) => idea.status === item).length}</span>}</button>)}</div>
       {visibleIdeas.length ? <div className="ideas-list">{visibleIdeas.map((idea) => <article className="idea-card" key={idea.id}>
         <div className="idea-card-meta"><span>{idea.status === "pending" ? "For owner review" : idea.status}</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div>
         <h3><AssistantRichInline text={idea.title} /></h3>
@@ -740,12 +791,14 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
         <div className="idea-detail-pair"><div><strong>Why now</strong><AssistantRichText text={idea.why_now} /></div><div><strong>First step</strong><AssistantRichText text={idea.next_step} /></div></div>
         <details className="idea-evidence"><summary>Evidence · {idea.evidence_ids.length}</summary><ul>{idea.evidence_ids.map((source) => <li key={source}>{source}</li>)}</ul></details>
         <div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{idea.status === "pending" ? <div className="row-actions">
-          <button className="button button-outline button-small" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => command("accept_idea", { ideaId: idea.id }).catch(() => {})}>Accept as team handoff</button>
-          <button className="subtle-link" disabled={busy} onClick={() => command("archive_idea", { ideaId: idea.id }).catch(() => {})}>Archive</button>
+          <button className="button button-outline button-small" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => reviewIdea(idea.id, "accept_idea").catch(() => {})}>Accept as team handoff</button>
+          <button className="subtle-link" disabled={busy} onClick={() => reviewIdea(idea.id, "archive_idea").catch(() => {})}>Archive</button>
         </div> : idea.accepted_handoff_id ? <span>Handoff created · {idea.accepted_handoff_id.slice(0, 8)}</span> : <span>Archived</span>}</div>
         {idea.status === "pending" && !hasWorkers && <p className="field-help idea-action-note">Connect a worker before Stoic can queue an accepted idea.</p>}
         {idea.status === "pending" && workspace.delegation_level === "observe" && <p className="field-help idea-action-note">Your team is in Observe mode. Change the delegation level before creating handoffs.</p>}
       </article>)}</div> : <Empty title={status === "pending" ? "No ideas need review" : "Nothing in this view"} text="Stoic keeps each day's suggestions as their own records. Older ideas remain here until you accept or archive them." />}
+      {historyError && <p className="field-help error-message" role="alert">{historyError}</p>}
+      {nextOffset !== null && <div className="history-load-more"><button className="button button-outline button-small" onClick={() => loadOlderIdeas().catch(() => {})} disabled={historyLoading}>{historyLoading ? "Loading older ideas…" : "Load older ideas"}</button></div>}
     </section>
     <section className="panel ideas-timezone"><div><span className="eyebrow muted">DAILY SCHEDULE</span><h2>Keep the morning calm</h2><p>The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</p></div><label>Workspace time zone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Chicago" maxLength={100} /></label><button className="button button-outline button-small" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).catch(() => {})}>Save time zone</button></section>
   </>;
@@ -874,6 +927,7 @@ function ContactCard({ contact, busy, command, onSaved }: { contact: Contact; bu
 function BoardView({ projects, agents, messages, busy, command, refresh }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const [body, setBody] = useState("");
+  const [postKind, setPostKind] = useState<"message" | "suggestion">("message");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const postAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const newestMessageRef = useRef<HTMLDivElement>(null);
@@ -906,12 +960,14 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
   async function post(event: FormEvent) {
     event.preventDefault();
     if (!body.trim() || !projectId) return;
-    const fingerprint = JSON.stringify([projectId, replyTo, body.trim()]);
+    const parentId = postKind === "suggestion" ? null : replyTo;
+    const fingerprint = JSON.stringify([projectId, parentId, postKind, body.trim()]);
     if (postAttempt.current?.fingerprint !== fingerprint) postAttempt.current = { fingerprint, key: crypto.randomUUID() };
-    await command("post_board_message", { projectId, parentId: replyTo, body: body.trim(), kind: "message", idempotencyKey: postAttempt.current.key });
+    await command("post_board_message", { projectId, parentId, body: body.trim(), kind: postKind, idempotencyKey: postAttempt.current.key });
     postAttempt.current = null;
     setBody("");
     setReplyTo(null);
+    setPostKind("message");
   }
 
   function renderMessage(message: BoardMessage, depth = 0): ReactNode {
@@ -921,13 +977,13 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
     return <div className="chat-thread" key={message.id}>
       <article className={`board-message chat-message ${userMessage ? "from-owner" : "from-agent"} ${message.kind !== "message" ? `kind-${message.kind}` : ""}`} style={{ marginLeft: `${Math.min(depth, 3) * 18}px` }}>
         <span className={`chat-avatar ${userMessage ? "owner-avatar" : "agent-avatar"}`}>{author.charAt(0).toUpperCase()}</span>
-        <div className="chat-bubble"><div className="board-message-meta"><strong>{author}</strong><span>{kindLabel} · {timeAgo(message.created_at)}</span></div><AssistantRichText text={message.body} />{message.kind !== "suggestion" && <button className="subtle-link" onClick={() => setReplyTo(message.id)}>Reply</button>}</div>
+        <div className="chat-bubble"><div className="board-message-meta"><strong>{author}</strong><span>{kindLabel} · {timeAgo(message.created_at)}</span></div><AssistantRichText text={message.body} />{message.kind !== "suggestion" && <button className="subtle-link" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>Reply</button>}</div>
       </article>
       {(children.get(message.id) || []).map((reply) => renderMessage(reply, depth + 1))}
     </div>;
   }
 
-  return <><div className="page-heading"><div><span className="eyebrow muted">TEAM CHECK-IN</span><h1>Message board</h1><p>Agents share progress, ask each other questions, and leave a useful trail between runs.</p></div><button className="button button-outline button-small" onClick={() => refresh().catch(() => {})}>Refresh board</button></div><section className="panel board-panel"><div className="panel-heading"><div><h2>Project conversation</h2><p>Agent check-ins arrive when their next native schedule runs · {updatedAt ? `updated ${timeAgo(updatedAt)}` : "no messages yet"}</p></div><select aria-label="Board project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setReplyTo(null); }}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div>{roots.length ? <div className="board-list">{roots.map((message) => renderMessage(message))}<div ref={newestMessageRef} /></div> : <Empty title="No messages yet" text="Post a project note, or ask an agent to leave a short check-in after its next run." />}{projects.length > 0 && <form className="board-compose" onSubmit={(event) => post(event).catch(() => {})}>{replyingTo && <div className="board-reply">Replying to <strong>{agentNames[replyingTo.author_key] || (replyingTo.author_key.startsWith("user:") ? "you" : "an agent")}</strong><span>{replyingTo.body.slice(0, 90)}{replyingTo.body.length > 90 ? "…" : ""}</span><button type="button" onClick={() => setReplyTo(null)}>Cancel</button></div>}<label htmlFor="board-body">Add a message</label><textarea id="board-body" value={body} onChange={(event) => setBody(event.target.value)} maxLength={12000} rows={3} placeholder="Reply, ask a question, or share a decision for the team…" required /><button className="button button-small" disabled={busy || !body.trim()}>Post message</button></form>}</section></>;
+  return <><div className="page-heading"><div><span className="eyebrow muted">TEAM CHECK-IN</span><h1>Message board</h1><p>Agents share progress, ask each other questions, and leave a useful trail between runs.</p></div><button className="button button-outline button-small" onClick={() => refresh().catch(() => {})}>Refresh board</button></div><section className="panel board-panel"><div className="panel-heading"><div><h2>Project conversation</h2><p>Agent check-ins arrive when their next native schedule runs · {updatedAt ? `updated ${timeAgo(updatedAt)}` : "no messages yet"}</p></div><select aria-label="Board project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setReplyTo(null); }}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div>{roots.length ? <div className="board-list">{roots.map((message) => renderMessage(message))}<div ref={newestMessageRef} /></div> : <Empty title="No messages yet" text="Post a project note, or ask an agent to leave a short check-in after its next run." />}{projects.length > 0 && <form className="board-compose" onSubmit={(event) => post(event).catch(() => {})}>{replyingTo && <div className="board-reply">Replying to <strong>{agentNames[replyingTo.author_key] || (replyingTo.author_key.startsWith("user:") ? "you" : "an agent")}</strong><span>{replyingTo.body.slice(0, 90)}{replyingTo.body.length > 90 ? "…" : ""}</span><button type="button" onClick={() => setReplyTo(null)}>Cancel</button></div>}<label htmlFor="board-kind">Post type</label><select id="board-kind" value={postKind} disabled={Boolean(replyTo)} onChange={(event) => setPostKind(event.target.value as "message" | "suggestion")}><option value="message">Message</option><option value="suggestion">Suggestion · review first</option></select>{postKind === "suggestion" && <p className="field-help">This is an idea for the owner to review. It does not assign work or approve a decision.</p>}<label htmlFor="board-body">{postKind === "suggestion" ? "Share an idea" : "Add a message"}</label><textarea id="board-body" value={body} onChange={(event) => setBody(event.target.value)} maxLength={12000} rows={3} placeholder={postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required /><button className="button button-small" disabled={busy || !body.trim()}>{postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</button></form>}</section></>;
 }
 
 function RoutingView({ projects, agents, bossAgentId, busy, command }: { projects: Project[]; agents: Agent[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {

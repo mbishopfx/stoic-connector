@@ -1,7 +1,8 @@
 # Stoic Connector — Cross-Agent Connectors Research
 
-Last researched: 2026-09-27
-Status: Initial evidence pass; implementation and live provider acceptance remain separate gates.
+Initial research: 2026-09-27<br>
+Capability refresh: 2026-10-01<br>
+Status: Provider documentation has been refreshed; implementation and live account acceptance remain separate gates.
 
 ## Research question
 
@@ -284,3 +285,13 @@ The next local vertical slice is now implemented and verified separately from pr
 - Workspace export includes the knowledge tables, with a compatibility skip if an older deployment has not applied the optional migration yet. The public developer and privacy pages describe the new stored data and explicit runner boundary.
 
 Evidence for this implementation slice: `npm test` passed 36 tests across 8 files; `npm run test:sql` passed with migration `202609270024` loaded into an isolated PostgreSQL cluster; `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check`, JSON parsing, and secret/trailing-whitespace scans passed. These are local implementation/database checks only. Production migration application, authenticated owner route use, MCP `tools/list`/tool calls, real host acceptance, Steward execution, and graph UI rendering remain unverified.
+
+## 2026-10-01 provider capability refresh
+
+The older Grok/Muse statements above describe the initial 2026-09-27 evidence pass. Current primary-source checks refine the supported setup boundary:
+
+- [Grok Connectors](https://docs.x.ai/grok/connectors) documents custom MCP connectors at `grok.com/connectors` for interactive conversations. [Grok connector management](https://docs.x.ai/grok/connector-management) says Business and Enterprise admins may need to provision a connector for their organization. Stoic has no verified Grok unattended inbox schedule or authenticated end-to-end account test, so the app now labels Grok as interactive-first.
+- [Gemini CLI MCP server docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md) document remote Streamable HTTP, custom HTTP headers, and `gemini mcp add`. The documented header option is a static value in local settings; Stoic's setup prompt tells the owner to enter the bearer key directly into a private user configuration and avoids putting it in shell history or project-shared settings. No unattended Gemini schedule is claimed.
+- [Meta's Muse announcement](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/) describes a dedicated browser environment and secure credential storage. It does not establish a generic Stoic MCP connector or verify that a recurring task in a specific Muse account can operate Stoic's browser workflow. Muse therefore remains a separately supervised browser relay; the prompt can suggest a three-times-daily routine only when the user visibly configures a recurring task in that account.
+
+These findings justify provider-specific connection prompts while preserving one agent-neutral Stoic workspace model. A documented transport is not the same as a successful Stoic login, an inbox check, or a verified recurring run.

@@ -20,6 +20,22 @@ describe("agent-agnostic install instructions", () => {
     expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("Do not claim an unattended schedule");
   });
 
+  it("tailors setup to interactive Grok, Gemini CLI, and OpenClaw credential behavior", () => {
+    const grok = agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp");
+    expect(grok).toContain("New Connector → Custom");
+    expect(grok).toContain("admin may first need to provision");
+    expect(grok).toContain("has not verified an unattended Grok schedule");
+
+    const gemini = agentInstallPrompt("Gemini CLI", "https://stoic.example.com/api/mcp");
+    expect(gemini).toContain("remote HTTP MCP support");
+    expect(gemini).toContain("private, access-restricted user settings file");
+    expect(gemini).toContain("do not pass the key in a command");
+
+    const openclaw = agentInstallPrompt("OpenClaw", "https://stoic.example.com/api/mcp");
+    expect(openclaw).toContain("openclaw mcp doctor stoic-connector --probe");
+    expect(openclaw).toContain("literal sensitive headers");
+  });
+
   it("keeps the Claude bearer environment reference literal and names the owner-only idea review rule", () => {
     const prompt = agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp");
     expect(prompt).toContain('Bearer ${STOIC_AGENT_KEY}');

@@ -8,9 +8,13 @@ type Actor = { agent: AgentIdentity; userId?: never } | { agent?: never; userId:
 export const boardPostInput = z.object({
   projectId: z.uuid(),
   parentId: z.uuid().nullable().optional(),
-  kind: z.enum(["message", "run_report"]).default("message"),
+  kind: z.enum(["message", "run_report", "suggestion"]).default("message"),
   body: z.string().trim().min(1).max(12000),
   idempotencyKey: z.string().min(8).max(128),
+}).superRefine((input, context) => {
+  if (input.kind === "suggestion" && input.parentId) {
+    context.addIssue({ code: "custom", message: "Suggestions must be top-level board posts", path: ["parentId"] });
+  }
 });
 
 export async function listBoard(agent: AgentIdentity, projectId: string, offset = 0) {

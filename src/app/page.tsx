@@ -148,7 +148,7 @@ export default function Home() {
           <li><span className="stoic-status-dot pilot" /><strong>Hermes</strong><span>Initial pilot path</span></li>
           <li><span className="stoic-status-dot pilot" /><strong>OpenClaw</strong><span>Initial pilot path</span></li>
           <li><span className="stoic-status-dot pilot" /><strong>Other MCP clients</strong><span>Connect and pair a separate profile</span></li>
-          <li><span className="stoic-status-dot planned" /><strong>Grok</strong><span>Interactive connection first</span></li>
+          <li><span className="stoic-status-dot planned" /><strong>Grok</strong><span>Custom MCP · interactive first</span></li>
           <li><span className="stoic-status-dot preview" /><strong>Muse</strong><span>Browser relay · save credentials in Muse</span></li>
         </ul>
       </section>

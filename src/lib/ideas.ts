@@ -60,7 +60,7 @@ function fingerprint(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function collectIdeaContext(workspaceId: string) {
+async function collectIdeaContext(workspaceId: string, localDate: string, timezone: string) {
   const db = adminDb();
   const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
   const [projectsResult, messagesResult, handoffsResult, notesResult, contactsResult, ideasResult] = await Promise.all([
@@ -131,7 +131,8 @@ async function collectIdeaContext(workspaceId: string) {
   }
 
   const input = JSON.stringify({
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate,
+    timezone,
     projects: projects.map((project) => ({ id: project.id, name: redactIdeaText(project.name).slice(0, 160), briefVersion: project.brief_version })),
     evidence: evidence.slice(0, 120),
     contactCountLast45Days: contactsResult.count || 0,
@@ -143,7 +144,7 @@ async function collectIdeaContext(workspaceId: string) {
 async function generateForRun(run: { run_id: string; workspace_id: string; local_date: string; timezone: string }) {
   const db = adminDb();
   try {
-    const context = await collectIdeaContext(run.workspace_id);
+    const context = await collectIdeaContext(run.workspace_id, run.local_date, run.timezone);
     const inputFingerprint = fingerprint(context.input);
     const updated = await db.from("idea_generation_runs").update({ input_fingerprint: inputFingerprint })
       .eq("workspace_id", run.workspace_id).eq("id", run.run_id);
@@ -207,10 +208,11 @@ export async function runDueIdeas() {
   };
 }
 
-export async function getWorkspaceIdeas(workspaceId: string) {
+export async function getWorkspaceIdeas(workspaceId: string, offset = 0) {
   const { data, error } = await adminDb().from("ideas")
     .select("id,workspace_id,project_id,run_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,accepted_at,archived_at,created_at,updated_at")
-    .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(200);
+    .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).order("id", { ascending: false })
+    .range(offset, offset + 199);
   if (error) throw error;
   return data || [];
 }

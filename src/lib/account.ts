@@ -50,7 +50,7 @@ export async function dashboardState(ownerId: string) {
     db.from("task_events").select("id,handoff_id,actor_key,event_type,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(150),
     db.from("board_messages").select("id,project_id,parent_id,author_key,kind,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
     db.from("audit_events").select("id,actor_key,details,created_at").eq("workspace_id", workspace.id).eq("action", "inbox.checked").order("created_at", { ascending: false }).limit(100),
-    db.from("ideas").select("id,workspace_id,project_id,run_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,accepted_at,archived_at,created_at,updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
+    db.from("ideas").select("id,workspace_id,project_id,run_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,accepted_at,archived_at,created_at,updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(200),
   ]);
   for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas]) if (result.error) throw result.error;
   const { data: usage, error: usageError } = await db.rpc("relay_workspace_usage", { p_workspace_id: workspace.id });

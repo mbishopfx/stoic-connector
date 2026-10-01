@@ -45,6 +45,9 @@ describe("Muse browser relay prompt", () => {
     expect(prompt).toContain("not a native Stoic MCP connection");
     expect(prompt).toContain("Stoic does not wake Muse");
     expect(prompt).toContain("Do not create or claim handoffs");
+    expect(prompt).toContain("choose “Suggestion · review first” as the post type");
+    expect(prompt).toContain("at most one per run");
+    expect(prompt).toContain("Do not repeat a recent suggestion");
     expect(prompt).not.toContain("<password>");
   });
 });

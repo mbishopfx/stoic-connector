@@ -41,6 +41,6 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/20260929005456_knowledge_steward_runner.sql \
   -f supabase/migrations/20260929020000_handoff_history_search.sql \
   -f supabase/migrations/20260929233533_stoic_oauth_audience_hook.sql \
-  -f supabase/migrations/20260930040101_agent_harness_names.sql \
+  -f supabase/migrations/20260930040242_agent_harness_names.sql \
   -f supabase/migrations/20261001155032_stoic_ideas_contacts.sql \
   -f tests/sql/integration.sql

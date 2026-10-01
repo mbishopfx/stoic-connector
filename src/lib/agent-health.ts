@@ -44,7 +44,7 @@ const hostPosture: Record<Platform, { posture: HostPosture; label: string; note:
   hermes: { posture: "pilot_guided", label: "Hermes · guided pilot path", note: "Host setup is documented; a real inbox check still proves this installation." },
   openclaw: { posture: "pilot_guided", label: "OpenClaw · guided pilot path", note: "Host setup is documented; a real inbox check still proves this installation." },
   grok: { posture: "interactive_only", label: "Grok web · interactive only", note: "No verified unattended inbox path is recorded for this platform." },
-  muse: { posture: "preview", label: "Consumer Muse · preview", note: "Connector access and end-to-end behavior remain unverified." },
+  muse: { posture: "preview", label: "Consumer Muse · browser relay", note: "A supervised browser relay is configured; per-account schedule behavior still needs verification." },
   other: { posture: "generic", label: "Another MCP client · generic", note: "Use the client's documented remote MCP support and verify a real check." },
 };
 
