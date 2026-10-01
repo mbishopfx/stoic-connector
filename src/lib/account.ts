@@ -41,7 +41,7 @@ export async function dashboardState(ownerId: string) {
     if (error) throw error;
     return { workspace, agents: agents || [] };
   }
-  const [agents, projects, handoffs, approvals, artifacts, events, board, activity] = await Promise.all([
+  const [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas] = await Promise.all([
     db.from("agents").select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("projects").select("*").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     db.from("handoffs").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100),
@@ -50,8 +50,9 @@ export async function dashboardState(ownerId: string) {
     db.from("task_events").select("id,handoff_id,actor_key,event_type,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(150),
     db.from("board_messages").select("id,project_id,parent_id,author_key,kind,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
     db.from("audit_events").select("id,actor_key,details,created_at").eq("workspace_id", workspace.id).eq("action", "inbox.checked").order("created_at", { ascending: false }).limit(100),
+    db.from("ideas").select("id,workspace_id,project_id,run_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,accepted_at,archived_at,created_at,updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
   ]);
-  for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity]) if (result.error) throw result.error;
+  for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas]) if (result.error) throw result.error;
   const { data: usage, error: usageError } = await db.rpc("relay_workspace_usage", { p_workspace_id: workspace.id });
   if (usageError) throw usageError;
   return {
@@ -64,6 +65,7 @@ export async function dashboardState(ownerId: string) {
     events: events.data || [],
     board: board.data || [],
     activity: activity.data || [],
+    ideas: ideas.data || [],
     usage: { handoffs: Number(usage.handoffs), storageBytes: Number(usage.storageBytes) },
   };
 }

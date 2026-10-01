@@ -1,0 +1,29 @@
+import { describe, expect, it } from "vitest";
+import { agentInstallPrompt, stoicAgentInstructions } from "../src/lib/agent-install-guidance";
+
+describe("agent-agnostic install instructions", () => {
+  it("includes the ideas and contact boundaries in every harness setup prompt", () => {
+    for (const harness of ["Codex", "Hermes", "OpenClaw", "Grok Bot", "Claude", "ChatGPT", "Local helper"]) {
+      const prompt = agentInstallPrompt(harness, "https://stoic.example.com/api/mcp");
+      expect(prompt).toContain("list_team_ideas");
+      expect(prompt).toContain("create_contact");
+      expect(prompt).toContain("import_contacts_from_artifact");
+      expect(prompt).toContain("Never contact a prospect");
+      expect(prompt).toContain("https://stoic.example.com/api/mcp");
+    }
+  });
+
+  it("gives verified schedulers a setup path and keeps unverified harnesses interactive", () => {
+    expect(agentInstallPrompt("Hermes", "https://stoic.example.com/api/mcp")).toContain("Create one new Hermes cron job");
+    expect(agentInstallPrompt("OpenClaw", "https://stoic.example.com/api/mcp")).toContain("Create one new OpenClaw recurring automation");
+    expect(agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp")).toContain("has not verified a Grok unattended scheduler");
+    expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("Do not claim an unattended schedule");
+  });
+
+  it("keeps the Claude bearer environment reference literal and names the owner-only idea review rule", () => {
+    const prompt = agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp");
+    expect(prompt).toContain('Bearer ${STOIC_AGENT_KEY}');
+    expect(prompt).not.toContain("undefined");
+    expect(stoicAgentInstructions()).toContain("Never accept, archive, or delete ideas for the owner");
+  });
+});

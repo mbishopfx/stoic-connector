@@ -596,3 +596,104 @@ begin
     then raise exception 'authenticated role can read owner intake tables directly'; end if;
   raise notice 'Stoic SQL integration checks passed';
 end $$;
+
+do $$
+declare
+  w1 uuid := '20000000-0000-0000-0000-000000000001';
+  w2 uuid := '20000000-0000-0000-0000-000000000002';
+  p1 uuid := '40000000-0000-0000-0000-000000000001';
+  owner1 uuid := '10000000-0000-0000-0000-000000000001';
+  owner2 uuid := '10000000-0000-0000-0000-000000000002';
+  v_run_id uuid;
+  v_run2_id uuid;
+  v_idea_id uuid;
+  v_idea2_id uuid;
+  v_result jsonb;
+  v_ideas jsonb;
+begin
+  update public.workspaces set plan = 'pro', delegation_level = 'delegate', ideas_timezone = 'America/Chicago' where id = w1;
+  update public.workspaces set plan = 'pro', ideas_timezone = 'Pacific/Honolulu' where id = w2;
+
+  if (select count(*) from public.stoic_claim_due_idea_runs('2026-09-28 12:59:00+00', 20)) <> 0
+    then raise exception 'daily ideas ran before 8 AM in the workspace timezone'; end if;
+  select r.run_id into v_run_id from public.stoic_claim_due_idea_runs('2026-09-28 13:00:00+00', 20) r where r.workspace_id = w1;
+  if v_run_id is null or (select count(*) from public.idea_generation_runs where workspace_id = w1 and local_date = '2026-09-28') <> 1
+    then raise exception 'daily ideas did not respect the workspace-local 8 AM boundary'; end if;
+  if (select count(*) from public.stoic_claim_due_idea_runs('2026-09-28 13:00:00+00', 20)) <> 0
+    then raise exception 'the same workspace-local day was claimed twice'; end if;
+  select r.run_id into v_run2_id from public.stoic_claim_due_idea_runs('2026-09-28 18:00:00+00', 20) r where r.workspace_id = w2;
+  if v_run2_id is null or (select count(*) from public.idea_generation_runs where workspace_id = w2 and local_date = '2026-09-28') <> 1
+    then raise exception 'a different workspace timezone did not get its own daily run'; end if;
+
+  v_ideas := jsonb_build_array(
+    jsonb_build_object('projectId', p1, 'title', 'Clarify the first step', 'summary', 'Write one small action that moves the current project forward.', 'whyNow', 'The brief already records the direction, but not the immediate next step.', 'nextStep', 'Add a single owner-reviewed next step to the project brief.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1')),
+    jsonb_build_object('projectId', p1, 'title', 'Close the open question', 'summary', 'Resolve the outstanding question documented in the team discussion.', 'whyNow', 'A clear answer will make the next scheduled agent run more useful.', 'nextStep', 'Ask the owner to confirm the current decision.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1')),
+    jsonb_build_object('projectId', p1, 'title', 'Review recent task history', 'summary', 'Compare the current handoff state with the project goal and note any missing context.', 'whyNow', 'A concise review can reduce repeated work across agents.', 'nextStep', 'Summarize the verified gap in the shared brief.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1'))
+  );
+  v_result := public.stoic_complete_idea_run(w1, v_run_id, v_ideas);
+  if v_result->>'status' <> 'completed' or jsonb_array_length(v_result->'ideas') <> 3
+    then raise exception 'daily idea run did not save exactly three ideas'; end if;
+  if jsonb_array_length((public.stoic_complete_idea_run(w1, v_run_id, v_ideas))->'ideas') <> 3
+    then raise exception 'retrying idea completion duplicated or lost its ideas'; end if;
+  select id into v_idea_id from public.ideas where workspace_id = w1 and title = 'Clarify the first step';
+  select id into v_idea2_id from public.ideas where workspace_id = w1 and title = 'Close the open question';
+
+  begin
+    perform public.stoic_accept_idea(w1, owner2, v_idea_id);
+    raise exception 'another workspace owner accepted this idea';
+  exception when others then
+    if sqlerrm <> 'forbidden' then raise; end if;
+  end;
+  v_result := public.stoic_accept_idea(w1, owner1, v_idea_id);
+  if v_result->'idea'->>'status' <> 'accepted' or (v_result->'handoff'->>'assigned_agent_id') is not null
+    then raise exception 'owner acceptance did not create a team queue handoff'; end if;
+  if (public.stoic_accept_idea(w1, owner1, v_idea_id))->>'alreadyAccepted' <> 'true'
+    then raise exception 'accepting the same idea twice was not idempotent'; end if;
+  if (select count(*) from public.handoffs where workspace_id = w1 and idempotency_key = 'stoic-idea-' || v_idea_id::text) <> 1
+    then raise exception 'idea acceptance duplicated its handoff'; end if;
+
+  perform public.stoic_archive_idea(w1, owner1, v_idea2_id);
+  if (select status from public.ideas where workspace_id = w1 and id = v_idea2_id) <> 'archived'
+    then raise exception 'owner could not archive a pending idea'; end if;
+  begin
+    perform public.stoic_archive_idea(w1, owner1, v_idea_id);
+    raise exception 'accepted idea was archived';
+  exception when others then
+    if sqlerrm <> 'accepted_idea_cannot_be_archived' then raise; end if;
+  end;
+  if has_table_privilege('authenticated', 'public.idea_generation_runs', 'SELECT')
+    or has_table_privilege('authenticated', 'public.ideas', 'SELECT')
+    then raise exception 'authenticated users can access idea tables directly'; end if;
+
+  v_result := public.stoic_upsert_contacts(w1, null, owner1, p1, null, jsonb_build_array(jsonb_build_object(
+    'full_name', 'Ada Lovelace', 'email', 'Ada@example.com', 'phone', '555-1000', 'company', 'Engines',
+    'notes', 'Met at conference', 'source_label', 'Conference 2026', 'source_url', 'https://example.com/ada', 'source_key', 'user:owner1:source:contact-001'
+  )));
+  if (v_result->>'created')::integer <> 1 or (v_result->>'updated')::integer <> 0
+    then raise exception 'new contact was not created'; end if;
+  v_result := public.stoic_upsert_contacts(w1, null, owner1, p1, null, jsonb_build_array(jsonb_build_object(
+    'full_name', 'Ada Lovelace', 'email', 'ada@example.com', 'company', 'Analytical Engines',
+    'notes', 'Confirmed company spelling', 'source_label', 'Project research', 'source_url', 'https://example.com/project', 'source_key', 'user:owner1:source:contact-002'
+  )));
+  if (v_result->>'created')::integer <> 0 or (v_result->>'updated')::integer <> 1
+    then raise exception 'contact deduplication did not update an existing record'; end if;
+  if (select count(*) from public.contacts where workspace_id = w1 and lower(email) = 'ada@example.com') <> 1
+    or (select count(*) from public.contact_sources s join public.contacts c on c.id = s.contact_id where c.workspace_id = w1 and lower(c.email) = 'ada@example.com') <> 2
+    then raise exception 'contact upsert did not preserve its source history'; end if;
+  v_result := public.stoic_upsert_contacts(w1, null, owner1, p1, null, jsonb_build_array(jsonb_build_object(
+    'full_name', 'Ada Lovelace', 'email', 'ada@example.com', 'source_label', 'Conference 2026', 'source_key', 'user:owner1:source:contact-001'
+  )));
+  if (v_result->>'skipped')::integer <> 1 or (select count(*) from public.contacts where workspace_id = w2 and lower(email) = 'ada@example.com') <> 0
+    then raise exception 'contact source retry or workspace isolation failed'; end if;
+  begin
+    perform public.stoic_upsert_contacts(w1, null, owner2, p1, null, '[]'::jsonb);
+    raise exception 'a foreign owner wrote workspace contacts';
+  exception when others then
+    if sqlerrm <> 'forbidden' then raise; end if;
+  end;
+  if has_table_privilege('authenticated', 'public.contacts', 'SELECT')
+    or has_table_privilege('authenticated', 'public.contact_sources', 'SELECT')
+    or has_table_privilege('authenticated', 'public.contact_imports', 'SELECT')
+    then raise exception 'authenticated users can access contact tables directly'; end if;
+  raise notice 'Stoic ideas and contact integration checks passed';
+end $$;

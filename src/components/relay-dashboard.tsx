@@ -16,6 +16,7 @@ import {
   PaperClipIcon,
   Squares2X2Icon,
   SunIcon,
+  UserCircleIcon,
   UserGroupIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -25,6 +26,7 @@ import { type Plan, type Platform } from "@/lib/config";
 import { AGENT_HARNESSES, agentHarnessLabel, type AgentHarnessId } from "@/lib/agent-harness";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
+import { agentInstallPrompt, stoicAgentInstructions } from "@/lib/agent-install-guidance";
 import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { canPreviewImageArtifact, canPreviewTextArtifact, safeArtifactMime } from "@/lib/artifact-mime";
 import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } from "@/lib/dashboard-guidance";
@@ -44,10 +46,13 @@ type HandoffHistoryFilters = { q: string; projectId: string; agentId: string; st
 type HandoffHistoryPage = { items: Handoff[]; nextCursor: string | null; hasMore: boolean; pageSize: number };
 type HandoffHistoryDetail = { handoff: Handoff; events: Event[]; artifacts: Artifact[] };
 type BoardMessage = { id: string; project_id: string; parent_id: string | null; author_key: string; kind: "message" | "run_report" | "suggestion" | "artifact"; body: string; created_at: string };
+type Idea = { id: string; workspace_id: string; project_id: string; run_id: string; title: string; summary: string; why_now: string; next_step: string; evidence_ids: string[]; status: "pending" | "accepted" | "archived"; accepted_handoff_id: string | null; accepted_at: string | null; archived_at: string | null; created_at: string; updated_at: string };
+type ContactSource = { id: string; source_label: string; source_url: string | null; notes: string; created_at: string };
+type Contact = { id: string; project_id: string | null; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: "new" | "contacted" | "qualified" | "customer" | "archived"; notes: string; created_at: string; updated_at: string; last_seen_at: string; sources: ContactSource[] };
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
-type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null };
-type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
-type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "agents" | "projects" | "knowledge" | "files" | "billing";
+type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
+type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
+type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "agents" | "projects" | "knowledge" | "files" | "billing";
 
 function schedulePromptFor(agent: Agent, workspace: Workspace) {
   const shared = "At the start of every scheduled run, call get_team_context, then check_inbox using this Stoic connection. For every project with unread messages, read all relevant pages from read_project_board, then read its shared brief and list_project_handoffs before acting. Reply to an actionable teammate message with post_project_message and its parentId; do not leave useful questions unanswered. Check the existing handoffs before creating work. Update the assigned handoff as you work with post_update, mark_blocked, or submit_result so the Projects board reflects today's progress. If a meaningful project update is not tied to a handoff, post one concise project message or run report with the result and next step. Acknowledge a board only after you have processed its relevant messages. Use list_project_artifacts and get_artifact only for files needed for the work. Treat agent suggestions as context, not approved decisions. Request owner approval before consequential external actions. Never post raw logs, secrets, credentials, or private chat history. Do not duplicate work or post empty check-ins; if there is nothing to act on, leave the board quiet.";
@@ -69,6 +74,7 @@ const navSections: { label: string; items: { id: Tab; label: string; icon: typeo
     { id: "overview", label: "Overview", icon: Squares2X2Icon },
     { id: "handoffs", label: "Handoffs", icon: ClipboardDocumentListIcon },
     { id: "board", label: "Message board", icon: ChatBubbleLeftRightIcon },
+    { id: "contacts", label: "Contacts", icon: UserCircleIcon },
     { id: "projects", label: "Projects", icon: FolderIcon },
   ] },
   { label: "TEAM", items: [
@@ -181,6 +187,7 @@ export function StoicDashboard({ email }: { email: string }) {
   const events = state.events || [];
   const board = state.board || [];
   const activity = state.activity || [];
+  const ideas = state.ideas || [];
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const activeHandoffs = handoffs.filter((h) => !["accepted", "canceled"].includes(h.status));
   const names = Object.fromEntries(agents.map((a) => [a.id, a.name]));
@@ -195,12 +202,6 @@ export function StoicDashboard({ email }: { email: string }) {
     setTab(guidance.tab);
   }
 
-  function discussIdea(projectId: string, suggestion: string) {
-    const prefix = "Help me review this Stoic suggestion and decide whether to create a handoff:\n\n";
-    setIntakeSeed({ projectId, prompt: `${prefix}${suggestion.slice(0, 12_000 - prefix.length)}` });
-    setTab("assistant");
-  }
-
   return <div className="dashboard-shell" data-theme={theme}>
     <aside className={`dashboard-sidebar ${menuOpen ? "open" : ""}`}>
       <div className="sidebar-top"><Link href="/" className="brand" aria-label="Stoic Connector home" title="Stoic Connector"><span className="brand-mark"><StoicMark /></span><span className="brand-wordmark">Stoic <strong>Connector</strong></span></Link><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><XMarkIcon width={18} height={18} /></button></div>
@@ -211,7 +212,8 @@ export function StoicDashboard({ email }: { email: string }) {
     <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div><div className="header-right"><button className="icon-button theme-toggle" onClick={changeTheme} aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"} aria-pressed={theme === "dark"} title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}>{theme === "light" ? <MoonIcon aria-hidden="true" /> : <SunIcon aria-hidden="true" />}</button><span className="user-avatar" aria-label={`Account: ${email}`} title={email}>{email.charAt(0).toUpperCase()}</span></div></header>
       <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <div className="alert error" role="alert"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss">Dismiss</button></div>}{notice && <div className="alert success" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss">Dismiss</button></div>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
-        {tab === "ideas" && <IdeasView projects={projects} messages={board} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} onDiscuss={discussIdea} onOpenChat={() => setTab("assistant")} onManageAgents={() => setTab("agents")} />}
+        {tab === "ideas" && <IdeasView projects={projects} ideas={ideas} workspace={workspace} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} busy={busy} command={command} />}
+        {tab === "contacts" && <ContactsView projects={projects} busy={busy} command={command} />}
         {tab === "overview" && <><div className="page-heading"><div><span className="eyebrow muted">YOUR COMMAND CENTER</span><h1>Good to see you.</h1><p>Here’s where your agents and their work stand today.</p></div><button className="button" onClick={() => setTab("assistant")}>Start with Stoic</button></div><BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} /><div className="metric-grid"><Metric value={agents.filter((a) => a.status === "connected" && a.platform !== "muse").length} label="Active MCP credentials" detail="A successful inbox check verifies each connection" /><Metric value={activeHandoffs.length} label="Active handoffs" detail={`${state.usage?.handoffs || 0} created this month`} /><Metric value={pendingApprovals.length} label="Needs your review" detail="Approval requests and decisions" /></div><div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h2>Handoffs in motion</h2><p>Work your team is handling now.</p></div><button className="subtle-link" onClick={() => setTab("handoffs")}>View all</button></div>{activeHandoffs.length ? <div className="compact-list">{activeHandoffs.slice(0, 5).map((item) => <div className="compact-item" key={item.id}><div><strong><AssistantRichInline text={item.title} /></strong><small>{(item.assigned_agent_id ? names[item.assigned_agent_id] : null) || "Team queue"} · {projectNames[item.project_id] || "Project"}</small></div><Status status={item.status} /></div>)}</div> : <Empty title="Nothing in motion" text="Active assignments appear here. Open Handoffs to review completed work or create another assignment." />}</section><section className="panel"><div className="panel-heading"><div><h2>Agent check-ins</h2><p>Know who is ready to receive work.</p></div><button className="subtle-link" onClick={() => setTab("agents")}>Manage</button></div>{agents.filter((a) => a.status !== "revoked").length ? <div className="compact-list">{agents.filter((a) => a.status !== "revoked").slice(0, 5).map((agent) => { const health = displayedAgentHealth(agent); return <div className="compact-item" key={agent.id}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><div><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)} · {agent.platform === "muse" ? "browser relay" : `last check ${timeAgo(agent.last_check_at)}`}</small></div><span className={`health ${health.tone}`}><i />{health.label}</span></div>; })}</div> : <Empty title="Build your team" text="Add your first agent, then give it an identity in Stoic." />}</section></div>{pendingApprovals.length > 0 && <section className="panel review-panel"><div className="panel-heading"><div><h2>Needs your decision</h2><p>Agents cannot approve these on their behalf.</p></div></div>{pendingApprovals.map((approval) => <div className="approval-row" key={approval.id}><div><strong><AssistantRichInline text={approval.action_summary} /></strong><small>For {handoffs.find((h) => h.id === approval.handoff_id)?.title || "a handoff"}</small></div><div className="row-actions"><button className="button button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</button><button className="button button-outline button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</button></div></div>)}</section>}</>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
         {tab === "board" && <BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} />}
@@ -581,6 +583,7 @@ function connectionGuide(platform: Platform, endpoint: string) {
 function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: Agent; endpoint: string; busy: boolean; secret: { agentId: string; value: string; type: "key" | "code" } | null; issue: (type: "key" | "code") => Promise<void> }) {
   const [promptCopyStatus, setPromptCopyStatus] = useState("");
   const guide = connectionGuide(agent.platform, endpoint);
+  const installPrompt = agentInstallPrompt(agent.harness_name || agentHarnessLabel(agent), endpoint, agent.schedule_cadence_minutes);
   const oauthCommand = agent.platform === "codex" ? `codex mcp add stoic-connector --url ${endpoint}`
     : agent.platform === "hermes" ? `hermes mcp add stoic-connector --url ${endpoint} --auth oauth`
     : agent.platform === "openclaw" ? `openclaw mcp add stoic-connector --url ${endpoint} --transport streamable-http --auth oauth` : null;
@@ -590,8 +593,11 @@ function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: 
   }
   async function copyHermesInstallPrompt() {
     try {
-      await navigator.clipboard.writeText(hermesInstallPrompt(endpoint));
-      setPromptCopyStatus("Copied. Paste it into the Hermes profile you want to connect.");
+      const prompt = agent.platform === "hermes"
+        ? `${hermesInstallPrompt(endpoint)}\n\nAfter confirming the connection, add these persistent Stoic instructions:\n\n${stoicAgentInstructions()}`
+        : installPrompt;
+      await navigator.clipboard.writeText(prompt);
+      setPromptCopyStatus(`Copied. Paste it into the ${agentHarnessLabel(agent)} installation you want to connect.`);
     } catch {
       setPromptCopyStatus("Clipboard access failed. Allow clipboard access and try again.");
     }
@@ -602,7 +608,7 @@ function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: 
     <div className="copy-box"><code>{endpoint}</code><button onClick={() => navigator.clipboard.writeText(endpoint)} aria-label="Copy MCP URL">Copy</button></div>
     <button className="button button-outline button-small connection-key-button" disabled={busy || agent.platform === "muse"} onClick={generateKey}> {agent.status === "connected" ? "Create or replace agent key" : "Generate agent key"}</button>
     {secret?.agentId === agent.id && secret.type === "key" && <div className="secret-box"><strong>Copy this key now. It will not appear again.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy key</button></div>}
-    {guide && <div className="connection-guide"><strong>Set up {agentHarnessLabel(agent)}</strong><p>{guide.text}</p><div className="copy-box"><code>{guide.code}</code><button onClick={() => navigator.clipboard.writeText(guide.code)} aria-label={`Copy ${agentHarnessLabel(agent)} setup`}>Copy</button></div>{agent.platform === "hermes" && <div className="hermes-install-prompt"><p>Want Hermes to guide the setup? Copy this prompt and paste it into the Hermes profile you want to connect. It tells Hermes to preserve your existing MCP settings and keep the Stoic key out of chat.</p><button className="button button-outline button-small" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy Hermes install prompt</button>{promptCopyStatus && <p className="field-help" role="status" aria-live="polite">{promptCopyStatus}</p>}</div>}<a href={guide.docs} target="_blank" rel="noopener noreferrer">Platform setup reference </a></div>}
+    {guide && <div className="connection-guide"><strong>Set up {agentHarnessLabel(agent)}</strong><p>{guide.text}</p><div className="copy-box"><code>{guide.code}</code><button onClick={() => navigator.clipboard.writeText(guide.code)} aria-label={`Copy ${agentHarnessLabel(agent)} setup`}>Copy</button></div><div className="hermes-install-prompt"><p>Or copy a ready-to-paste setup prompt. It includes the shared Stoic rules for ideas and contacts, and only describes scheduling when this harness has a verified native path.</p><button className="button button-outline button-small" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy {agentHarnessLabel(agent)} setup prompt</button>{promptCopyStatus && <p className="field-help" role="status" aria-live="polite">{promptCopyStatus}</p>}</div><a href={guide.docs} target="_blank" rel="noopener noreferrer">Platform setup reference </a></div>}
     <p className="field-help">Use a different key for each agent profile. Replacing a key or switching to OAuth disconnects the previous installation. A fresh inbox check verifies the new connection.</p>
     {agent.status !== "revoked" && !agent.last_check_at && <div id="first-inbox-check" className="connection-first-check"><div><strong>{agent.status === "connected" ? "Verify the connection once" : "Check in after pairing"}</strong><p>{agent.status === "connected" ? "Paste this into the connected agent. Stoic will mark it verified when check_inbox reaches the server; Stoic cannot wake an offline host." : "After you add the MCP server and save this agent’s key, paste this into that agent to confirm the connection."}</p></div><div className="copy-box"><code>{FIRST_INBOX_CHECK_PROMPT}</code><button onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy first-check prompt</button></div></div>}
     <details className="advanced-pairing"><summary>Advanced: OAuth pairing</summary><p>OAuth requires a client registered with Stoic. Contact support to register your client before using this path. After sign-in, generate a one-time pairing code and ask the agent to call <code>pair_agent</code>. Pairing disables this profile&apos;s previous Stoic key.</p>{oauthCommand && <code className="command-example">{oauthCommand}</code>}<button className="subtle-link" disabled={busy || agent.platform === "muse"} onClick={() => issue("code").catch(() => {})}>Generate pairing code</button>{secret?.agentId === agent.id && secret.type === "code" && <div className="secret-box"><strong>Pairing code expires in 15 minutes.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy code</button></div>}</details>
@@ -698,21 +704,171 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
   </>;
 }
 
-function IdeasView({ projects, messages, hasWorkers, onDiscuss, onOpenChat, onManageAgents }: { projects: Project[]; messages: BoardMessage[]; hasWorkers: boolean; onDiscuss: (projectId: string, suggestion: string) => void; onOpenChat: () => void; onManageAgents: () => void }) {
+function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { projects: Project[]; ideas: Idea[]; workspace: Workspace; hasWorkers: boolean; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
   const [projectId, setProjectId] = useState("all");
+  const [status, setStatus] = useState<Idea["status"] | "all">("pending");
+  const [timezone, setTimezone] = useState(workspace.ideas_timezone || "UTC");
+  const initializedTimezone = useRef(false);
   const projectNames = Object.fromEntries(projects.map((project) => [project.id, project.name]));
-  const ideas = messages.filter((message) => message.kind === "suggestion" && (projectId === "all" || message.project_id === projectId))
+  const visibleIdeas = ideas.filter((idea) => (projectId === "all" || idea.project_id === projectId) && (status === "all" || idea.status === status))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  useEffect(() => {
+    if (workspace.ideas_timezone || initializedTimezone.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (initializedTimezone.current) return;
+      initializedTimezone.current = true;
+      const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      setTimezone(localTimezone);
+      command("set_ideas_timezone", { timezone: localTimezone }).catch(() => {});
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [workspace.ideas_timezone, command]);
+
   return <>
-    <div className="page-heading"><div><span className="eyebrow muted">PERIODIC PROJECT GUIDANCE</span><h1>Ideas</h1><p>Stoic reviews shared project context on its schedule and leaves possible next steps here. Suggestions are for your review; they do not create assignments.</p></div><button className="button button-outline button-small" onClick={onOpenChat}>Ask Stoic</button></div>
-    <section className="panel ideas-panel"><div className="ideas-toolbar"><div><h2>For your review</h2><p>{ideas.length} {ideas.length === 1 ? "suggestion" : "suggestions"}</p></div><label>Project <select aria-label="Filter ideas by project" value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label></div>
-      {ideas.length ? <div className="ideas-list">{ideas.map((idea) => {
-        const firstLine = idea.body.trim().split("\n").find(Boolean) || "A possible next step";
-        const title = firstLine.replace(/^\s*(?:\d+[.)]\s*|[-*]\s*)/, "").slice(0, 110);
-        return <article className="idea-card" key={idea.id}><div className="idea-card-meta"><span>Suggestion · review first</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div><h3><AssistantRichInline text={title} /></h3><AssistantRichText className="idea-card-body" text={idea.body} /><div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{hasWorkers ? <button className="button button-outline button-small" onClick={() => onDiscuss(idea.project_id, idea.body)}>Discuss with Stoic</button> : <button className="subtle-link" onClick={onManageAgents}>Connect a worker before creating a handoff</button>}</div></article>;
-      })}</div> : <Empty title="No new ideas right now" text="Stoic keeps the board quiet when it has no useful next step. Scheduled suggestions appear here when there is something worth reviewing." />}
+    <div className="page-heading"><div><span className="eyebrow muted">A QUIET DAILY REVIEW</span><h1>Ideas</h1><p>Stoic prepares three source-grounded ideas once a day after 8 AM in your workspace time zone. Nothing becomes work until you accept it.</p></div></div>
+    <section className="panel ideas-panel">
+      <div className="ideas-toolbar">
+        <div><h2>For your review</h2><p>{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"}</p></div>
+        <label>Project <select aria-label="Filter ideas by project" value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+      </div>
+      <div className="ideas-filters" role="group" aria-label="Filter ideas by status">{(["pending", "accepted", "archived", "all"] as const).map((item) => <button type="button" className={status === item ? "active" : ""} key={item} onClick={() => setStatus(item)}>{item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <span>{ideas.filter((idea) => idea.status === item).length}</span>}</button>)}</div>
+      {visibleIdeas.length ? <div className="ideas-list">{visibleIdeas.map((idea) => <article className="idea-card" key={idea.id}>
+        <div className="idea-card-meta"><span>{idea.status === "pending" ? "For owner review" : idea.status}</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div>
+        <h3><AssistantRichInline text={idea.title} /></h3>
+        <AssistantRichText className="idea-card-body" text={idea.summary} />
+        <div className="idea-detail-pair"><div><strong>Why now</strong><AssistantRichText text={idea.why_now} /></div><div><strong>First step</strong><AssistantRichText text={idea.next_step} /></div></div>
+        <details className="idea-evidence"><summary>Evidence · {idea.evidence_ids.length}</summary><ul>{idea.evidence_ids.map((source) => <li key={source}>{source}</li>)}</ul></details>
+        <div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{idea.status === "pending" ? <div className="row-actions">
+          <button className="button button-outline button-small" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => command("accept_idea", { ideaId: idea.id }).catch(() => {})}>Accept as team handoff</button>
+          <button className="subtle-link" disabled={busy} onClick={() => command("archive_idea", { ideaId: idea.id }).catch(() => {})}>Archive</button>
+        </div> : idea.accepted_handoff_id ? <span>Handoff created · {idea.accepted_handoff_id.slice(0, 8)}</span> : <span>Archived</span>}</div>
+        {idea.status === "pending" && !hasWorkers && <p className="field-help idea-action-note">Connect a worker before Stoic can queue an accepted idea.</p>}
+        {idea.status === "pending" && workspace.delegation_level === "observe" && <p className="field-help idea-action-note">Your team is in Observe mode. Change the delegation level before creating handoffs.</p>}
+      </article>)}</div> : <Empty title={status === "pending" ? "No ideas need review" : "Nothing in this view"} text="Stoic keeps each day's suggestions as their own records. Older ideas remain here until you accept or archive them." />}
+    </section>
+    <section className="panel ideas-timezone"><div><span className="eyebrow muted">DAILY SCHEDULE</span><h2>Keep the morning calm</h2><p>The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</p></div><label>Workspace time zone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Chicago" maxLength={100} /></label><button className="button button-outline button-small" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).catch(() => {})}>Save time zone</button></section>
+  </>;
+}
+
+function ContactsView({ projects, busy, command }: { projects: Project[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [importIdempotencyKey, setImportIdempotencyKey] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const query = new URLSearchParams({ q: search, offset: String(offset) });
+      if (status) query.set("status", status);
+      const response = await fetch(`/api/contacts?${query}`, { cache: "no-store" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not load contacts");
+      const data = json.data as { contacts: Contact[]; total: number; nextOffset: number | null };
+      setContacts(data.contacts);
+      setTotal(data.total);
+      setNextOffset(data.nextOffset);
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : "Could not load contacts");
+    } finally {
+      setLoading(false);
+    }
+  }, [offset, search, status]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refresh(); }, search ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh, search, status, offset]);
+
+  async function addContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    await command("create_contact", {
+      fullName: String(form.get("fullName")),
+      email: String(form.get("email") || "") || null,
+      phone: String(form.get("phone") || "") || null,
+      company: String(form.get("company") || "") || null,
+      projectId: String(form.get("projectId") || "") || null,
+      sourceLabel: String(form.get("sourceLabel")),
+      sourceUrl: String(form.get("sourceUrl") || "") || null,
+      notes: String(form.get("notes") || ""),
+      idempotencyKey: crypto.randomUUID(),
+    });
+    formElement.reset();
+    await refresh();
+  }
+
+  async function importCsv(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file) return;
+    const formElement = event.currentTarget;
+    setImporting(true);
+    setImportMessage("");
+    try {
+      const form = new FormData(formElement);
+      form.set("file", file);
+      form.set("idempotencyKey", importIdempotencyKey || crypto.randomUUID());
+      const response = await fetch("/api/contacts/import", { method: "POST", body: form });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not import this CSV");
+      const result = json.data as { created: number; updated: number; skipped: number };
+      setImportMessage(`${result.created} added · ${result.updated} updated · ${result.skipped} skipped`);
+      setFile(null);
+      setImportIdempotencyKey("");
+      formElement.reset();
+      setOffset(0);
+      await refresh();
+    } catch (cause) {
+      setImportMessage(cause instanceof Error ? cause.message : "Could not import this CSV");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return <>
+    <div className="page-heading"><div><span className="eyebrow muted">PRIVATE WORKSPACE CRM</span><h1>Contacts</h1><p>Keep real leads and relationship context with the project and source that produced them. Stoic records contacts; it never sends outreach.</p></div><span className="count-pill">{total} contacts</span></div>
+    <div className="contacts-tools">
+      <section className="panel"><div className="panel-heading"><div><h2>Add a contact</h2><p>Save only details you have confirmed.</p></div></div><form className="contact-form" onSubmit={(event) => addContact(event).catch(() => {})}>
+        <label>Name<input name="fullName" placeholder="Full name" minLength={2} maxLength={160} required /></label><label>Email<input name="email" type="email" maxLength={254} placeholder="name@example.com" /></label><label>Phone<input name="phone" type="tel" maxLength={60} placeholder="Optional" /></label><label>Company<input name="company" maxLength={160} placeholder="Optional" /></label>
+        <label>Project<select name="projectId"><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>Source<input name="sourceLabel" placeholder="Where you found them" minLength={2} maxLength={180} required /></label><label className="contact-wide">Source URL<input name="sourceUrl" type="url" placeholder="https://…" maxLength={2000} /></label><label className="contact-wide">Notes<textarea name="notes" rows={2} maxLength={5000} placeholder="Useful context, not private conversation logs" /></label>
+        <button className="button button-small" disabled={busy}>Save contact</button>
+      </form></section>
+      <section className="panel"><div className="panel-heading"><div><h2>Import a CSV</h2><p>Stoic maps a sample, then keeps the source trail.</p></div></div><form className="contact-import-form" onSubmit={(event) => importCsv(event).catch(() => {})}>
+        <label>CSV file<input type="file" accept=".csv,text/csv" onChange={(event) => { const nextFile = event.target.files?.[0] || null; setFile(nextFile); setImportIdempotencyKey(nextFile ? crypto.randomUUID() : ""); }} required /></label><label>Source label<input name="sourceLabel" defaultValue="CSV import" minLength={2} maxLength={180} required /></label><label>Project<select name="projectId"><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+        <button className="button button-outline button-small" disabled={!file || importing}>{importing ? "Importing…" : "Review and import"}</button>{importMessage && <p className="field-help" role="status">{importMessage}</p>}
+      </form></section>
+    </div>
+    <section className="panel contacts-panel"><div className="ideas-toolbar"><div><h2>Your contacts</h2><p>Deduplicated within this workspace</p></div><label>Status <select aria-label="Filter contacts by status" value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0); }}><option value="">All contacts</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></label><label>Search <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0); }} placeholder="Name, email, company…" /></label></div>
+      {loadError && <p className="form-error contacts-error" role="alert">{loadError}</p>}{loading ? <p className="contacts-loading">Loading contacts…</p> : contacts.length ? <div className="contact-list">{contacts.map((contact) => <ContactCard key={`${contact.id}:${contact.updated_at}`} contact={contact} busy={busy} command={command} onSaved={refresh} />)}</div> : <Empty title="No contacts here yet" text="Add a confirmed lead or import a CSV to start a private, source-aware contact list." />}
+      <div className="contacts-pagination"><span>{total} total</span><div><button type="button" className="button button-outline button-small" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button type="button" className="button button-outline button-small" disabled={nextOffset === null || loading} onClick={() => nextOffset !== null && setOffset(nextOffset)}>Next</button></div></div>
     </section>
   </>;
+}
+
+function ContactCard({ contact, busy, command, onSaved }: { contact: Contact; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onSaved: () => Promise<void> }) {
+  const [status, setStatus] = useState(contact.status);
+  const [notes, setNotes] = useState(contact.notes);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    await command("update_contact", { contactId: contact.id, status, notes });
+    await onSaved();
+  }
+  return <article className="contact-card"><div className="contact-card-top"><div><h3><AssistantRichInline text={contact.full_name} /></h3><p>{[contact.job_title, contact.company].filter(Boolean).join(" · ") || "Contact"}</p></div><select aria-label={`Status for ${contact.full_name}`} value={status} onChange={(event) => setStatus(event.target.value as Contact["status"])}><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></div>
+    <div className="contact-details">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
+    <form onSubmit={(event) => save(event).catch(() => {})}><label>Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={10000} rows={2} /></label><button className="subtle-link" type="submit" disabled={busy || (status === contact.status && notes === contact.notes)}>Save changes</button></form>
+    {contact.sources.length > 0 && <details className="contact-sources"><summary>Source history · {contact.sources.length}</summary><ul>{contact.sources.map((source) => <li key={source.id}><strong>{source.source_label}</strong>{source.source_url && <> · <a href={source.source_url} target="_blank" rel="noreferrer">Open source</a></>}{source.notes && <p>{source.notes}</p>}<time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></li>)}</ul></details>}
+  </article>;
 }
 
 function BoardView({ projects, agents, messages, busy, command, refresh }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {

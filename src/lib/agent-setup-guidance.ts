@@ -56,7 +56,7 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
     handoff.status === "accepted"
     && (isBoss ? handoff.created_by_agent_id === agent.id : handoff.assigned_agent_id === agent.id),
   );
-  const isMusePreview = agent.platform === "muse";
+  const isMuseBrowserRelay = agent.platform === "muse";
 
   const steps: AgentSetupStep[] = [
     {
@@ -65,8 +65,8 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
       complete: connected,
       detail: connected
         ? "A Stoic identity is paired. The first server inbox check confirms that this installation can reach Stoic."
-        : isMusePreview
-          ? "Consumer Muse connector access is still in preview. This profile cannot be paired yet."
+        : isMuseBrowserRelay
+          ? "Save your Stoic login in Muse's stored credentials, then use its browser relay prompt. Muse does not connect through Stoic MCP."
           : "Create a separate Stoic credential for this profile, then add the MCP server to this agent installation.",
     },
     {

@@ -15,6 +15,8 @@ import { addOAuthSecurityToMcpResponse } from "@/lib/mcp-metadata";
 import { KNOWLEDGE_KINDS, KNOWLEDGE_STATUSES } from "@/lib/knowledge";
 import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, readKnowledgeNote, searchProjectKnowledge } from "@/lib/knowledge-store";
 import { draftIntakeForAgent, intakeDraftInputSchema } from "@/lib/intake-drafts";
+import { listTeamIdeas } from "@/lib/ideas";
+import { createContact, importContactsFromArtifact, searchContactsForAgent, contactInputSchema } from "@/lib/contacts";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -240,6 +242,34 @@ const handler = createMcpHandler((server) => {
     description: "Start here after connecting. Read your role, delegation policy, connected agent profiles, project routing, and safe next steps. This never returns credentials from other apps.",
     inputSchema: z.object({}),
   }, async (_args, ctx) => run(ctx, (agent) => teamContext(agent)));
+
+  server.registerTool("list_team_ideas", {
+    annotations: readAnnotations,
+    title: "Review team ideas",
+    description: "List pending and accepted Stoic suggestions for the owner to review. Suggestions are not assignments; agents cannot accept, archive, or execute them.",
+    inputSchema: z.object({}),
+  }, async (_args, ctx) => run(ctx, (agent) => listTeamIdeas(agent)));
+
+  server.registerTool("create_contact", {
+    annotations: writeAnnotations,
+    title: "Save a contact",
+    description: "Add confirmed contact details and an exact source to this private workspace CRM. This records information only; it never contacts the person. Reuse the idempotency key when retrying.",
+    inputSchema: contactInputSchema,
+  }, async (args, ctx) => run(ctx, (agent) => createContact({ agent }, args)));
+
+  server.registerTool("search_contacts", {
+    annotations: readAnnotations,
+    title: "Search workspace contacts",
+    description: "Search contact records visible to this connected agent within its own workspace. Contact details are private workspace data; never copy them into public board messages or send outreach without owner approval.",
+    inputSchema: z.object({ search: z.string().trim().max(120).default(""), offset: pageOffset }),
+  }, async ({ search, offset }, ctx) => run(ctx, (agent) => searchContactsForAgent(agent, search, offset)));
+
+  server.registerTool("import_contacts_from_artifact", {
+    annotations: writeAnnotations,
+    title: "Import contacts from a shared CSV",
+    description: "Import a ready, project-level CSV artifact up to 4 MB into this workspace CRM. Stoic maps the header and a small sample, keeps source provenance, deduplicates within the workspace, and records an idempotent import. Does not contact anyone.",
+    inputSchema: z.object({ artifactId: z.uuid(), sourceLabel: z.string().trim().min(2).max(180).optional(), idempotencyKey }),
+  }, async (args, ctx) => run(ctx, (agent) => importContactsFromArtifact(agent, args)));
 
   server.registerTool("get_handoff", {
     annotations: readAnnotations,

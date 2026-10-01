@@ -62,6 +62,18 @@ describe("per-agent setup guidance", () => {
 
     expect(progress.steps.map((step) => step.id)).toEqual(["connection", "inbox_check", "handoff"]);
   });
+
+  it("describes Muse as a stored-credential browser relay rather than an MCP pairing", () => {
+    const progress = getAgentSetupGuidance({
+      agent: { ...worker, platform: "muse", status: "pending", last_check_at: null },
+      bossAgentId: null,
+      handoffs: [],
+    });
+
+    expect(progress.steps[0].detail).toContain("stored credentials");
+    expect(progress.steps[0].detail).toContain("does not connect through Stoic MCP");
+    expect(progress.steps.map((step) => step.id)).not.toContain("schedule");
+  });
 });
 
 describe("Hermes install prompt", () => {
