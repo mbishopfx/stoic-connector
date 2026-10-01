@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+import Link from "next/link";
 
 type AuthMode = "signup" | "signin";
 
@@ -11,12 +12,12 @@ function getSafeNext() {
   return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") && new URL(next, window.location.origin).origin === window.location.origin ? next : "/dashboard";
 }
 
-export function LoginForm() {
+export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boolean }) {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>("signup");
+  const [mode, setMode] = useState<AuthMode>(passwordUpdated ? "signin" : "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(passwordUpdated ? "Your password has been updated. Sign in with your new password." : "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -53,6 +54,7 @@ export function LoginForm() {
       <input id="email" type="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" />
       <label htmlFor="password">Password</label>
       <input id="password" type="password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+      {mode === "signin" && <Link className="auth-forgot-link" href="/forgot-password">Forgot password?</Link>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p className="auth-success" role="status">{notice}</p>}
       <button className="button" disabled={busy}>{busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}</button>
