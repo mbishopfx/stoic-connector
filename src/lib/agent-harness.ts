@@ -14,6 +14,41 @@ export const AGENT_HARNESSES = [
 
 export type AgentHarnessId = typeof AGENT_HARNESSES[number]["id"];
 
+const HARNESS_ALIASES: Record<string, AgentHarnessId> = {
+  "claude code": "claude",
+  "claude cowork": "claude",
+  "claude desktop": "claude",
+  "claude web": "claude",
+  "gemini cli": "gemini",
+  "grok web": "grok",
+};
+
+export function resolveAgentHarnessId(harnessName: string | null | undefined, platform: Platform): AgentHarnessId {
+  const normalized = harnessName?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+  const alias = HARNESS_ALIASES[normalized];
+  if (alias) return alias;
+
+  const namedHarness = AGENT_HARNESSES.find((harness) =>
+    harness.id === normalized || harness.label.toLowerCase() === normalized,
+  );
+  if (namedHarness) return namedHarness.id;
+
+  return platform === "other" ? "other" : platform;
+}
+
+export function agentScheduleSetupLabel(harnessName: string | null | undefined, platform: Platform) {
+  switch (resolveAgentHarnessId(harnessName, platform)) {
+    case "codex": return "a Codex automation, if this surface supports one";
+    case "hermes": return "a Hermes cron job";
+    case "openclaw": return "an OpenClaw recurring automation";
+    case "claude": return "Claude Cowork Scheduled tasks or a Claude Code Routine, if available";
+    case "chatgpt": return "a ChatGPT Scheduled task only if Stoic is available in its tools";
+    case "grok": return "Grok interactively unless this account visibly offers a native schedule";
+    case "muse": return "Muse's own recurring browser task, if this account visibly offers one";
+    default: return "a native schedule only if this harness visibly supports one";
+  }
+}
+
 export function resolveAgentHarness(id: AgentHarnessId, customName?: string) {
   const choice = AGENT_HARNESSES.find((harness) => harness.id === id);
   if (!choice) throw new Error("Choose a supported harness option");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentHarnessLabel, resolveAgentHarness } from "../src/lib/agent-harness";
+import { agentHarnessLabel, agentScheduleSetupLabel, resolveAgentHarness, resolveAgentHarnessId } from "../src/lib/agent-harness";
 import { museRelayPrompt } from "../src/lib/muse-browser-guidance";
 import { agentInput } from "../src/lib/validation";
 
@@ -31,6 +31,20 @@ describe("agent harness profiles", () => {
 
   it("uses a saved harness name when displaying an agent", () => {
     expect(agentHarnessLabel({ harness_name: "Private runner", platform: "other" })).toBe("Private runner");
+  });
+
+  it("recognizes harness surface names while keeping the stored platform separate", () => {
+    expect(resolveAgentHarnessId("Claude Cowork", "other")).toBe("claude");
+    expect(resolveAgentHarnessId("Gemini CLI", "other")).toBe("gemini");
+    expect(resolveAgentHarnessId("ChatGPT", "other")).toBe("chatgpt");
+    expect(resolveAgentHarnessId("Custom runner", "other")).toBe("other");
+  });
+
+  it("describes schedule setup only when the selected harness has a conditional or native path", () => {
+    expect(agentScheduleSetupLabel("Claude", "other")).toContain("if available");
+    expect(agentScheduleSetupLabel("ChatGPT", "other")).toContain("only if Stoic is available");
+    expect(agentScheduleSetupLabel("Grok Bot", "grok")).toContain("interactively");
+    expect(agentScheduleSetupLabel("Muse", "muse")).toContain("if this account visibly offers one");
   });
 });
 

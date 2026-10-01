@@ -17,7 +17,8 @@ describe("agent-agnostic install instructions", () => {
     expect(agentInstallPrompt("Hermes", "https://stoic.example.com/api/mcp")).toContain("Create one new Hermes cron job");
     expect(agentInstallPrompt("OpenClaw", "https://stoic.example.com/api/mcp")).toContain("Create one new OpenClaw recurring automation");
     expect(agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp")).toContain("has not verified a Grok unattended scheduler");
-    expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("Do not claim an unattended schedule");
+    expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("First identify the Claude surface");
+    expect(agentInstallPrompt("ChatGPT", "https://stoic.example.com/api/mcp")).toContain("do not assume a custom MCP app is available");
   });
 
   it("tailors setup to interactive Grok, Gemini CLI, and OpenClaw credential behavior", () => {
@@ -39,6 +40,7 @@ describe("agent-agnostic install instructions", () => {
   it("keeps the Claude bearer environment reference literal and names the owner-only idea review rule", () => {
     const prompt = agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp");
     expect(prompt).toContain('Bearer ${STOIC_AGENT_KEY}');
+    expect(prompt).toContain("Claude client is not registered");
     expect(prompt).not.toContain("undefined");
     expect(stoicAgentInstructions()).toContain("Never accept, archive, or delete ideas for the owner");
   });

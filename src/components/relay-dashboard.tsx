@@ -23,7 +23,8 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Plan, type Platform } from "@/lib/config";
-import { AGENT_HARNESSES, agentHarnessLabel, type AgentHarnessId } from "@/lib/agent-harness";
+import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, type AgentHarnessId } from "@/lib/agent-harness";
+import { agentConnectionGuide } from "@/lib/agent-connection-guidance";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
 import { agentInstallPrompt, stoicAgentInstructions } from "@/lib/agent-install-guidance";
@@ -521,7 +522,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
               <AgentConnectionStep key={selected.id} agent={selected} endpoint={endpoint} busy={busy} secret={secret} issue={issue} />
               <div id="agent-schedule-setup" className="setup-step"><span className="step-number">2</span><div>
                 <h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3>
-                <p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {selected.platform === "codex" ? "a Codex automation" : selected.platform === "hermes" ? "a Hermes scheduled task" : selected.platform === "openclaw" ? "an OpenClaw automation" : "a native schedule if this harness supports one"}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p>
+                <p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {agentScheduleSetupLabel(selected.harness_name, selected.platform)}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p>
                 <div className="prompt-box">{schedulePrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</button>
                 <details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{runReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(runReportPrompt)}>Copy run-report instruction</button></details>
                 <div className="schedule-controls"><label><input type="checkbox" checked={selected.schedule_enabled} disabled={selected.platform === "grok"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: event.target.checked, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})} /> I set up a native schedule</label><label>Check cadence <select aria-label="Expected inbox cadence" value={selected.schedule_cadence_minutes} disabled={selected.platform === "grok"} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(event.target.value) }).catch(() => {})}><option value={60}>Hourly</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div>
@@ -553,47 +554,9 @@ function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {
     <div className="setup-step"><span className="step-number">2</span><div><h3>Copy the relay instructions into Muse</h3><p>The ready-to-paste prompt asks Muse to share concise project ideas three times a day and whenever you ask. Use a recurring browser task only if this Muse account visibly offers one, then verify its saved schedule and run history. Stoic cannot wake Muse or verify those runs.</p><div className="prompt-box muse-prompt-box">{prompt}</div><button className="button button-outline button-small" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</button>{copyStatus && <p className="field-help" role="status" aria-live="polite">{copyStatus}</p>}</div></div>
   </div>;
 }
-function connectionGuide(platform: Platform, endpoint: string, harnessName: string) {
-  const harness = harnessName.trim().toLowerCase();
-  if (harness === "gemini" || harness === "gemini cli") return {
-    text: "Gemini CLI supports remote HTTP MCP. Add the endpoint, then have the owner enter this profile's bearer key directly in its private user settings as an Authorization header. The documented CLI header option stores static credentials locally, so never pass the real key as a command argument or save it in a shared project file.",
-    code: `gemini mcp add --transport http stoic-connector ${shellQuote(endpoint)}\n\nAfterward, add the bearer header in the private Gemini user settings, restart Gemini CLI, then verify with gemini mcp list and a Stoic check_inbox.`,
-    docs: "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
-  };
-  if (platform === "grok") return {
-    text: "Grok supports custom MCP connectors for interactive conversations. Add this public endpoint under grok.com/connectors → New Connector → Custom. A Grok Business or Enterprise admin may need to provision it first. Stoic has not verified unattended Grok schedules.",
-    code: endpoint,
-    docs: "https://docs.x.ai/grok/connectors",
-  };
-  if (platform === "codex") return {
-    text: "Make STOIC_AGENT_KEY available to the Codex process, then run this command. Restart Codex after changing its environment. Keep the key out of prompts and shell history.",
-    code: `codex mcp add stoic-connector --url ${shellQuote(endpoint)} --bearer-token-env-var STOIC_AGENT_KEY`,
-    docs: "https://developers.openai.com/learn/docs-mcp",
-  };
-  if (platform === "hermes") return {
-    text: "Merge this entry into mcp_servers in ~/.hermes/config.yaml. Replace the placeholder with this agent's Stoic key in that private local file.",
-    code: `mcp_servers:\n stoic_connector:\n url: ${JSON.stringify(endpoint)}\n headers:\n Authorization: "Bearer <PASTE_STOIC_KEY_HERE>"`,
-    docs: "https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp",
-  };
-  if (platform === "openclaw") return {
-    text: "Make STOIC_AGENT_KEY available to OpenClaw, then merge this server into mcp.servers in its config. Keep the key in the environment, not the JSON file.",
-    code: `"stoic-connector": {\n "url": ${JSON.stringify(endpoint)},\n "transport": "streamable-http",\n "headers": { "Authorization": "Bearer \${STOIC_AGENT_KEY}" }\n}`,
-    docs: "https://docs.openclaw.ai/cli/mcp/transports",
-  };
-  return {
-    text: "This harness does not have a verified Stoic setup guide yet. If it supports remote Streamable HTTP MCP and custom bearer headers, add this server and store the generated key in its private credential settings. A successful check is the only proof that the connection works.",
-    code: `{
-  "url": ${JSON.stringify(endpoint)},
-  "transport": "streamable-http",
-  "headers": { "Authorization": "Bearer <STOIC_AGENT_KEY>" }
-}`,
-    docs: "https://modelcontextprotocol.io/specification/2025-03-26/basic/transports",
-  };
-}
-
 function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: Agent; endpoint: string; busy: boolean; secret: { agentId: string; value: string; type: "key" | "code" } | null; issue: (type: "key" | "code") => Promise<void> }) {
   const [promptCopyStatus, setPromptCopyStatus] = useState("");
-  const guide = connectionGuide(agent.platform, endpoint, agent.harness_name || agentHarnessLabel(agent));
+  const guide = agentConnectionGuide(agent.platform, endpoint, agent.harness_name || agentHarnessLabel(agent));
   const installPrompt = agentInstallPrompt(agent.harness_name || agentHarnessLabel(agent), endpoint, agent.schedule_cadence_minutes);
   const oauthCommand = agent.platform === "codex" ? `codex mcp add stoic-connector --url ${endpoint}`
     : agent.platform === "hermes" ? `hermes mcp add stoic-connector --url ${endpoint} --auth oauth`
