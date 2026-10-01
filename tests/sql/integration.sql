@@ -606,6 +606,7 @@ declare
   owner2 uuid := '10000000-0000-0000-0000-000000000002';
   v_run_id uuid;
   v_run2_id uuid;
+  v_run3_id uuid;
   v_idea_id uuid;
   v_idea2_id uuid;
   v_result jsonb;
@@ -635,6 +636,20 @@ begin
     then raise exception 'daily idea run did not save exactly three ideas'; end if;
   if jsonb_array_length((public.stoic_complete_idea_run(w1, v_run_id, v_ideas))->'ideas') <> 3
     then raise exception 'retrying idea completion duplicated or lost its ideas'; end if;
+
+  select r.run_id into v_run3_id from public.stoic_claim_due_idea_runs('2026-09-29 13:00:00+00', 20) r where r.workspace_id = w1;
+  if v_run3_id is null then raise exception 'a later workspace-local day did not claim a new idea run'; end if;
+  v_ideas := jsonb_build_array(
+    jsonb_build_object('projectId', p1, 'title', 'Create a focused checklist', 'summary', 'Turn the existing project requirements into a short review checklist.', 'whyNow', 'A checklist can make the next review more consistent.', 'nextStep', 'Draft a short checklist from the current project brief.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1')),
+    jsonb_build_object('projectId', p1, 'title', 'Capture the decision source', 'summary', 'Record where the current project decision came from for future agents.', 'whyNow', 'New agents can avoid revisiting settled questions.', 'nextStep', 'Add the source and date to the shared project notes.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1')),
+    jsonb_build_object('projectId', p1, 'title', 'Review contact provenance', 'summary', 'Check that any project contacts retain their source and context.', 'whyNow', 'Reliable provenance helps the owner assess new CRM entries.', 'nextStep', 'Review one recent contact source before taking follow-up action.', 'evidenceIds', jsonb_build_array('brief:' || p1::text || ':v1'))
+  );
+  perform public.stoic_complete_idea_run(w1, v_run3_id, v_ideas);
+  if (select count(*) from public.ideas where workspace_id = w1) <> 6
+    or (select count(*) from public.ideas where workspace_id = w1 and run_id = v_run_id) <> 3
+    or (select count(*) from public.ideas where workspace_id = w1 and run_id = v_run3_id) <> 3 then
+    raise exception 'a later daily idea run replaced or duplicated the earlier ideas';
+  end if;
   select id into v_idea_id from public.ideas where workspace_id = w1 and title = 'Clarify the first step';
   select id into v_idea2_id from public.ideas where workspace_id = w1 and title = 'Close the open question';
 
