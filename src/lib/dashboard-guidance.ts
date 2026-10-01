@@ -1,4 +1,6 @@
 import { agentHealth } from "./agent-health";
+import type { Platform } from "./config";
+import { harnessHasDocumentedScheduler } from "./agent-harness";
 
 export type DashboardGuideTab = "assistant" | "agents" | "projects" | "handoffs";
 
@@ -6,6 +8,7 @@ export type DashboardGuideAgent = {
   id: string;
   name: string;
   platform: string;
+  harness_name?: string | null;
   status: string;
   last_check_at: string | null;
   schedule_enabled: boolean;
@@ -38,8 +41,6 @@ type DashboardGuideInput = {
   bossAgentId: string | null;
   now?: number;
 };
-
-const SCHEDULABLE_PLATFORMS = new Set(["codex", "hermes", "openclaw"]);
 
 export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuidance {
   const now = input.now ?? Date.now();
@@ -92,7 +93,7 @@ export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuida
   }
 
   const overdueAgent = connected.find((agent) =>
-    SCHEDULABLE_PLATFORMS.has(agent.platform)
+    harnessHasDocumentedScheduler(agent.harness_name, agent.platform as Platform)
     && agent.schedule_enabled
     && agentHealth(agent, now).label === "Check overdue",
   );
@@ -191,7 +192,7 @@ export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuida
     return { ...base, title: "Try one small handoff", detail: "Tell Stoic what outcome you need. Review the proposed assignment, then let the worker return its result for acceptance.", buttonLabel: "Start in Stoic chat", tab: "assistant" };
   }
 
-  const needsSchedule = connected.some((agent) => SCHEDULABLE_PLATFORMS.has(agent.platform) && !agent.schedule_enabled);
+  const needsSchedule = connected.some((agent) => harnessHasDocumentedScheduler(agent.harness_name, agent.platform as Platform) && !agent.schedule_enabled);
   if (needsSchedule) {
     return { ...base, title: "Choose a calm check-in rhythm", detail: "Set a cadence in each supported agent’s own scheduler. Stoic records successful checks; the agent host decides when to run.", buttonLabel: "Review agent schedules", tab: "agents" };
   }

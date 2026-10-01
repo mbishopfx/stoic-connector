@@ -1,5 +1,5 @@
 import type { Platform } from "@/lib/config";
-import { resolveAgentHarnessId } from "@/lib/agent-harness";
+import { isGrokBotHarness, resolveAgentHarnessId } from "@/lib/agent-harness";
 
 export type AgentConnectionGuide = {
   text: string;
@@ -40,8 +40,14 @@ export function agentConnectionGuide(platform: Platform, endpoint: string, harne
     docs: "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
   };
 
+  if (harness === "grok" && isGrokBotHarness(harnessName)) return {
+    text: "Grok Bot supports remote HTTPS MCP plugins and personal scheduled routines. Add Stoic to this Bot through its plugin/setup flow, keep the profile credential in its private credential field or use registered OAuth, then verify one Stoic inbox check. Its routine belongs to the person who creates it and reports in that person's Bot conversation; it does not run for a whole team.",
+    code: endpoint,
+    docs: "https://docs.x.ai/grok-bot/skills-routines-and-automations",
+  };
+
   if (harness === "grok") return {
-    text: "Grok custom MCP connectors are available for interactive conversations. Add this endpoint at grok.com/connectors → New Connector → Custom. For Business or Enterprise workspaces, a team admin must provision the connector first. Stoic has not verified an unattended Grok schedule.",
+    text: "Grok web supports custom MCP connectors for interactive conversations. Add this endpoint at grok.com/connectors → New Connector → Custom. For Business or Enterprise workspaces, a team admin must provision the connector first. This path does not establish an unattended schedule.",
     code: endpoint,
     docs: "https://docs.x.ai/grok/connectors",
   };

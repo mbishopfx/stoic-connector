@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { AppError, adminDb } from "@/lib/supabase";
 import { type DelegationLevel, type Platform } from "@/lib/config";
 import { redactSynthesisSecrets } from "@/lib/synthesis-input";
+import { isGrokBotHarness } from "@/lib/agent-harness";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -142,8 +143,9 @@ export async function setBrief(workspaceId: string, projectId: string, brief: st
 
 export async function setSchedule(ownerId: string, agentId: string, enabled: boolean, cadenceMinutes: number) {
   const workspace = enabled ? await requireActiveWorkspace(ownerId) : await requireWorkspace(ownerId);
-  const { data: agent } = await adminDb().from("agents").select("platform").eq("workspace_id", workspace.id).eq("id", agentId).maybeSingle();
-  if (enabled && ["grok", "muse"].includes(agent?.platform || "")) throw new AppError("This platform has no verified unattended inbox check", 400);
+  const { data: agent } = await adminDb().from("agents").select("platform,harness_name").eq("workspace_id", workspace.id).eq("id", agentId).maybeSingle();
+  const grokBot = agent?.platform === "grok" && isGrokBotHarness(agent.harness_name);
+  if (enabled && (agent?.platform === "muse" || (agent?.platform === "grok" && !grokBot))) throw new AppError("This harness has no documented unattended Stoic inbox path", 400);
   const { data, error } = await adminDb().from("agents").update({ schedule_enabled: enabled, schedule_cadence_minutes: cadenceMinutes })
     .eq("workspace_id", workspace.id).eq("id", agentId).neq("status", "revoked").select("id,schedule_enabled,schedule_cadence_minutes,last_check_at").maybeSingle();
   if (error) throw error;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentHarnessLabel, agentScheduleSetupLabel, resolveAgentHarness, resolveAgentHarnessId } from "../src/lib/agent-harness";
+import { agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, resolveAgentHarness, resolveAgentHarnessId } from "../src/lib/agent-harness";
 import { museRelayPrompt } from "../src/lib/muse-browser-guidance";
 import { agentInput } from "../src/lib/validation";
 
@@ -40,10 +40,17 @@ describe("agent harness profiles", () => {
     expect(resolveAgentHarnessId("Custom runner", "other")).toBe("other");
   });
 
+  it("enables routine guidance only for Grok Bot, not the interactive Grok web harness", () => {
+    expect(harnessHasDocumentedScheduler("Grok Bot", "grok")).toBe(true);
+    expect(harnessHasDocumentedScheduler("Grok web", "grok")).toBe(false);
+    expect(harnessHasDocumentedScheduler(null, "grok")).toBe(false);
+  });
+
   it("describes schedule setup only when the selected harness has a conditional or native path", () => {
     expect(agentScheduleSetupLabel("Claude", "other")).toContain("if available");
     expect(agentScheduleSetupLabel("ChatGPT", "other")).toContain("only if Stoic is available");
-    expect(agentScheduleSetupLabel("Grok Bot", "grok")).toContain("interactively");
+    expect(agentScheduleSetupLabel("Grok Bot", "grok")).toContain("routine");
+    expect(agentScheduleSetupLabel("Grok web", "grok")).toContain("interactively");
     expect(agentScheduleSetupLabel("Muse", "muse")).toContain("if this account visibly offers one");
   });
 });

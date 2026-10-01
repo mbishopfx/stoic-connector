@@ -16,16 +16,22 @@ describe("agent-agnostic install instructions", () => {
   it("gives verified schedulers a setup path and keeps unverified harnesses interactive", () => {
     expect(agentInstallPrompt("Hermes", "https://stoic.example.com/api/mcp")).toContain("Create one new Hermes cron job");
     expect(agentInstallPrompt("OpenClaw", "https://stoic.example.com/api/mcp")).toContain("Create one new OpenClaw recurring automation");
-    expect(agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp")).toContain("has not verified a Grok unattended scheduler");
+    expect(agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp")).toContain("Create one new Grok Bot routine");
+    expect(agentInstallPrompt("Grok web", "https://stoic.example.com/api/mcp")).toContain("Grok web custom MCP is interactive");
     expect(agentInstallPrompt("Claude", "https://stoic.example.com/api/mcp")).toContain("First identify the Claude surface");
     expect(agentInstallPrompt("ChatGPT", "https://stoic.example.com/api/mcp")).toContain("do not assume a custom MCP app is available");
   });
 
-  it("tailors setup to interactive Grok, Gemini CLI, and OpenClaw credential behavior", () => {
-    const grok = agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp");
+  it("tailors setup to Grok web, Gemini CLI, and OpenClaw credential behavior", () => {
+    const grok = agentInstallPrompt("Grok web", "https://stoic.example.com/api/mcp");
     expect(grok).toContain("New Connector → Custom");
     expect(grok).toContain("admin may first need to provision");
-    expect(grok).toContain("has not verified an unattended Grok schedule");
+    expect(grok).toContain("Grok web supports custom MCP connectors for interactive conversations");
+
+    const grokBot = agentInstallPrompt("Grok Bot", "https://stoic.example.com/api/mcp");
+    expect(grokBot).toContain("Remote HTTPS option");
+    expect(grokBot).toContain("Routines belong to the person");
+    expect(grokBot).toContain("not team-wide schedules");
 
     const gemini = agentInstallPrompt("Gemini CLI", "https://stoic.example.com/api/mcp");
     expect(gemini).toContain("remote HTTP MCP support");

@@ -36,14 +36,24 @@ export function resolveAgentHarnessId(harnessName: string | null | undefined, pl
   return platform === "other" ? "other" : platform;
 }
 
+export function isGrokBotHarness(harnessName: string | null | undefined) {
+  return harnessName?.trim().toLowerCase() === "grok bot";
+}
+
+export function harnessHasDocumentedScheduler(harnessName: string | null | undefined, platform: Platform) {
+  if (["codex", "hermes", "openclaw"].includes(platform)) return true;
+  return platform === "grok" && isGrokBotHarness(harnessName);
+}
+
 export function agentScheduleSetupLabel(harnessName: string | null | undefined, platform: Platform) {
+  if (platform === "grok" && !isGrokBotHarness(harnessName)) return "Grok web interactively unless this account visibly offers a native schedule";
   switch (resolveAgentHarnessId(harnessName, platform)) {
     case "codex": return "a Codex automation, if this surface supports one";
     case "hermes": return "a Hermes cron job";
     case "openclaw": return "an OpenClaw recurring automation";
     case "claude": return "Claude Cowork Scheduled tasks or a Claude Code Routine, if available";
     case "chatgpt": return "a ChatGPT Scheduled task only if Stoic is available in its tools";
-    case "grok": return "Grok interactively unless this account visibly offers a native schedule";
+    case "grok": return "a Grok Bot routine in this account";
     case "muse": return "Muse's own recurring browser task, if this account visibly offers one";
     default: return "a native schedule only if this harness visibly supports one";
   }

@@ -1,4 +1,5 @@
 import type { Platform } from "@/lib/config";
+import { isGrokBotHarness } from "@/lib/agent-harness";
 
 export type AgentHealthTone = "good" | "warning" | "neutral" | "muted";
 
@@ -11,6 +12,7 @@ export type AgentCheckStatus = {
 
 export type AgentConnectionRecord = AgentCheckStatus & {
   platform: Platform;
+  harness_name?: string | null;
   oauth_client_id: string | null;
   access_notes?: string | null;
 };
@@ -43,14 +45,16 @@ const hostPosture: Record<Platform, { posture: HostPosture; label: string; note:
   codex: { posture: "pilot_guided", label: "Codex · guided pilot path", note: "Host setup is documented; a real inbox check still proves this installation." },
   hermes: { posture: "pilot_guided", label: "Hermes · guided pilot path", note: "Host setup is documented; a real inbox check still proves this installation." },
   openclaw: { posture: "pilot_guided", label: "OpenClaw · guided pilot path", note: "Host setup is documented; a real inbox check still proves this installation." },
-  grok: { posture: "interactive_only", label: "Grok web · interactive only", note: "No verified unattended inbox path is recorded for this platform." },
+  grok: { posture: "interactive_only", label: "Grok web · interactive only", note: "No unattended inbox path is recorded for this harness." },
   muse: { posture: "preview", label: "Consumer Muse · browser relay", note: "A supervised browser relay is configured; per-account schedule behavior still needs verification." },
   other: { posture: "generic", label: "Another MCP client · generic", note: "Use the client's documented remote MCP support and verify a real check." },
 };
 
 export function agentConnectionSummary(agent: AgentConnectionRecord, now = Date.now()): AgentConnectionSummary {
   const health = agentHealth(agent, now);
-  const host = hostPosture[agent.platform];
+  const host = agent.platform === "grok" && isGrokBotHarness(agent.harness_name)
+    ? { posture: "pilot_guided" as const, label: "Grok Bot · guided pilot path", note: "Remote HTTPS MCP and personal routines are documented; verify this account with a real Stoic inbox check." }
+    : hostPosture[agent.platform];
   const auth = agent.status === "revoked"
     ? { label: "Revoked", evidence: "server_record" as const, tone: "muted" as const }
     : agent.status !== "connected"

@@ -43,6 +43,14 @@ describe("scheduled check health", () => {
     expect(summary.proof.detail).toContain("does not prove the host schedule");
   });
 
+  it("distinguishes documented Grok Bot routines from Grok web MCP", () => {
+    const grokBot = agentConnectionSummary({ ...connectedRecord, platform: "grok", harness_name: "Grok Bot", oauth_client_id: null }, now);
+    const grokWeb = agentConnectionSummary({ ...connectedRecord, platform: "grok", harness_name: "Grok web", oauth_client_id: null }, now);
+
+    expect(grokBot.host).toMatchObject({ posture: "pilot_guided", label: "Grok Bot · guided pilot path" });
+    expect(grokWeb.host).toMatchObject({ posture: "interactive_only", label: "Grok web · interactive only" });
+  });
+
   it("keeps preview platforms out of unattended-check claims", () => {
     const summary = agentConnectionSummary({ ...connectedRecord, platform: "muse", last_check_at: null }, now);
     expect(summary.host).toMatchObject({ posture: "preview" });

@@ -141,4 +141,14 @@ describe("dashboard guidance", () => {
     expect(guidance.agentId).toBeUndefined();
     expect(guidance.title).toBe("Try one small handoff");
   });
+
+  it("includes a configured Grok Bot routine in the schedule setup guidance", () => {
+    const guidance = getDashboardGuidance({
+      ...readyTeam,
+      agents: [boss, { ...worker, platform: "grok", harness_name: "Grok Bot", schedule_enabled: false }],
+      handoffs: [{ assigned_agent_id: worker.id, status: "accepted", created_at: "2026-09-28T09:00:00Z" }],
+    });
+
+    expect(guidance).toMatchObject({ title: "Choose a calm check-in rhythm", tab: "agents" });
+  });
 });

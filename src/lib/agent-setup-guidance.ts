@@ -1,4 +1,5 @@
 import type { Platform } from "@/lib/config";
+import { harnessHasDocumentedScheduler, isGrokBotHarness } from "@/lib/agent-harness";
 
 export function hermesInstallPrompt(endpoint: string) {
   const keyReference = "${STOIC_AGENT_KEY}";
@@ -35,6 +36,7 @@ type AgentSetupInput = {
   agent: {
     id: string;
     platform: Platform;
+    harness_name?: string | null;
     status: string;
     last_check_at: string | null;
     schedule_enabled: boolean;
@@ -46,8 +48,6 @@ type AgentSetupInput = {
     status: string;
   }[];
 };
-
-const NATIVE_SCHEDULE_PLATFORMS = new Set<Platform>(["codex", "hermes", "openclaw"]);
 
 export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSetupInput) {
   const connected = agent.status === "connected";
@@ -77,13 +77,15 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
         ? "Stoic received a successful check from this installation."
         : "Ask this installation to call get_team_context and check_inbox once. Stoic marks this complete only after the server receives the call.",
     },
-    ...(NATIVE_SCHEDULE_PLATFORMS.has(agent.platform) ? [{
+    ...(harnessHasDocumentedScheduler(agent.harness_name, agent.platform) ? [{
       id: "schedule" as const,
       label: "Set its native schedule",
       complete: agent.schedule_enabled,
       detail: agent.schedule_enabled
         ? "You marked the schedule as configured. This is your declaration; successful inbox checks are the evidence that it ran."
-        : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
+        : isGrokBotHarness(agent.harness_name)
+          ? "After the first check, create one personal Grok Bot routine that calls get_team_context and check_inbox. It runs as you and reports in your Bot conversation, not across a whole team."
+          : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
     }] : []),
     {
       id: "handoff",

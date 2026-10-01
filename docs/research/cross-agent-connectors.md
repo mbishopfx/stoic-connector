@@ -184,7 +184,7 @@ Stoic implication: make a handoff packet a first-class artifact/result format. S
 
 - Add a protocol-neutral task service behind MCP/A2A/vendor adapters.
 - Support A2A only after an exact provider contract is verified.
-- Treat Grok web and consumer Muse as unknown/unverified until official documentation and a safe authenticated probe establish the real surface.
+- Treat Grok web, Grok Bot, and consumer Muse as distinct surfaces. Their documented transports or routines still require a safe authenticated Stoic probe before claiming end-to-end support.
 - Keep native schedules as the reliable baseline; add push/wake only where the provider's security and reliability model is explicit.
 
 ## Acceptance checklist for the sprint
@@ -202,7 +202,7 @@ Stoic implication: make a handoff packet a first-class artifact/result format. S
 
 - Provider names do not prove product-surface support. Developer MCP, consumer MCP Apps, hosted API connectors, and native agent schedules are separate surfaces.
 - A public docs page is not proof that a user's account, plan, region, or host version supports the feature.
-- Do not market Grok web, consumer Muse, push/wake delivery, or A2A interoperability as supported until a real contract and safe probe pass.
+- Do not market a tested Stoic integration for Grok web, Grok Bot, or consumer Muse until a real account check passes. Do not claim push/wake delivery or A2A interoperability without an exact provider contract and safe probe.
 - Do not merge full chat histories, private credentials, tenant data, or raw logs merely to make agents appear synchronized.
 - Treat all agent output, board messages, web content, artifacts, and callback fields as untrusted data; policy and approvals remain server-owned.
 
@@ -242,7 +242,7 @@ The dashboard renders the result before the setup steps. This is intentionally r
 
 - No authenticated Codex, Hermes, OpenClaw, or Claude host run was executed in this cron pass.
 - No OpenClaw `probe`, Codex `mcp list`, Anthropic Messages API call, MCP Apps host render, A2A Agent Card fetch, or live end-to-end handoff was performed.
-- Grok web and consumer Muse remain unverified/preview.
+- No Grok web, Grok Bot, or consumer Muse account was authenticated against Stoic in this pass.
 - No deployment, live billing, production SMTP, production Supabase mutation, connector submission, or external communication was attempted.
 - Slack delivery is scheduler-owned; this run did not invoke a send tool.
 
@@ -290,8 +290,9 @@ Evidence for this implementation slice: `npm test` passed 36 tests across 8 file
 
 The older Grok/Muse statements above describe the initial 2026-09-27 evidence pass. Current primary-source checks refine the supported setup boundary:
 
-- [Grok Connectors](https://docs.x.ai/grok/connectors) documents custom MCP connectors at `grok.com/connectors` for interactive conversations. [Grok connector management](https://docs.x.ai/grok/connector-management) says Business and Enterprise admins may need to provision a connector for their organization. Stoic has no verified Grok unattended inbox schedule or authenticated end-to-end account test, so the app now labels Grok as interactive-first.
+- [Grok Connectors](https://docs.x.ai/grok/connectors) documents custom MCP connectors at `grok.com/connectors` for interactive Grok web conversations. [Grok connector management](https://docs.x.ai/grok/connector-management) says Business and Enterprise admins may need to provision a connector for their organization. This surface remains interactive-first in Stoic.
+- Grok Bot is a separate harness. [Team Bots](https://docs.x.ai/grok-bot/team-bots) documents custom Remote HTTPS MCP plugins and explains whether credentials belong to the Bot or each user. [Skills, routines, and automations](https://docs.x.ai/grok-bot/skills-routines-and-automations) documents scheduled routines; [Team Bots](https://docs.x.ai/grok-bot/team-bots) clarifies each routine belongs to the person who created it and reports in that person's Bot conversation rather than running team-wide. Stoic now offers Grok Bot-specific plugin and routine instructions, while labeling the integration a guided pilot until an actual account completes an inbox check and scheduled run.
 - [Gemini CLI MCP server docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md) document remote Streamable HTTP, custom HTTP headers, and `gemini mcp add`. The documented header option is a static value in local settings; Stoic's setup prompt tells the owner to enter the bearer key directly into a private user configuration and avoids putting it in shell history or project-shared settings. No unattended Gemini schedule is claimed.
 - [Meta's Muse announcement](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/) describes a dedicated browser environment and secure credential storage. It does not establish a generic Stoic MCP connector or verify that a recurring task in a specific Muse account can operate Stoic's browser workflow. Muse therefore remains a separately supervised browser relay; the prompt can suggest a three-times-daily routine only when the user visibly configures a recurring task in that account.
 
-These findings justify provider-specific connection prompts while preserving one agent-neutral Stoic workspace model. A documented transport is not the same as a successful Stoic login, an inbox check, or a verified recurring run.
+These findings justify provider-specific connection prompts while preserving one agent-neutral Stoic workspace model. A documented transport or routine is not the same as a successful Stoic login, an inbox check, or a verified recurring run.

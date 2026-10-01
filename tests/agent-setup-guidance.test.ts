@@ -63,6 +63,17 @@ describe("per-agent setup guidance", () => {
     expect(progress.steps.map((step) => step.id)).toEqual(["connection", "inbox_check", "handoff"]);
   });
 
+  it("adds a declared schedule step for a documented Grok Bot routine", () => {
+    const progress = getAgentSetupGuidance({
+      agent: { ...worker, platform: "grok", harness_name: "Grok Bot", schedule_enabled: false },
+      bossAgentId: "boss",
+      handoffs: [],
+    });
+
+    expect(progress.steps.map((step) => step.id)).toEqual(["connection", "inbox_check", "schedule", "handoff"]);
+    expect(progress.steps.find((step) => step.id === "schedule")?.detail).toContain("personal Grok Bot routine");
+  });
+
   it("describes Muse as a stored-credential browser relay rather than an MCP pairing", () => {
     const progress = getAgentSetupGuidance({
       agent: { ...worker, platform: "muse", status: "pending", last_check_at: null },
