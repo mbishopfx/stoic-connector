@@ -19,7 +19,7 @@
 .routing-panel{margin-top:22px}.routing-list{display:grid;gap:14px}.routing-list label{display:flex;gap:16px;align-items:center;justify-content:space-between}.routing-list select{min-width:220px}
 .schedule-guide{margin-top:22px}.schedule-guide .copy-box code{white-space:pre-wrap;overflow-wrap:anywhere}
 
-.brand-mark{overflow:hidden;background:transparent!important;padding:0}.brand-mark svg{display:block;width:100%;height:100%}.center-node{overflow:hidden;background:transparent;box-shadow:none;padding:0}.center-node svg{width:100%;height:100%;display:block}
+.brand-mark{overflow:hidden;background:transparent!important;padding:0}.brand-mark img{display:block;width:100%;height:100%;object-fit:cover}.center-node{overflow:hidden;background:transparent;box-shadow:none;padding:0}.center-node img{width:100%;height:100%;display:block;object-fit:cover;border-radius:15px}
 .rich-text{display:grid;gap:8px;min-width:0;color:inherit;line-height:1.65;overflow-wrap:anywhere}.rich-text p,.rich-text h2,.rich-text h3,.rich-text h4,.rich-text blockquote,.rich-text pre{margin:0}.rich-text p{white-space:pre-wrap}.rich-text strong{font-weight:650;color:inherit}.rich-text em{font-style:italic}.rich-text s{opacity:.72}.rich-text a{color:var(--accent,#287b6a);text-decoration:underline;text-underline-offset:2px}.rich-text code{padding:.12em .34em;border:1px solid color-mix(in srgb,currentColor 13%,transparent);border-radius:4px;background:color-mix(in srgb,currentColor 5%,transparent);font: .92em ui-monospace,SFMono-Regular,Menlo,monospace}.rich-text pre{max-width:100%;overflow:auto;padding:10px 12px;border:1px solid var(--line,#e3e5df);border-radius:8px;background:var(--soft,#f1f1ec);white-space:pre-wrap}.rich-text pre code{padding:0;border:0;background:transparent}.rich-text ul,.rich-text ol{margin:0;padding-left:1.45em;display:grid;gap:4px}.rich-text blockquote{padding:2px 0 2px 12px;border-left:2px solid var(--accent,#719285);color:var(--muted,#747a75)}.rich-text hr{width:100%;border:0;border-top:1px solid var(--line,#e3e5df)}.chat-turn-bubble .rich-text{gap:8px}.chat-turn-bubble .rich-text p,.intake-stoic-message .rich-text p{font-size:12px;line-height:1.7}
 /* Stoic Connector landing page */
 .stoic-site{--stoic-black:#090909;--stoic-paper:#f3f2ee;--stoic-white:#fff;--stoic-muted:#8e8e8e;--stoic-display:"BubbledotICG-FinePos","Geist Pixel Circle",ui-monospace,monospace;background:var(--stoic-paper);color:#151515;font-family:Inter,"Segoe UI",system-ui,sans-serif;overflow:clip}
@@ -138,7 +138,7 @@
 @keyframes stoic-headline{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
 /* Keep the app surfaces aligned with the Stoic wordmark. */
-.brand-mark{color:#fff;background:#171717;border-radius:50%;box-shadow:none}
+.brand-mark{color:#fff;background:#171717;border-radius:9px;box-shadow:none}
 .button{background:#171717;border-color:#171717}
 .button:hover{background:#303030}
 .button-outline{background:transparent;border-color:#c9c8c2;color:#171717}

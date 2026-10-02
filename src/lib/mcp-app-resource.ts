@@ -10,7 +10,7 @@ export function stoicMcpAppHtml(origin: string) {
     *{box-sizing:border-box}body{margin:0;background:transparent;color:var(--text)}button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:inherit}
     .app-shell{display:grid;grid-template-columns:68px minmax(0,1fr);width:100%;height:min(900px,100dvh);min-height:min(520px,100dvh);overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--text)}
     .sidebar{display:flex;flex-direction:column;align-items:center;min-height:0;background:var(--bg);border-right:1px solid var(--line)}
-    .brand{display:grid;place-items:center;width:100%;height:62px;flex:none;color:var(--text);font-size:18px;font-weight:600;letter-spacing:-.08em;text-decoration:none}.brand-mark{display:grid;place-items:center;width:31px;height:31px;overflow:hidden;border-radius:9px;background:transparent}.brand-mark svg{display:block;width:100%;height:100%}
+    .brand{display:grid;place-items:center;width:100%;height:62px;flex:none;color:var(--text);font-size:18px;font-weight:600;letter-spacing:-.08em;text-decoration:none}.brand-mark{display:grid;place-items:center;width:31px;height:31px;overflow:hidden;border-radius:9px;background:transparent}.brand-mark img{display:block;width:100%;height:100%;object-fit:cover}
     .workspace-mark{display:grid;place-items:center;width:36px;height:36px;flex:none;margin:8px 0 13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--text);font-size:12px;font-weight:600}
     .nav-sections{display:flex;flex:1;flex-direction:column;align-items:center;width:100%;min-height:0;overflow:auto;padding:0 8px 8px;scrollbar-width:none}.nav-sections::-webkit-scrollbar{display:none}.nav-section{display:grid;justify-items:center;gap:3px;width:100%}.nav-section+.nav-section{margin-top:8px;padding-top:8px;border-top:1px solid color-mix(in srgb,var(--muted) 18%,transparent)}.nav-link{position:relative;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);transition:background .15s,color .15s}.nav-link:hover{background:var(--soft);color:var(--text)}.nav-link[aria-current="page"]{background:var(--accent-soft);color:#263f4a}.nav-link svg{width:20px;height:20px;stroke-width:1.7}.nav-count{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:2px 4px;border:1px solid var(--bg);border-radius:999px;background:#e5ece8;color:#383e39;font-size:9px;line-height:1;text-align:center}.nav-count.amber{background:var(--amber-soft);color:var(--amber)}
     .sidebar-bottom{display:grid;justify-items:center;gap:10px;width:100%;padding:11px 0;border-top:1px solid var(--line)}.rail-user{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);font-size:10px;font-weight:600}
@@ -90,7 +90,7 @@ export function stoicMcpAppHtml(origin: string) {
 <body>
   <div class="app-shell" id="stoic-app" aria-label="Stoic Connector workspace">
     <aside class="sidebar" aria-label="Stoic navigation">
-      <a class="brand" href="#" aria-label="Stoic Connector home" title="Stoic Connector"><span class="brand-mark"><svg viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#090909"/><circle cx="256" cy="256" r="156" fill="#fff"/><circle cx="256" cy="256" r="76" fill="none" stroke="#111" stroke-width="18"/><circle cx="256" cy="256" r="15" fill="#111"/></svg></span></a>
+      <a class="brand" href="#" aria-label="Stoic Connector home" title="Stoic Connector"><span class="brand-mark"><img src="${origin}/stoic-connector-directory-icon.png" alt="" aria-hidden="true"></span></a>
       <span class="workspace-mark" id="workspace-mark" aria-label="Workspace">S</span>
       <nav class="nav-sections" id="nav-sections" aria-label="Workspace sections"></nav>
       <div class="sidebar-bottom"><span class="rail-user" id="rail-user" title="Connected agent">A</span></div>
@@ -111,7 +111,7 @@ export function stoicMcpAppHtml(origin: string) {
       <main class="page-root" id="page-root" aria-live="polite"></main>
     </section>
   </div>
-  <script type="module" src="${origin}/stoic-mcp-widget.js?v=20261001-ux2"></script>
+  <script type="module" src="${origin}/stoic-mcp-widget.js?v=20261001-brand1"></script>
 </body>
 </html>`;
 }
