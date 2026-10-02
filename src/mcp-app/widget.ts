@@ -1374,18 +1374,29 @@ byId("refresh-button").addEventListener("click", () => {
 });
 
 const themeButton = byId("theme-button") as HTMLButtonElement;
-function applyTheme(theme: "light" | "dark") {
+function applyTheme(theme: "light" | "dark", persist = true) {
   byId("stoic-app").setAttribute("data-theme", theme);
   themeButton.replaceChildren(svgIcon(theme === "light" ? "moon" : "sun"));
   themeButton.setAttribute("aria-label", theme === "light" ? "Switch to dark theme" : "Switch to light theme");
   themeButton.title = theme === "light" ? "Switch to dark theme" : "Switch to light theme";
-  try { localStorage.setItem("stoic-widget-theme", theme); } catch { /* Storage may be disabled in an embedded app. */ }
+  if (persist) {
+    try {
+      localStorage.setItem("stoic-theme", theme);
+      localStorage.setItem("stoic-widget-theme", theme);
+    } catch { /* Storage may be disabled in an embedded app. */ }
+  }
 }
 themeButton.addEventListener("click", () => {
   const next = byId("stoic-app").getAttribute("data-theme") === "dark" ? "light" : "dark";
   applyTheme(next);
 });
-try { applyTheme(localStorage.getItem("stoic-widget-theme") === "dark" ? "dark" : "light"); } catch { applyTheme("light"); }
+window.addEventListener("storage", (event) => {
+  if (event.key === "stoic-theme" && (event.newValue === "light" || event.newValue === "dark")) applyTheme(event.newValue, false);
+});
+try {
+  const savedTheme = localStorage.getItem("stoic-theme") || localStorage.getItem("stoic-widget-theme");
+  applyTheme(savedTheme === "dark" ? "dark" : "light", savedTheme !== null);
+} catch { applyTheme("light", false); }
 
 async function start() {
   try {

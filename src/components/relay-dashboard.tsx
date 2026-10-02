@@ -141,6 +141,13 @@ export function StoicDashboard({ email }: { email: string }) {
     };
   }, [tab, reload]);
   useEffect(() => { const saved = window.localStorage.getItem("stoic-theme"); const frame = window.requestAnimationFrame(() => { if (saved === "dark" || saved === "light") setTheme(saved); }); return () => window.cancelAnimationFrame(frame); }, []);
+  useEffect(() => {
+    const syncTheme = (event: StorageEvent) => {
+      if (event.key === "stoic-theme" && (event.newValue === "dark" || event.newValue === "light")) setTheme(event.newValue);
+    };
+    window.addEventListener("storage", syncTheme);
+    return () => window.removeEventListener("storage", syncTheme);
+  }, []);
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
 
   function changeTheme() {

@@ -824,3 +824,10 @@
 .handoff-run-summary strong{color:var(--dash-text);font-weight:600}
 .handoff-file-list{display:grid;gap:6px;margin:9px 0 0;padding-left:18px;color:var(--dash-text);font-size:11px;overflow-wrap:anywhere}
 @media(max-width:760px){.history-filter-row{grid-template-columns:1fr}.handoff-run-summary{gap:7px 10px}}
+
+/* Keep project routing rows inset and readable inside both the dashboard and narrow embedded views. */
+.dashboard-shell .routing-list{display:grid;gap:10px;min-width:0;padding:0 22px 22px}
+.dashboard-shell .routing-list label{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,250px);align-items:center;gap:16px;min-width:0;padding:12px 14px;border:1px solid var(--dash-line);border-radius:9px;background:var(--dash-bg)}
+.dashboard-shell .routing-list label>span{min-width:0;color:var(--dash-text);line-height:1.45;overflow-wrap:anywhere}
+.dashboard-shell .routing-list select{width:100%;min-width:0;max-width:100%;padding:9px 10px;border:1px solid var(--dash-line);border-radius:8px;background:var(--dash-panel);color:var(--dash-text)}
+@media(max-width:760px){.dashboard-shell .routing-list{padding:0 14px 14px}.dashboard-shell .routing-list label{grid-template-columns:minmax(0,1fr);gap:8px;padding:11px 12px}.dashboard-shell .routing-list select{width:100%}}
