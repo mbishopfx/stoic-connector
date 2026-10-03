@@ -1,6 +1,7 @@
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
 import { safeArtifactMime } from "../lib/artifact-mime";
 import { parseRichInline, parseRichText, plainRichText } from "../lib/rich-text";
+import { promptLibrary, renderStoicPrompt } from "../lib/prompt-library";
 
 type Agent = {
   id: string;
@@ -57,7 +58,9 @@ type IntakeProposal = {
   handoffId?: string;
 };
 type ChatTurn = { id: string; role: "user" | "stoic"; body: string; attachments?: ChatAttachment[]; proposal?: IntakeProposal; thinking?: boolean };
-type NavTab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "projects" | "agents" | "knowledge" | "files" | "billing";
+type ContactSource = { id: string; source_label: string; notes: string; artifact_id: string | null; created_at: string };
+type Contact = { id: string; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: string; sources: ContactSource[] };
+type NavTab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "projects" | "agents" | "prompts" | "knowledge" | "files" | "billing";
 
 const app = new App({ name: "Stoic Connector", version: "0.1.0" });
 const SITE_URL = "https://stoic.bishoptech.dev/dashboard";
@@ -74,6 +77,8 @@ const iconPaths: Record<string, string> = {
   overview: "M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25a2.25 2.25 0 0 1-2.25 2.25h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 15.75V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z",
   handoffs: "M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192-.37-.03-.745-.057-1.123-.08m-5.801 0a2.25 2.25 0 0 1 2.15-1.586H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z",
   board: "M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155",
+  contacts: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-11.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Zm-4.5 7.5a4.5 4.5 0 0 1 9 0",
+  prompts: "M8.25 4.5h10.5A2.25 2.25 0 0 1 21 6.75v12A2.25 2.25 0 0 1 18.75 21H8.25A2.25 2.25 0 0 1 6 18.75v-12A2.25 2.25 0 0 1 8.25 4.5ZM6 7.5H4.5A1.5 1.5 0 0 0 3 9v9a1.5 1.5 0 0 0 1.5 1.5H6M9 10.5h9m-9 3h9m-9 3h6",
   projects: "M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z",
   agents: "M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z",
   knowledge: "M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25",
@@ -91,8 +96,8 @@ const iconPaths: Record<string, string> = {
 };
 const navSections: { label: string; items: { id: NavTab; label: string; icon: string }[] }[] = [
   { label: "START", items: [{ id: "assistant", label: "Stoic chat", icon: "assistant" }, { id: "ideas", label: "Ideas", icon: "ideas" }] },
-  { label: "WORK", items: [{ id: "overview", label: "Overview", icon: "overview" }, { id: "handoffs", label: "Handoffs", icon: "handoffs" }, { id: "board", label: "Message board", icon: "board" }, { id: "projects", label: "Projects", icon: "projects" }] },
-  { label: "TEAM", items: [{ id: "agents", label: "Agents", icon: "agents" }, { id: "knowledge", label: "Knowledge", icon: "knowledge" }, { id: "files", label: "Artifacts", icon: "files" }] },
+  { label: "WORK", items: [{ id: "overview", label: "Overview", icon: "overview" }, { id: "handoffs", label: "Handoffs", icon: "handoffs" }, { id: "board", label: "Message board", icon: "board" }, { id: "contacts", label: "Contacts", icon: "contacts" }, { id: "projects", label: "Projects", icon: "projects" }] },
+  { label: "TEAM", items: [{ id: "agents", label: "Agents", icon: "agents" }, { id: "prompts", label: "Prompt library", icon: "prompts" }, { id: "knowledge", label: "Knowledge", icon: "knowledge" }, { id: "files", label: "Artifacts", icon: "files" }] },
   { label: "ACCOUNT", items: [{ id: "billing", label: "Plan & billing", icon: "billing" }] },
 ];
 const navItems = navSections.flatMap((section) => section.items);
@@ -108,6 +113,8 @@ const state: {
   selectedNote: string | null;
   selectedNoteBody: string;
   searchTerm: string;
+  contactQuery: string;
+  contactOffset: number;
   chatTurns: ChatTurn[];
   chatMessage: string;
   chatFiles: File[];
@@ -118,7 +125,7 @@ const state: {
   recordingChunks: BlobPart[];
 } = {
   inbox: [], handoffs: [], messages: [], checks: [], projectId: "", tab: "assistant",
-  replyTo: null, selectedNote: null, selectedNoteBody: "", searchTerm: "",
+  replyTo: null, selectedNote: null, selectedNoteBody: "", searchTerm: "", contactQuery: "", contactOffset: 0,
   chatTurns: [], chatMessage: "", chatFiles: [], chatBusy: false, voiceReply: false,
   recorder: null, recordingStream: null, recordingChunks: [],
 };
@@ -1107,6 +1114,179 @@ async function renderIdeas() {
   page.append(surface.surface);
 }
 
+function contactField(label: string, type = "text", maxLength = 180) {
+  const wrapper = el("label", "field");
+  const input = el("input") as HTMLInputElement;
+  input.type = type;
+  input.maxLength = maxLength;
+  wrapper.append(el("span", "field-label", label), input);
+  return { wrapper, input };
+}
+
+async function renderContacts() {
+  const page = makePage("PRIVATE WORKSPACE", "Contacts", "Keep confirmed leads and relationship context in one private source trail. Stoic never sends outreach.");
+  const search = makeSurface("Find a person", "Search the workspace before creating a contact or linking another interaction.");
+  const searchForm = el("form", "form");
+  const query = contactField("Name, email, phone, or company", "search", 120);
+  query.input.value = state.contactQuery;
+  const searchActions = el("div", "row-actions");
+  const submitSearch = makeButton("Search contacts", "button primary");
+  submitSearch.type = "submit";
+  searchActions.append(submitSearch, makeButton("Clear", "button text", async () => {
+    state.contactQuery = "";
+    state.contactOffset = 0;
+    await renderCurrentTab();
+  }));
+  searchForm.append(query.wrapper, searchActions);
+  searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.contactQuery = query.input.value.trim();
+    state.contactOffset = 0;
+    void renderCurrentTab();
+  });
+  search.body.append(searchForm);
+  page.append(search.surface);
+
+  const result = await callTool<{ contacts: Contact[]; total: number; nextOffset: number | null }>("search_contacts", { search: state.contactQuery, offset: state.contactOffset });
+  const found = makeSurface("Your contacts", `${result.total} workspace contacts · ${state.contactQuery ? "filtered results" : "recently updated"}`);
+  if (!result.contacts?.length) found.body.append(emptyState("No matching contacts", "Confirm the person's identity before creating a new record."));
+  else {
+    const list = el("div", "list");
+    for (const contact of result.contacts) {
+      const card = el("article", "row-card");
+      const top = el("div", "row-top");
+      top.append(el("strong", "", contact.full_name), statusTag(contact.status));
+      card.append(top, el("div", "row-meta", [contact.email, contact.phone, contact.company, contact.job_title].filter(Boolean).join(" · ") || "Confirmed contact"));
+      const sources = el("details", "details");
+      sources.append(el("summary", "", "Recent sources · " + (contact.sources?.length || 0)));
+      if (contact.sources?.length) {
+        const history = el("div", "timeline");
+        for (const source of contact.sources) {
+          const entry = el("div", "timeline-item");
+          entry.append(el("strong", "", source.source_label), el("small", "", dateValue(source.created_at)));
+          if (source.notes) entry.append(el("p", "", source.notes));
+          if (source.artifact_id) entry.append(makeButton("Open related artifact", "button text", async () => {
+            const file = await callTool<{ downloadUrl: string }>("get_artifact", { artifactId: source.artifact_id });
+            await app.openLink({ url: file.downloadUrl });
+          }));
+          history.append(entry);
+        }
+        sources.append(history);
+      }
+      sources.append(el("p", "field-help", "The signed-in owner can page through the complete interaction history in the web dashboard."));
+      card.append(sources);
+
+      const link = el("details", "details");
+      link.append(el("summary", "", "Link a verified interaction"));
+      const form = el("form", "form");
+      const label = contactField("Source and date");
+      label.input.required = true;
+      label.input.minLength = 2;
+      const url = contactField("Safe source URL (optional)", "url", 2000);
+      const noteField = el("label", "field");
+      const notes = el("textarea") as HTMLTextAreaElement;
+      notes.maxLength = 5000;
+      notes.placeholder = "Short factual note, not a raw message or transcript";
+      noteField.append(el("span", "field-label", "What happened"), notes);
+      const email = !contact.email ? contactField("Confirmed email (optional)", "email", 254) : null;
+      const phone = !contact.phone ? contactField("Confirmed phone (optional)", "tel", 60) : null;
+      const company = !contact.company ? contactField("Confirmed company (optional)", "text", 160) : null;
+      const send = makeButton("Link interaction", "button primary");
+      send.type = "submit";
+      form.append(label.wrapper, url.wrapper, noteField);
+      for (const field of [email, phone, company]) if (field) form.append(field.wrapper);
+      form.append(send);
+      let attempt: { fingerprint: string; key: string } | null = null;
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const payload = { contactId: contact.id, sourceLabel: label.input.value.trim(), sourceUrl: url.input.value.trim() || null,
+          notes: notes.value.trim(), email: email?.input.value.trim() || null, phone: phone?.input.value.trim() || null,
+          company: company?.input.value.trim() || null };
+        const fingerprint = JSON.stringify(payload);
+        if (attempt?.fingerprint !== fingerprint) attempt = { fingerprint, key: crypto.randomUUID() };
+        send.disabled = true;
+        void callTool<{ alreadyLinked: boolean }>("link_contact", { ...payload, idempotencyKey: attempt.key })
+          .then(async (saved) => { await renderCurrentTab(); showSuccess(saved.alreadyLinked ? "This interaction was already recorded." : "Interaction linked to this contact."); })
+          .catch((error: unknown) => showError(error instanceof Error ? error.message : "Could not link this interaction."))
+          .finally(() => { send.disabled = false; });
+      });
+      link.append(form);
+      card.append(link);
+      list.append(card);
+    }
+    found.body.append(list);
+  }
+  const pagination = el("div", "row-actions");
+  if (state.contactOffset > 0) pagination.append(makeButton("Previous", "button", async () => {
+    state.contactOffset = Math.max(0, state.contactOffset - 50);
+    await renderCurrentTab();
+  }));
+  if (result.nextOffset !== null) pagination.append(makeButton("Next", "button", async () => {
+    state.contactOffset = result.nextOffset!;
+    await renderCurrentTab();
+  }));
+  found.body.append(pagination);
+  page.append(found.surface);
+
+  const create = makeSurface("Add a confirmed contact", "Save only details from the work you were authorized to do.");
+  const createForm = el("form", "form");
+  const name = contactField("Full name", "text", 160);
+  name.input.required = true;
+  name.input.minLength = 2;
+  const newEmail = contactField("Confirmed email (optional)", "email", 254);
+  const newCompany = contactField("Company (optional)", "text", 160);
+  const source = contactField("Source and date");
+  source.input.required = true;
+  source.input.minLength = 2;
+  const createNote = el("textarea") as HTMLTextAreaElement;
+  createNote.maxLength = 5000;
+  createNote.placeholder = "Concise factual context, no raw correspondence";
+  const createNoteField = el("label", "field");
+  createNoteField.append(el("span", "field-label", "Notes"), createNote);
+  const createButton = makeButton("Save contact", "button primary");
+  createButton.type = "submit";
+  createForm.append(name.wrapper, newEmail.wrapper, newCompany.wrapper, source.wrapper, createNoteField, createButton);
+  let createAttempt: { fingerprint: string; key: string } | null = null;
+  createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = { fullName: name.input.value.trim(), email: newEmail.input.value.trim() || null,
+      company: newCompany.input.value.trim() || null, sourceLabel: source.input.value.trim(), notes: createNote.value.trim(),
+      projectId: state.projectId || null };
+    const fingerprint = JSON.stringify(payload);
+    if (createAttempt?.fingerprint !== fingerprint) createAttempt = { fingerprint, key: crypto.randomUUID() };
+    createButton.disabled = true;
+    void callTool<{ created: number; updated: number; skipped: number }>("create_contact", { ...payload, idempotencyKey: createAttempt.key })
+      .then(async (saved) => { await renderCurrentTab(); showSuccess(`Contact result: ${saved.created} added, ${saved.updated} updated, ${saved.skipped} skipped.`); })
+      .catch((error: unknown) => showError(error instanceof Error ? error.message : "Could not save this contact."))
+      .finally(() => { createButton.disabled = false; });
+  });
+  create.body.append(createForm);
+  page.append(create.surface);
+}
+
+function renderPrompts() {
+  const page = makePage("AGENT PLAYBOOKS", "Prompt library", "Copy task instructions for another agent. A prompt does not configure MCP, grant access to email, or start a schedule.");
+  const setup = makeSurface("Connect the agent first", "Use its own private Stoic connection, or an owner-authorized browser session for Muse.");
+  setup.body.append(makeButton("Open owner setup", "button", async () => { await app.openLink({ url: SITE_URL }); }));
+  page.append(setup.surface);
+  for (const item of promptLibrary) {
+    const surface = makeSurface(item.title, item.audience);
+    surface.body.append(el("p", "field-help", item.description));
+    const preview = el("details", "details");
+    preview.append(el("summary", "", "Preview prompt"), el("pre", "preformatted", renderStoicPrompt(item.id, "https://stoic.bishoptech.dev/api/mcp")));
+    surface.body.append(preview, makeButton("Copy prompt", "button primary", async () => {
+      try {
+        await navigator.clipboard.writeText(renderStoicPrompt(item.id, "https://stoic.bishoptech.dev/api/mcp"));
+        showSuccess(item.title + " copied. Confirm the other agent's Stoic connection before using it.");
+      } catch {
+        preview.open = true;
+        showError("Clipboard access is unavailable in this host. Select the preview text to copy it manually.");
+      }
+    }));
+    page.append(surface.surface);
+  }
+}
+
 async function renderProjects() {
   const page = makePage("WORK", "Projects", "Each project holds a shared brief, a message board, handoffs, knowledge, and files.");
   if (state.context?.self.role === "boss") {
@@ -1314,8 +1494,10 @@ async function renderCurrentTab() {
       case "overview": await renderOverview(); break;
       case "handoffs": await renderHandoffs(); break;
       case "board": await renderBoard(); break;
+      case "contacts": await renderContacts(); break;
       case "projects": await renderProjects(); break;
       case "agents": await renderAgents(); break;
+      case "prompts": renderPrompts(); break;
       case "knowledge": await renderKnowledge(); break;
       case "files": await renderFiles(); break;
       case "billing": renderBilling(); break;

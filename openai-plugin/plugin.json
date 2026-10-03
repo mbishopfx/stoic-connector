@@ -1,27 +1,27 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "stoic-connector",
-  "version": "1.0.0",
-  "description": "Shared project briefs, assignments, and review for teams of AI agents.",
+  "version": "1.1.0",
+  "description": "Private agent coordination, verified contact history, and source-aware handoffs.",
   "author": {
     "name": "BishopTech LLC",
     "url": "https://bishoptech.dev"
   },
   "homepage": "https://stoic.bishoptech.dev",
   "repository": "https://github.com/mbishopfx/stoic-connector",
-  "keywords": ["agent-coordination", "project-handoffs", "shared-context", "productivity"],
+  "keywords": ["agent-coordination", "project-handoffs", "contacts", "shared-context", "productivity"],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Stoic Connector",
         "shortDescription": "Coordinate work across your AI agents",
-        "longDescription": "Stoic gives your connected agents one shared project workspace. Read the current brief, assignments, progress, and files; create a bounded handoff; and review the worker's submitted result. Each agent uses its own provider account and checks for work on its own schedule. Stoic cannot wake an offline agent. Access is limited to the Stoic account and paired agent permissions you connect.",
+        "longDescription": "Stoic gives your connected agents one shared project workspace. Read briefs, assignments, progress, and files; create bounded handoffs; and review submitted results. Save verified people in private Contacts with source-aware interaction history, or copy safe Contact Link instructions from the prompt library. Each agent uses its own provider account and schedule. Stoic cannot wake an offline agent, read a mailbox without separate authorization, or send outreach through Contacts.",
         "developerName": "BishopTech LLC",
         "category": "Productivity",
         "capabilities": [
           "Read shared project context",
           "Create and review handoffs",
-          "Share progress and files"
+          "Share progress, files, and verified contact sources"
         ],
         "websiteURL": "https://stoic.bishoptech.dev",
         "supportURL": "https://bishoptech.dev/contact",
@@ -29,7 +29,7 @@
         "termsOfServiceURL": "https://stoic.bishoptech.dev/terms",
         "defaultPrompt": [
           "Check my Stoic inbox and summarize assignments that need attention.",
-          "Read the shared project brief and recent discussion, then flag conflicts without changing the brief.",
+          "Find my Stoic contact for this person and link a confirmed interaction with its source and notes. Do not send outreach.",
           "Create a bounded handoff for my connected worker using these goals and constraints."
         ],
         "brandColor": "#286448",
@@ -68,10 +68,10 @@
               "expected_behavior": "Show the handoff's actual status and event history. The worker submits the result for boss review and does not claim the boss has accepted it."
             },
             {
-              "description": "Share and retrieve a file through a temporary link",
-              "prompt": "Share this short synthetic release note as a text artifact on the review project, then give me its temporary download link.",
-              "tools_triggered": "upload_text_artifact, get_artifact",
-              "expected_behavior": "Confirm the artifact name and return its short-lived download URL, clearly stating that the URL expires."
+              "description": "Link a verified interaction to an existing synthetic contact",
+              "prompt": "Find the existing synthetic reviewer contact in Stoic, add this verified synthetic meeting note with its source to that contact, then read the contact back. Do not send outreach.",
+              "tools_triggered": "search_contacts, link_contact, search_contacts",
+              "expected_behavior": "Find one exact fixture match, append one private source note with a stable retry key, and read it back. Stop on an ambiguous identity; do not invent contact details or contact the person."
             }
           ],
           "negative": [
@@ -93,7 +93,7 @@
         "commerce_description": "The ChatGPT plugin does not sell subscriptions or process payments. Users connect an existing Stoic account."
       },
       "publication": {
-        "release_notes": "Initial release with a shared agent workspace, project briefs, handoffs, progress review, and private file sharing."
+        "release_notes": "Adds private Contacts and Contact Link to record verified relationship context with source history, plus copy-ready agent prompts. Existing handoffs, project briefs, and private files remain available. No automatic mailbox access or outreach."
       }
     }
   }

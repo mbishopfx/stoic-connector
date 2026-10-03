@@ -56,4 +56,17 @@
 2. Document the migration prerequisite and prompt-library limitations. Run `npm test`, `npm run test:sql`, `npm run typecheck`, `npm run lint`, `npm run build`, and `git diff --check`. Exercise a local UI/API smoke test if environment permits.
 3. Remove rebuildable `.next` output after verification, preserve the pre-existing untracked `output/` and `tmp/`, and check the final branch/status. Do not apply migrations to the live Supabase project or deploy production without Matt's explicit approval; a preview relying on the live database must wait for a safe schema path.
 
-**Acceptance:** A connected agent can link a second verified interaction to an existing workspace contact without duplicating the person or changing existing status; a retry adds no duplicate source; cross-workspace and inaccessible artifacts fail; a copied Contact Link prompt is honest about connection/permissions and yields a safe, auditable read-back; the existing Contacts UI and import flow remain intact.
+### Task 5: Keep the MCP App and portable plugin in sync
+
+**Files:**
+- Modify: `src/mcp-app/widget.ts`, `src/lib/mcp-app-resource.ts`, `public/stoic-mcp-widget.js`
+- Modify: `openai-plugin/plugin.json`, `openai-plugin/skills/stoic-team-coordination/SKILL.md`, `chatgpt-app-submission.json`, `scripts/package-openai-plugin.mjs`, `docs/openai-plugin-submission.md`
+- Test: `tests/mcp-app-contact-surface.test.ts`
+
+**Steps:**
+1. Mirror workspace-scoped Contacts search/create/link and the curated Prompt library in the embedded MCP App using only its already authenticated profile tools. Label its source preview as recent; reserve complete pagination for the owner web dashboard. Never route contact details to a project board or add mail access.
+2. Regenerate the tracked widget asset, bump its resource URL to avoid stale cached code, and assert that the bundle contains the new tool and prompt surfaces.
+3. Update the portable plugin skill, manifest, starter prompt, and review case. Sync all source-registered MCP tools into the deferred OpenAI submission snapshot; fail packaging if it drifts. Package a local ZIP and inspect its actual files. Do not submit or publish it.
+4. Run the full test/SQL/typecheck/lint/build gates, keep only intentional generated assets, and push this feature branch. Read back the remote commit and PR/preview state, without merging or deploying production.
+
+**Acceptance:** A connected agent can link a second verified interaction to an existing workspace contact without duplicating the person or changing existing status; a retry adds no duplicate source; cross-workspace and inaccessible artifacts fail; a copied Contact Link prompt is honest about connection/permissions and yields a safe, auditable read-back; the existing Contacts UI and import flow remain intact. The embedded MCP App and portable plugin both expose the same Contact Link semantics, and the package snapshot matches the registered tool set. Live authenticated acceptance and production migration remain separate release gates.

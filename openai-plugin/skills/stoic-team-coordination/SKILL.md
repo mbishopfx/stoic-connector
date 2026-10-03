@@ -1,6 +1,6 @@
 ---
 name: stoic-team-coordination
-description: Use when the user asks to check a Stoic workspace, coordinate agent work, create or review a handoff, read shared project context, or share a project file.
+description: Use when the user asks to coordinate Stoic agent work, review handoffs, share project context, or save and link verified contacts.
 ---
 
 # Coordinate work with Stoic
@@ -21,6 +21,13 @@ Use Stoic as the shared workspace for assignments and decisions. The connected a
 - A worker should claim a handoff only when it is ready to own the work. Post meaningful progress or blockers, then submit the result for boss review.
 - A result is not accepted until the boss records acceptance. Never describe an assigned task as started until a worker has claimed it.
 - Agents receive work on their next successful native inbox check. Do not claim that Stoic immediately wakes or runs a worker.
+
+## Contact Link and ready-to-paste prompts
+
+- The private Contacts tab in the Stoic workspace and embedded MCP App shows confirmed people and recent source context. The owner dashboard can page through the complete history. The Prompt library offers Contact Link for connected MCP agents, a browser-only variant for Muse, and Team Check-In; copying a prompt does not connect an agent or authorize a mailbox.
+- For a contact from authorized research or correspondence, call `search_contacts` first by exact email when known, then phone or name plus company. If one record is positively identified, call `link_contact` with its `contactId`, accurate `sourceLabel`, concise factual notes, optional safe URL, and only verified missing details. A relevant `artifactId` must be a ready file this connection can access. If no record matches and a real full name is known, call `create_contact`. Hold ambiguous matches and conflicting identities for the owner instead of merging or guessing.
+- Reuse one stable, non-secret `idempotencyKey` for the same source event on retry, then search again and read back the contact/source. For an owner-approved group CSV, use the project-level artifact import flow. Do not store raw emails, attachments, sensitive correspondence, or credentials as contact notes; do not place private contact data on shared project boards.
+- Do not read an email account merely because Contact Link exists. The owner must authorize the specific account and task. Stoic records relationship context but never replies to a message or sends outreach through these tools. A contact write is not approval for external communication.
 
 ## Project discussion, files, and approvals
 

@@ -42,6 +42,17 @@ const registeredTools = new Set([...mcpRouteSource.matchAll(/(?:registerAppTool\
 for (const match of mcpRouteSource.matchAll(/\["([a-z][a-z0-9_]*)",\s*"[a-z][a-z0-9_]*",\s*"[^"]+"\]/g)) {
   registeredTools.add(match[1]);
 }
+assert.deepEqual(
+  Object.keys(submission.tools).sort(), [...registeredTools].sort(),
+  "The submission snapshot must list every current MCP tool, including Contact Link, before packaging.",
+);
+assert.match(mcpRouteSource, /server\.registerTool\("link_contact",\s*\{\s*annotations:\s*writeAnnotations/);
+assert.deepEqual(submission.tools.link_contact.annotations, { readOnlyHint: false, openWorldHint: false, destructiveHint: false });
+assert.ok(interfaceMetadata.defaultPrompt.some((prompt) => prompt.includes("confirmed interaction")));
+const onboardingSkill = await readFile(path.join(packageRoot, "skills/stoic-team-coordination/SKILL.md"), "utf8");
+for (const name of ["search_contacts", "create_contact", "link_contact"]) {
+  assert.ok(onboardingSkill.includes(name), `Onboarding skill must cover the ${name} tool.`);
+}
 for (const testCase of positive) {
   for (const toolName of testCase.tools_triggered.split(",").map((name) => name.trim())) {
     assert.ok(registeredTools.has(toolName), `Review case references an unregistered MCP tool: ${toolName}`);

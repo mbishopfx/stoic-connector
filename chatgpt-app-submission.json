@@ -279,6 +279,54 @@
         "open_world_justification": "Only lists artifacts in the connected private project workspace.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
+    },
+    "list_team_ideas": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Reads owner-facing suggestions without accepting, archiving, or starting them.",
+        "open_world_justification": "Only reads suggestions in the connected private workspace.",
+        "destructive_justification": "Does not change owner decisions, create work, or delete records."
+      }
+    },
+    "draft_handoff": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Prepares a boss-only handoff draft for owner review without assigning work or saving a conversation.",
+        "open_world_justification": "Uses only the connected private workspace and its authorized project context.",
+        "destructive_justification": "Does not create a handoff, alter the brief, or delete records."
+      }
+    },
+    "search_contacts": {
+      "annotations": { "readOnlyHint": true, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Searches private workspace contacts and bounded recent source history to confirm an exact person before a write.",
+        "open_world_justification": "Only reads contacts scoped to the connected agent's Stoic workspace.",
+        "destructive_justification": "Does not change, contact, or delete a person."
+      }
+    },
+    "create_contact": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Saves one confirmed contact and its source in the private workspace CRM; no message is sent.",
+        "open_world_justification": "Writes only to the connected agent's private Stoic workspace and permitted ready artifact.",
+        "destructive_justification": "Adds a deduplicated contact/source without deleting an existing record or sending outreach."
+      }
+    },
+    "link_contact": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Appends one verified interaction source to an exact existing contact and fills only missing confirmed fields.",
+        "open_world_justification": "Writes only within the connected private workspace and may reference a ready artifact the agent can access.",
+        "destructive_justification": "Preserves relationship status and existing identity; rejects conflicting details and sends no outreach."
+      }
+    },
+    "import_contacts_from_artifact": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Imports an authorized ready CSV artifact into workspace-private contacts with source provenance and retry protection.",
+        "open_world_justification": "Reads only a Stoic artifact permitted to this connected agent and writes only its private workspace contacts.",
+        "destructive_justification": "Deduplicates contacts, records counts and sources, and does not send outreach or delete records."
+      }
     }
   },
   "test_cases": [
@@ -315,11 +363,11 @@
       "expected_output_url": null
     },
     {
-      "description": "Share and retrieve a file through a temporary link.",
-      "user_prompt": "Share this short synthetic release note as a text artifact on the review project, then give me its temporary download link.",
+      "description": "Link a verified interaction to an existing synthetic contact.",
+      "user_prompt": "Find the existing synthetic reviewer contact in Stoic, add this verified synthetic meeting note with its source to that contact, then read the contact back. Do not send outreach.",
       "file_attachment_urls": null,
-      "tools_triggered": "upload_text_artifact, get_artifact",
-      "expected_output": "Confirm the artifact name and return its short-lived download URL, clearly stating that the URL expires.",
+      "tools_triggered": "search_contacts, link_contact, search_contacts",
+      "expected_output": "Find one exact fixture match, append one private source note with a stable retry key, and read it back. Stop on an ambiguous identity; do not invent contact details or contact the person.",
       "expected_output_url": null
     }
   ],
