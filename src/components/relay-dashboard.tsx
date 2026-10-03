@@ -14,6 +14,7 @@ import {
   LightBulbIcon,
   MoonIcon,
   PaperClipIcon,
+  QueueListIcon,
   Squares2X2Icon,
   SunIcon,
   UserCircleIcon,
@@ -37,6 +38,7 @@ import { AssistantRichInline, AssistantRichText } from "@/components/rich-text";
 import { StoicMark } from "@/components/stoic-mark";
 import { AgentSetupProgress } from "@/components/agent-setup-progress";
 import { KnowledgeCenter } from "@/components/knowledge-center";
+import { PromptLibraryView } from "@/components/prompt-library";
 
 type Agent = { id: string; name: string; platform: Platform; harness_name?: string | null; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
 type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
@@ -49,12 +51,12 @@ type HandoffHistoryPage = { items: Handoff[]; nextCursor: string | null; hasMore
 type HandoffHistoryDetail = { handoff: Handoff; events: Event[]; artifacts: Artifact[] };
 type BoardMessage = { id: string; project_id: string; parent_id: string | null; author_key: string; kind: "message" | "run_report" | "suggestion" | "artifact"; body: string; created_at: string };
 type Idea = { id: string; workspace_id: string; project_id: string; run_id: string; title: string; summary: string; why_now: string; next_step: string; evidence_ids: string[]; status: "pending" | "accepted" | "archived"; accepted_handoff_id: string | null; accepted_at: string | null; archived_at: string | null; created_at: string; updated_at: string };
-type ContactSource = { id: string; source_label: string; source_url: string | null; notes: string; created_at: string };
+type ContactSource = { id: string; source_label: string; source_url: string | null; notes: string; artifact_id: string | null; created_at: string };
 type Contact = { id: string; project_id: string | null; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: "new" | "contacted" | "qualified" | "customer" | "archived"; notes: string; created_at: string; updated_at: string; last_seen_at: string; sources: ContactSource[] };
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
 type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
-type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "agents" | "projects" | "knowledge" | "files" | "billing";
+type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "prompts" | "agents" | "projects" | "knowledge" | "files" | "billing";
 
 function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -74,6 +76,7 @@ const navSections: { label: string; items: { id: Tab; label: string; icon: typeo
   ] },
   { label: "TEAM", items: [
     { id: "agents", label: "Agents", icon: UserGroupIcon },
+    { id: "prompts", label: "Prompt library", icon: QueueListIcon },
     { id: "knowledge", label: "Knowledge", icon: BookOpenIcon },
     { id: "files", label: "Artifacts", icon: PaperClipIcon },
   ] },
@@ -215,7 +218,8 @@ export function StoicDashboard({ email }: { email: string }) {
       <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <div className="alert error" role="alert"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss">Dismiss</button></div>}{notice && <div className="alert success" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss">Dismiss</button></div>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
         {tab === "ideas" && <IdeasView projects={projects} ideas={ideas} workspace={workspace} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} busy={busy} command={command} />}
-        {tab === "contacts" && <ContactsView projects={projects} busy={busy} command={command} />}
+        {tab === "contacts" && <ContactsView projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
+        {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
         {tab === "overview" && <><div className="page-heading"><div><span className="eyebrow muted">YOUR COMMAND CENTER</span><h1>Good to see you.</h1><p>Here’s where your agents and their work stand today.</p></div><button className="button" onClick={() => setTab("assistant")}>Start with Stoic</button></div><BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} /><div className="metric-grid"><Metric value={agents.filter((a) => a.status === "connected" && a.platform !== "muse").length} label="Active MCP credentials" detail="A successful inbox check verifies each connection" /><Metric value={activeHandoffs.length} label="Active handoffs" detail={`${state.usage?.handoffs || 0} created this month`} /><Metric value={pendingApprovals.length} label="Needs your review" detail="Approval requests and decisions" /></div><div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h2>Handoffs in motion</h2><p>Work your team is handling now.</p></div><button className="subtle-link" onClick={() => setTab("handoffs")}>View all</button></div>{activeHandoffs.length ? <div className="compact-list">{activeHandoffs.slice(0, 5).map((item) => <div className="compact-item" key={item.id}><div><strong><AssistantRichInline text={item.title} /></strong><small>{(item.assigned_agent_id ? names[item.assigned_agent_id] : null) || "Team queue"} · {projectNames[item.project_id] || "Project"}</small></div><Status status={item.status} /></div>)}</div> : <Empty title="Nothing in motion" text="Active assignments appear here. Open Handoffs to review completed work or create another assignment." />}</section><section className="panel"><div className="panel-heading"><div><h2>Agent check-ins</h2><p>Know who is ready to receive work.</p></div><button className="subtle-link" onClick={() => setTab("agents")}>Manage</button></div>{agents.filter((a) => a.status !== "revoked").length ? <div className="compact-list">{agents.filter((a) => a.status !== "revoked").slice(0, 5).map((agent) => { const health = displayedAgentHealth(agent); return <div className="compact-item" key={agent.id}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><div><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)} · {agent.platform === "muse" ? "browser relay" : `last check ${timeAgo(agent.last_check_at)}`}</small></div><span className={`health ${health.tone}`}><i />{health.label}</span></div>; })}</div> : <Empty title="Build your team" text="Add your first agent, then give it an identity in Stoic." />}</section></div>{pendingApprovals.length > 0 && <section className="panel review-panel"><div className="panel-heading"><div><h2>Needs your decision</h2><p>Agents cannot approve these on their behalf.</p></div></div>{pendingApprovals.map((approval) => <div className="approval-row" key={approval.id}><div><strong><AssistantRichInline text={approval.action_summary} /></strong><small>For {handoffs.find((h) => h.id === approval.handoff_id)?.title || "a handoff"}</small></div><div className="row-actions"><button className="button button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</button><button className="button button-outline button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</button></div></div>)}</section>}</>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
         {tab === "board" && <BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} />}
@@ -768,7 +772,7 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
   </>;
 }
 
-function ContactsView({ projects, busy, command }: { projects: Project[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
+function ContactsView({ projects, busy, command, onOpenPrompts }: { projects: Project[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onOpenPrompts: () => void }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -781,6 +785,7 @@ function ContactsView({ projects, busy, command }: { projects: Project[]; busy: 
   const [importIdempotencyKey, setImportIdempotencyKey] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [linkMessage, setLinkMessage] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -854,7 +859,7 @@ function ContactsView({ projects, busy, command }: { projects: Project[]; busy: 
   }
 
   return <>
-    <div className="page-heading"><div><span className="eyebrow muted">PRIVATE WORKSPACE CRM</span><h1>Contacts</h1><p>Keep real leads and relationship context with the project and source that produced them. Stoic records contacts; it never sends outreach.</p></div><span className="count-pill">{total} contacts</span></div>
+    <div className="page-heading"><div><span className="eyebrow muted">PRIVATE WORKSPACE CRM</span><h1>Contacts</h1><p>Keep real leads and relationship context with the project and source that produced them. Stoic records contacts; it never sends outreach.</p><button type="button" className="subtle-link" onClick={onOpenPrompts}>Copy the Contact Link agent prompt</button></div><span className="count-pill">{total} contacts</span></div>
     <div className="contacts-tools">
       <section className="panel"><div className="panel-heading"><div><h2>Add a contact</h2><p>Save only details you have confirmed.</p></div></div><form className="contact-form" onSubmit={(event) => addContact(event).catch(() => {})}>
         <label>Name<input name="fullName" placeholder="Full name" minLength={2} maxLength={160} required /></label><label>Email<input name="email" type="email" maxLength={254} placeholder="name@example.com" /></label><label>Phone<input name="phone" type="tel" maxLength={60} placeholder="Optional" /></label><label>Company<input name="company" maxLength={160} placeholder="Optional" /></label>
@@ -867,24 +872,70 @@ function ContactsView({ projects, busy, command }: { projects: Project[]; busy: 
       </form></section>
     </div>
     <section className="panel contacts-panel"><div className="ideas-toolbar"><div><h2>Your contacts</h2><p>Deduplicated within this workspace</p></div><label>Status <select aria-label="Filter contacts by status" value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0); }}><option value="">All contacts</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></label><label>Search <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0); }} placeholder="Name, email, company…" /></label></div>
-      {loadError && <p className="form-error contacts-error" role="alert">{loadError}</p>}{loading ? <p className="contacts-loading">Loading contacts…</p> : contacts.length ? <div className="contact-list">{contacts.map((contact) => <ContactCard key={`${contact.id}:${contact.updated_at}`} contact={contact} busy={busy} command={command} onSaved={refresh} />)}</div> : <Empty title="No contacts here yet" text="Add a confirmed lead or import a CSV to start a private, source-aware contact list." />}
+      {loadError && <p className="form-error contacts-error" role="alert">{loadError}</p>}{linkMessage && <p className="contact-link-message" role="status">{linkMessage}</p>}{loading ? <p className="contacts-loading">Loading contacts…</p> : contacts.length ? <div className="contact-list">{contacts.map((contact) => <ContactCard key={`${contact.id}:${contact.updated_at}`} contact={contact} busy={busy} command={command} onSaved={refresh} onLinked={setLinkMessage} />)}</div> : <Empty title="No contacts here yet" text="Add a confirmed lead or import a CSV to start a private, source-aware contact list." />}
       <div className="contacts-pagination"><span>{total} total</span><div><button type="button" className="button button-outline button-small" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button type="button" className="button button-outline button-small" disabled={nextOffset === null || loading} onClick={() => nextOffset !== null && setOffset(nextOffset)}>Next</button></div></div>
     </section>
   </>;
 }
 
-function ContactCard({ contact, busy, command, onSaved }: { contact: Contact; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onSaved: () => Promise<void> }) {
+function ContactCard({ contact, busy, command, onSaved, onLinked }: { contact: Contact; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onSaved: () => Promise<void>; onLinked: (message: string) => void }) {
   const [status, setStatus] = useState(contact.status);
   const [notes, setNotes] = useState(contact.notes);
+  const [sourceHistory, setSourceHistory] = useState<ContactSource[] | null>(null);
+  const [sourceTotal, setSourceTotal] = useState<number | null>(null);
+  const [sourceNextOffset, setSourceNextOffset] = useState<number | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const linkAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  async function loadSources(offset: number) {
+    setSourceLoading(true);
+    setSourceError("");
+    try {
+      const query = new URLSearchParams({ sourcesFor: contact.id, offset: String(offset) });
+      const response = await fetch(`/api/contacts?${query}`, { cache: "no-store" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not load interaction history");
+      const result = json.data as { sources: ContactSource[]; total: number; nextOffset: number | null };
+      setSourceHistory((previous) => offset === 0 ? result.sources : [...(previous || []), ...result.sources]);
+      setSourceTotal(result.total);
+      setSourceNextOffset(result.nextOffset);
+    } catch (cause) {
+      setSourceError(cause instanceof Error ? cause.message : "Could not load interaction history");
+    } finally {
+      setSourceLoading(false);
+    }
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     await command("update_contact", { contactId: contact.id, status, notes });
     await onSaved();
   }
+  async function linkSource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const payload = {
+      contactId: contact.id,
+      sourceLabel: String(form.get("sourceLabel") || ""),
+      sourceUrl: String(form.get("sourceUrl") || "") || null,
+      notes: String(form.get("notes") || ""),
+      email: String(form.get("email") || "") || null,
+      phone: String(form.get("phone") || "") || null,
+      company: String(form.get("company") || "") || null,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (linkAttempt.current?.fingerprint !== fingerprint) linkAttempt.current = { fingerprint, key: crypto.randomUUID() };
+    const result = await command("link_contact", { ...payload, idempotencyKey: linkAttempt.current.key }) as { updated: boolean; alreadyLinked: boolean };
+    onLinked(result.alreadyLinked ? `This source was already saved for ${contact.full_name}.` : `A new source was linked to ${contact.full_name}.`);
+    linkAttempt.current = null;
+    formElement.reset();
+    await onSaved();
+  }
   return <article className="contact-card"><div className="contact-card-top"><div><h3><AssistantRichInline text={contact.full_name} /></h3><p>{[contact.job_title, contact.company].filter(Boolean).join(" · ") || "Contact"}</p></div><select aria-label={`Status for ${contact.full_name}`} value={status} onChange={(event) => setStatus(event.target.value as Contact["status"])}><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></div>
     <div className="contact-details">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
     <form onSubmit={(event) => save(event).catch(() => {})}><label>Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={10000} rows={2} /></label><button className="subtle-link" type="submit" disabled={busy || (status === contact.status && notes === contact.notes)}>Save changes</button></form>
-    {contact.sources.length > 0 && <details className="contact-sources"><summary>Source history · {contact.sources.length}</summary><ul>{contact.sources.map((source) => <li key={source.id}><strong>{source.source_label}</strong>{source.source_url && <> · <a href={source.source_url} target="_blank" rel="noreferrer">Open source</a></>}{source.notes && <p>{source.notes}</p>}<time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></li>)}</ul></details>}
+    <details className="contact-link"><summary>Add a verified interaction</summary><form onSubmit={(event) => linkSource(event).catch(() => {})}><label>Source and date<input name="sourceLabel" minLength={2} maxLength={180} placeholder="Email, Oct 3" required /></label><label>Source URL, if safe<input name="sourceUrl" type="url" maxLength={2000} placeholder="https://…" /></label><label>What happened<textarea name="notes" maxLength={5000} rows={2} placeholder="Short factual note, not a conversation transcript" /></label>{!contact.email && <label>Confirmed email<input name="email" type="email" maxLength={254} /></label>}{!contact.phone && <label>Confirmed phone<input name="phone" type="tel" maxLength={60} /></label>}{!contact.company && <label>Confirmed company<input name="company" maxLength={160} /></label>}<button type="submit" className="button button-outline button-small" disabled={busy}>Link interaction</button></form></details>
+    <details className="contact-sources" onToggle={(event) => { if (event.currentTarget.open && sourceHistory === null && !sourceLoading) void loadSources(0); }}><summary>Interaction history{sourceTotal !== null ? ` · ${sourceTotal}` : ""}</summary>{sourceError && <p role="alert">{sourceError} <button type="button" className="subtle-link" onClick={() => void loadSources(0)}>Retry</button></p>}{sourceLoading && sourceHistory === null && <p>Loading sources…</p>}{(sourceHistory || contact.sources).length > 0 ? <ul>{(sourceHistory || contact.sources).map((source) => <li key={source.id}><strong>{source.source_label}</strong>{source.source_url && <> · <a href={source.source_url} target="_blank" rel="noreferrer">Open source</a></>}{source.artifact_id && <> · <button type="button" className="subtle-link" onClick={() => command("artifact_download", { artifactId: source.artifact_id }).then((data) => window.open((data as { downloadUrl: string }).downloadUrl, "_blank", "noopener,noreferrer")).catch(() => {})}>Open artifact</button></>}{source.notes && <p>{source.notes}</p>}<time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></li>)}</ul> : !sourceLoading && <p>No sources recorded.</p>}{sourceNextOffset !== null && <button type="button" className="subtle-link contact-load-sources" disabled={sourceLoading} onClick={() => void loadSources(sourceNextOffset)}>Load more interactions</button>}</details>
   </article>;
 }
 

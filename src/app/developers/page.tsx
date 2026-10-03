@@ -26,6 +26,7 @@ const endpoints = [
   { method: "GET", path: "/api/cron/ideas", auth: "CRON_SECRET bearer", summary: "Prepares the workspace's daily ideas after 8 AM in its saved time zone.", detail: "Uses the managed Codex Agents API without tools or external actions. A claimed daily run is idempotent; exactly three source-grounded suggestions are saved for owner review. The job does not wake other agents." },
   { method: "GET", path: "/api/cron/synthesize", auth: "CRON_SECRET bearer", summary: "Runs scheduled knowledge refreshes.", detail: "Uses a server-side schedule and secret. It does not wake other agents or run their models." },
   { method: "GET", path: "/api/contacts", auth: "Owner session · active subscription", summary: "Searches private workspace contacts.", detail: "Accepts q, status, and offset. Contact details and source history are limited to the signed-in owner's workspace." },
+  { method: "GET", path: "/api/contacts?sourcesFor=…", auth: "Owner session · active subscription", summary: "Pages through one contact's complete source history.", detail: "Accepts a workspace contact UUID in sourcesFor and an optional offset. Returns up to 50 sources, total, and nextOffset; a foreign workspace contact returns 404." },
   { method: "POST", path: "/api/contacts/import", auth: "Owner session · same Stoic origin · active subscription", summary: "Maps and imports a CSV into Contacts.", detail: "Multipart fields: file, sourceLabel, optional projectId, and idempotencyKey. UTF-8 CSV is limited to 4 MB; Stoic maps a header sample and stores import provenance." },
   { method: "GET", path: "/api/cron/cleanup", auth: "CRON_SECRET bearer", summary: "Removes expired pending file reservations and stale counters.", detail: "Deletes expired pending Storage objects and their reservation rows, then prunes old counters. Returns removedReservations." },
   { method: "GET", path: "/.well-known/openai-apps-challenge", auth: "Public verification value", summary: "Returns the configured OpenAI app-domain challenge.", detail: "Returns the exact OPENAI_APP_VERIFICATION_CHALLENGE as plain text with no-store. Returns 503 when no challenge is configured." },
@@ -37,8 +38,9 @@ const tools = [
   ["get_profile", "Read", "No fields", "Returns the connected Stoic owner profile and agent nickname when paired."],
   ["get_team_context", "Read", "No fields", "Returns this profile's role, team roster, delegation policy, project routing, and next steps."],
   ["list_team_ideas", "Read", "No fields", "Lists pending and accepted suggestions for the owner; agents cannot accept or archive them."],
-  ["create_contact", "Write", "fullName, sourceLabel, idempotencyKey, optional contact/project fields", "Saves confirmed contact information and source provenance in this workspace's private CRM; sends no outreach."],
+  ["create_contact", "Write", "fullName, sourceLabel, idempotencyKey, optional contact/project fields and artifactId", "Saves confirmed contact information and source provenance in this workspace's private CRM; a ready, accessible Stoic artifact may be attached. Sends no outreach."],
   ["search_contacts", "Read", "search?, offset?", "Searches private contact records in this agent's own workspace."],
+  ["link_contact", "Write", "contactId, sourceLabel, idempotencyKey, notes?, sourceUrl?, artifactId?, verified missing fields?", "Appends one idempotent source to an exact existing contact, optionally filling empty details and referencing an accessible ready artifact. Never sends outreach; conflicting identity fails."],
   ["import_contacts_from_artifact", "Write", "artifactId, idempotencyKey, sourceLabel?", "Maps and imports a ready project CSV artifact, keeps provenance, and deduplicates contacts in this workspace."],
   ["get_project_brief", "Read", "projectId", "Reads the current project decisions and constraints."],
   ["list_project_knowledge", "Read", "projectId, offset?, kind?, status?", "Lists validated notes and their status/provenance."],
@@ -77,6 +79,7 @@ const commandGroups = [
   { title: "Workspace and roster", actions: "create_workspace · add_agent · create_project · set_project_routing · set_policy · set_agent_access" },
   { title: "Scheduling and credentials", actions: "set_schedule · pair_code · issue_key · revoke_agent" },
   { title: "Projects and handoffs", actions: "update_brief · create_handoff · task_action · post_board_message · decide_approval" },
+  { title: "Contacts", actions: "create_contact · link_contact · update_contact · CSV import via /api/contacts/import" },
   { title: "Files and account", actions: "reserve_artifact · complete_artifact · artifact_download · delete_artifact · checkout · billing_portal" },
 ];
 

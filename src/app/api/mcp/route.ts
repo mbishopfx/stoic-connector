@@ -16,7 +16,7 @@ import { KNOWLEDGE_KINDS, KNOWLEDGE_STATUSES } from "@/lib/knowledge";
 import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, readKnowledgeNote, searchProjectKnowledge } from "@/lib/knowledge-store";
 import { draftIntakeForAgent, intakeDraftInputSchema } from "@/lib/intake-drafts";
 import { listTeamIdeas } from "@/lib/ideas";
-import { createContact, importContactsFromArtifact, searchContactsForAgent, contactInputSchema } from "@/lib/contacts";
+import { createContact, importContactsFromArtifact, linkContact, searchContactsForAgent, contactInputSchema, contactLinkInputSchema } from "@/lib/contacts";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -263,6 +263,13 @@ const handler = createMcpHandler((server) => {
     description: "Search contact records visible to this connected agent within its own workspace. Contact details are private workspace data; never copy them into public board messages or send outreach without owner approval.",
     inputSchema: z.object({ search: z.string().trim().max(120).default(""), offset: pageOffset }),
   }, async ({ search, offset }, ctx) => run(ctx, (agent) => searchContactsForAgent(agent, search, offset)));
+
+  server.registerTool("link_contact", {
+    annotations: writeAnnotations,
+    title: "Link a verified interaction to a contact",
+    description: "After search_contacts confirms an exact person, append one idempotent source/interaction to that contact. Optionally fill missing verified details or link an accessible ready artifact. Conflicting identity is rejected; status and existing details are preserved. Do not send outreach or copy full email threads.",
+    inputSchema: contactLinkInputSchema,
+  }, async (args, ctx) => run(ctx, (agent) => linkContact({ agent }, args)));
 
   server.registerTool("import_contacts_from_artifact", {
     annotations: writeAnnotations,

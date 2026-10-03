@@ -8,7 +8,7 @@ import { reserveArtifact, completeArtifact, artifactDownload, deleteArtifact } f
 import { createCheckout, createBillingPortal } from "@/lib/billing";
 import { boardPostInput, postBoardMessage } from "@/lib/board";
 import { acceptIdea, archiveIdea, setIdeasTimezone } from "@/lib/ideas";
-import { contactInputSchema, createContact, updateContact } from "@/lib/contacts";
+import { contactInputSchema, contactLinkInputSchema, createContact, linkContact, updateContact } from "@/lib/contacts";
 
 export const runtime = "nodejs";
 
@@ -112,6 +112,10 @@ export async function POST(request: Request) {
       }
       case "create_contact": {
         data = await createContact({ userId: user.id }, contactInputSchema.parse(body));
+        break;
+      }
+      case "link_contact": {
+        data = await linkContact({ userId: user.id }, contactLinkInputSchema.parse(body));
         break;
       }
       case "update_contact": {

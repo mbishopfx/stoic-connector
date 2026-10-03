@@ -17,9 +17,23 @@ export const contactInputSchema = z.object({
   company: z.string().trim().max(160).nullable().optional(),
   jobTitle: z.string().trim().max(160).nullable().optional(),
   projectId: z.uuid().nullable().optional(),
+  artifactId: z.uuid().nullable().optional(),
   sourceLabel: z.string().trim().min(2).max(180),
   sourceUrl: z.string().trim().max(2000).nullable().optional(),
   notes: z.string().trim().max(5000).default(""),
+  idempotencyKey: z.string().min(8).max(128),
+});
+
+export const contactLinkInputSchema = z.object({
+  contactId: z.uuid(),
+  sourceLabel: z.string().trim().min(2).max(180),
+  sourceUrl: z.string().trim().max(2000).nullable().optional(),
+  notes: z.string().trim().max(5000).default(""),
+  artifactId: z.uuid().nullable().optional(),
+  email: z.email().max(254).nullable().optional(),
+  phone: z.string().trim().max(60).nullable().optional(),
+  company: z.string().trim().max(160).nullable().optional(),
+  jobTitle: z.string().trim().max(160).nullable().optional(),
   idempotencyKey: z.string().min(8).max(128),
 });
 
@@ -56,6 +70,23 @@ function safeUrl(value: string | null | undefined) {
   }
 }
 
+async function assertContactArtifactAccess(actor: ContactActor, workspaceId: string, artifactId: string, projectId?: string | null) {
+  const db = adminDb();
+  const { data: artifact, error } = await db.from("artifacts")
+    .select("id,handoff_id,project_id,status")
+    .eq("workspace_id", workspaceId).eq("id", artifactId).eq("status", "ready").maybeSingle();
+  if (error) throw error;
+  if (!artifact || (projectId && artifact.project_id !== projectId)) throw new AppError("Contact artifact not found", 404);
+  if (actor.agent && artifact.handoff_id) {
+    const { data: handoff, error: handoffError } = await db.from("handoffs")
+      .select("id,assigned_agent_id,status").eq("workspace_id", workspaceId).eq("id", artifact.handoff_id).maybeSingle();
+    if (handoffError) throw handoffError;
+    if (!handoff || !await canReadScopedHandoff(actor.agent, handoff)) {
+      throw new AppError("Contact artifact not found", 404);
+    }
+  }
+}
+
 async function callUpsert(actor: ContactActor, workspaceId: string, projectId: string | null, artifactId: string | null, contacts: unknown[]) {
   const { data, error } = await adminDb().rpc("stoic_upsert_contacts", {
     p_workspace_id: workspaceId,
@@ -75,9 +106,10 @@ async function callUpsert(actor: ContactActor, workspaceId: string, projectId: s
 export async function createContact(actor: ContactActor, input: unknown) {
   const parsed = contactInputSchema.parse(input);
   const workspaceId = await actorWorkspace(actor);
+  if (parsed.artifactId) await assertContactArtifactAccess(actor, workspaceId, parsed.artifactId, parsed.projectId);
   const actorKey = actor.agent ? `agent:${actor.agent.agentId}` : `user:${actor.userId}`;
   const sourceKey = `${actorKey}:entry:${parsed.idempotencyKey}`;
-  return callUpsert(actor, workspaceId, parsed.projectId || null, null, [{
+  return callUpsert(actor, workspaceId, parsed.projectId || null, parsed.artifactId || null, [{
     full_name: parsed.fullName,
     email: parsed.email || null,
     phone: parsed.phone || null,
@@ -88,6 +120,39 @@ export async function createContact(actor: ContactActor, input: unknown) {
     source_url: safeUrl(parsed.sourceUrl),
     source_key: sourceKey,
   }]);
+}
+
+export async function linkContact(actor: ContactActor, input: unknown) {
+  const parsed = contactLinkInputSchema.parse(input);
+  const workspaceId = await actorWorkspace(actor);
+  const db = adminDb();
+  if (parsed.artifactId) await assertContactArtifactAccess(actor, workspaceId, parsed.artifactId);
+  const actorKey = actor.agent ? `agent:${actor.agent.agentId}` : `user:${actor.userId}`;
+  const { data, error } = await db.rpc("stoic_link_contact", {
+    p_workspace_id: workspaceId,
+    p_actor_agent_id: actor.agent?.agentId || null,
+    p_actor_user_id: actor.userId || null,
+    p_contact_id: parsed.contactId,
+    p_source: {
+      source_key: `${actorKey}:link:${parsed.idempotencyKey}`,
+      source_label: parsed.sourceLabel,
+      source_url: safeUrl(parsed.sourceUrl),
+      notes: parsed.notes,
+      artifact_id: parsed.artifactId || null,
+      email: parsed.email || null,
+      phone: parsed.phone || null,
+      company: parsed.company || null,
+      job_title: parsed.jobTitle || null,
+    },
+  });
+  if (error) {
+    const status = error.message.includes("subscription_required") ? 402
+      : error.message.includes("forbidden") ? 403
+      : error.message.includes("contact_not_found") || error.message.includes("artifact_not_found") ? 404
+      : error.message.includes("contact_identity_conflict") || error.message.includes("source_key_conflict") || error.code === "23505" ? 409 : 400;
+    throw new AppError(error.message.replaceAll("_", " "), status);
+  }
+  return data as { contactId: string; updated: boolean; alreadyLinked: boolean };
 }
 
 async function claimImport(input: {
@@ -274,6 +339,22 @@ async function contactSearch(actor: ContactActor, search: string, offset: number
 export async function listContacts(ownerId: string, input: { search?: string; offset?: number; status?: string } = {}) {
   await requireActiveWorkspace(ownerId);
   return contactSearch({ userId: ownerId }, input.search || "", input.offset || 0, input.status);
+}
+
+export async function listContactSources(ownerId: string, contactId: string, offset = 0) {
+  const workspace = await requireActiveWorkspace(ownerId);
+  const db = adminDb();
+  const { data: contact, error: contactError } = await db.from("contacts")
+    .select("id").eq("workspace_id", workspace.id).eq("id", contactId).maybeSingle();
+  if (contactError) throw contactError;
+  if (!contact) throw new AppError("Contact not found", 404);
+  const { data, count, error } = await db.from("contact_sources")
+    .select("id,source_label,source_url,notes,artifact_id,created_at", { count: "exact" })
+    .eq("workspace_id", workspace.id).eq("contact_id", contactId)
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 49);
+  if (error) throw error;
+  const sources = data || [];
+  return { sources, total: count || 0, nextOffset: offset + sources.length < (count || 0) ? offset + sources.length : null };
 }
 
 export async function searchContactsForAgent(agent: AgentIdentity, search: string, offset = 0) {

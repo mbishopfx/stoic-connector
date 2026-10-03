@@ -1,8 +1,7 @@
 # Stoic Connector — Operating State
 
-- current_objective: Finish pilot acceptance and add the Markdown-first Agent Knowledge Base, three-times-daily Codex-harness Knowledge Steward, and Obsidian-style graph explorer as the core planned $10/month value expansion without weakening tenant isolation, approval gates, or the live pilot.
-- loop_window: 2026-09-27T22:46:12-05:00 through the next 8 hours
-- branch: main
+- current_objective: Finish and review the Contact Link + Prompt Library feature branch without disturbing the live Contacts CRM; keep the separate Knowledge Steward/graph and provider pilot acceptance backlog visible.
+- branch: feat/contact-link-prompt-library (local; main untouched)
 - completed:
   - Read MASTER_PLAN.md, README.md, AGENTS.md, and CLAUDE.md.
   - Confirmed the deployed pilot and MCP endpoint are separate from provider-native schedules.
@@ -25,13 +24,16 @@
   - Added read-only MCP tools for project knowledge list/search/read/evidence/graph, `/api/knowledge` for authenticated owner controls, knowledge tables to workspace export with an older-deployment compatibility skip, and developer/privacy documentation.
   - Added SQL integration coverage for knowledge tenant boundaries, settings revision triggers, refresh idempotency, and authenticated-role denial, plus unit coverage for owner settings and literal search escaping.
   - Preserved all pre-existing dirty work; no migration, credential, deployment, billing, or external communication was performed by this pass.
+  - On this branch, extended the existing Contacts CRM with an owner/agent `link_contact` RPC and MCP tool: exact-contact source append, stable retry key, conflict-safe verified-field enrichment, ready-artifact provenance, and tenant/actor checks. Added owner interaction form, complete paged source history, and a curated Prompt Library with MCP Contact Link, Muse browser relay, and Team Check-In templates. Plan: `docs/plans/2026-10-03-contact-link-prompt-library.md`.
+  - Kept the pre-existing untracked `output/` and `tmp/` untouched. No mailbox connector, auto-ingestion job, outreach, live migration, or deployment was created.
 - active_blockers:
   - Real authenticated Codex/Hermes/OpenClaw/Claude host acceptance is still unverified.
   - Grok web and consumer Muse support remain unverified; do not market them as supported.
   - Slack kickoff and scheduled cron delivery read-back passed; future scheduled deliveries remain observable gates.
   - Knowledge Steward execution, graph explorer UI, production migration application, and live MCP/owner-route acceptance remain unverified; Grok web and consumer Muse remain unverified by provider contract.
-- next_best_action: Implement the bounded server-owned Steward source snapshot/candidate validation/run writer, then build the owner read-only graph explorer over the persisted Markdown contract. Keep the default refresh disabled and do not claim live MCP knowledge access until the migration and authenticated tool calls are exercised in the pilot.
-- verification_status: Research artifact and source register readable; source contract folder contains 6 non-empty artifacts; both JSON schemas parse; generated knowledge artifacts passed secret-pattern and trailing-whitespace scans. `npm test` passed (36 tests across 8 files); `npm run test:sql` passed with migration `202609270024`; `npm run typecheck` passed; `npm run lint` passed; `npm run build` passed and generated the MCP App widget; `git diff --check` passed. Local provider/live deployment/OAuth/app-directory acceptance remains unverified.
-- deployment_status: No production migration, deployment, credential, billing, provider, or external mutation was approved or performed. The new code is on the local main worktree only until this pass's verified commit/push closeout; live MCP knowledge tools and `/api/knowledge` are not accepted.
-- cleanup_status: Restored missing local npm dependencies with `npm ci` plus the platform Rolldown optional binding so the gates could run; removed rebuildable `.next` after the final build; preserved pre-existing untracked `output/` and `tmp/` artifacts.
+- Contact Link release gate: `20261003133000_contact_link.sql` has passed isolated SQL tests but is NOT applied to the linked production project. Authenticated owner and MCP agent write/read-back still require schema application and live acceptance before merging/deploying production. The prompt library does not authorize mailbox access or send outreach.
+- next_best_action: Review the migration and UI in an isolated preview strategy that cannot invoke a missing live RPC. After Matt explicitly approves the production migration and deployment, apply the schema first, verify authenticated owner/agent source append and cross-workspace denial, review the preview, then seek separate approval to merge/deploy production. Independently resume the bounded Knowledge Steward and graph backlog in a later branch.
+- verification_status: Contact Link branch local tests 207/207 across 47 files, SQL integration including the new RPC, typecheck, lint, and production build passed with the pinned lockfile dependencies. Local HTTP smoke returned 200 for `/developers` with `link_contact` documented; unauthenticated source-history/MCP requests returned 401 and dashboard redirected to login. Fresh locked `npm ci` required manually restoring the pinned Apple Silicon Rolldown optional binding. Live authenticated behavior and deployment remain unverified.
+- deployment_status: Feature branch only. No production migration, preview deployment, production deployment, billing, or outreach performed. Existing Stoic production remains unchanged.
+- cleanup_status: Removed 247 MB of rebuildable `.next` after the final local build and stopped the local server; restored the build-regenerated tracked MCP widget. Pre-existing `output/` and `tmp/`, env files, Git metadata, and source were preserved.
 - safety_boundary: Preserve existing dirty work. No reset/clean, production deploy, live billing, destructive migration, credential copying, public publishing, or external communication without explicit approval.

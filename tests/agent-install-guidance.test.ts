@@ -8,6 +8,7 @@ describe("agent-agnostic install instructions", () => {
       const prompt = agentInstallPrompt(harness, "https://stoic.example.com/api/mcp");
       expect(prompt).toContain("list_team_ideas");
       expect(prompt).toContain("create_contact");
+      expect(prompt).toContain("link_contact");
       expect(prompt).toContain("import_contacts_from_artifact");
       expect(prompt).toContain("Never contact a prospect");
       expect(prompt).toContain("https://stoic.example.com/api/mcp");

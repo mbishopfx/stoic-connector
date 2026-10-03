@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-test_dir=$(mktemp -d /tmp/relaytest.XXXXXX)
+test_dir=$(mktemp -d "${TMPDIR:-/tmp}/relaytest.XXXXXX")
 cleanup() {
   pg_ctl -D "$test_dir/db" stop -m immediate >/dev/null 2>&1 || true
   rm -rf "$test_dir"
@@ -43,4 +43,5 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/20260929233533_stoic_oauth_audience_hook.sql \
   -f supabase/migrations/20260930040242_agent_harness_names.sql \
   -f supabase/migrations/20261001155032_stoic_ideas_contacts.sql \
+  -f supabase/migrations/20261003133000_contact_link.sql \
   -f tests/sql/integration.sql

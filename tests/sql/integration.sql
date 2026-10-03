@@ -611,6 +611,9 @@ declare
   v_idea2_id uuid;
   v_result jsonb;
   v_ideas jsonb;
+  v_contact_id uuid;
+  v_second_contact_id uuid;
+  v_artifact_id uuid;
 begin
   update public.workspaces set plan = 'pro', delegation_level = 'delegate', ideas_timezone = 'America/Chicago' where id = w1;
   update public.workspaces set plan = 'pro', ideas_timezone = 'Pacific/Honolulu' where id = w2;
@@ -710,5 +713,74 @@ begin
     or has_table_privilege('authenticated', 'public.contact_sources', 'SELECT')
     or has_table_privilege('authenticated', 'public.contact_imports', 'SELECT')
     then raise exception 'authenticated users can access contact tables directly'; end if;
+  select id into v_contact_id from public.contacts where workspace_id = w1 and lower(email) = 'ada@example.com';
+  select id into v_artifact_id from public.artifacts where workspace_id = w1 and project_id = p1 and status = 'ready' limit 1;
+  if v_artifact_id is null then raise exception 'missing ready artifact fixture for contact link'; end if;
+  v_result := public.stoic_link_contact(w1, null, owner1, v_contact_id, jsonb_build_object(
+    'source_key', 'user:owner1:link:message-001', 'source_label', 'Owner email follow-up',
+    'source_url', 'https://example.com/thread/1', 'notes', 'Asked about a pilot',
+    'artifact_id', v_artifact_id, 'job_title', 'Analyst'
+  ));
+  if v_result->>'updated' <> 'true' or (select job_title from public.contacts where id = v_contact_id) <> 'Analyst'
+    or (select count(*) from public.contact_sources where workspace_id = w1 and contact_id = v_contact_id and artifact_id = v_artifact_id) <> 1
+    then raise exception 'linking a verified interaction did not enrich contact and source'; end if;
+  v_result := public.stoic_link_contact(w1, null, owner1, v_contact_id, jsonb_build_object(
+    'source_key', 'user:owner1:link:message-001', 'source_label', 'Owner email follow-up'
+  ));
+  if v_result->>'alreadyLinked' <> 'true' or
+    (select count(*) from public.contact_sources where workspace_id = w1 and source_key = 'user:owner1:link:message-001') <> 1
+    then raise exception 'contact link retry duplicated provenance'; end if;
+  v_result := public.stoic_link_contact(w1, '30000000-0000-0000-0000-000000000001', null, v_contact_id, jsonb_build_object(
+    'source_key', 'agent:boss:link:meeting-001', 'source_label', 'Agent meeting note', 'notes', 'Discussed scope'
+  ));
+  if v_result->>'updated' <> 'true' or not exists (
+    select 1 from public.contact_sources where workspace_id = w1 and contact_id = v_contact_id
+      and source_key = 'agent:boss:link:meeting-001' and created_by_agent_id = '30000000-0000-0000-0000-000000000001'
+  ) then raise exception 'connected agent contact link did not retain attribution'; end if;
+  begin
+    perform public.stoic_link_contact(w1, '30000000-0000-0000-0000-000000000002', null, v_contact_id, jsonb_build_object(
+      'source_key', 'agent:revoked:link:meeting-001', 'source_label', 'Revoked agent'));
+    raise exception 'revoked agent linked contact';
+  exception when others then if sqlerrm <> 'forbidden' then raise; end if; end;
+  begin
+    perform public.stoic_link_contact(w1, null, owner2, v_contact_id, jsonb_build_object('source_key', 'invalid-owner-01', 'source_label', 'Wrong owner'));
+    raise exception 'foreign owner linked contact';
+  exception when others then if sqlerrm <> 'forbidden' then raise; end if; end;
+  begin
+    perform public.stoic_link_contact(w2, null, owner2, v_contact_id, jsonb_build_object('source_key', 'foreign-workspace-01', 'source_label', 'Wrong workspace'));
+    raise exception 'foreign workspace linked contact';
+  exception when others then if sqlerrm <> 'contact_not_found' then raise; end if; end;
+  begin
+    perform public.stoic_link_contact(w1, null, owner1, v_contact_id, jsonb_build_object(
+      'source_key', 'user:owner1:link:conflict-01', 'source_label', 'Unverified', 'email', 'other@example.com'));
+    raise exception 'conflicting email overwrote contact identity';
+  exception when others then if sqlerrm <> 'contact_identity_conflict' then raise; end if; end;
+  begin
+    perform public.stoic_link_contact(w1, null, owner1, v_contact_id, jsonb_build_object(
+      'source_key', 'user:owner1:link:artifact-01', 'source_label', 'Foreign file',
+      'artifact_id', '00000000-0000-0000-0000-000000000009'));
+    raise exception 'inaccessible artifact was linked to contact';
+  exception when others then if sqlerrm <> 'artifact_not_found' then raise; end if; end;
+  perform public.stoic_upsert_contacts(w1, null, owner1, p1, null, jsonb_build_array(jsonb_build_object(
+    'full_name', 'Grace Hopper', 'source_label', 'Event', 'source_key', 'user:owner1:source:grace-001'
+  )));
+  select id into v_second_contact_id from public.contacts where workspace_id = w1 and full_name = 'Grace Hopper';
+  v_result := public.stoic_link_contact(w1, null, owner1, v_second_contact_id, jsonb_build_object(
+    'source_key', 'user:owner1:link:grace-email-01', 'source_label', 'Confirmed email', 'email', 'grace@example.com'
+  ));
+  if v_result->>'updated' <> 'true' or (select dedupe_key from public.contacts where id = v_second_contact_id) <> 'email:grace@example.com'
+    then raise exception 'verified email did not update the dedupe key'; end if;
+  v_result := public.stoic_upsert_contacts(w1, null, owner1, p1, null, jsonb_build_array(jsonb_build_object(
+    'full_name', 'Grace Hopper', 'email', 'grace@example.com', 'source_label', 'Second event', 'source_key', 'user:owner1:source:grace-002'
+  )));
+  if v_result->>'updated' <> '1' or (select count(*) from public.contacts where workspace_id = w1 and full_name = 'Grace Hopper') <> 1
+    then raise exception 'link enrichment caused a duplicate person'; end if;
+  begin
+    perform public.stoic_link_contact(w1, null, owner1, v_second_contact_id, jsonb_build_object(
+      'source_key', 'user:owner1:link:message-001', 'source_label', 'Cross-person collision'));
+    raise exception 'one source was linked to two people';
+  exception when others then if sqlerrm <> 'source_key_conflict' then raise; end if; end;
+  if has_function_privilege('authenticated', 'public.stoic_link_contact(uuid, uuid, uuid, uuid, jsonb)', 'EXECUTE')
+    then raise exception 'authenticated client may link contacts outside the server'; end if;
   raise notice 'Stoic ideas and contact integration checks passed';
 end $$;
