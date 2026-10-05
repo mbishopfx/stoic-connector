@@ -12,11 +12,9 @@ import {
   CreditCardIcon,
   FolderIcon,
   LightBulbIcon,
-  MoonIcon,
   PaperClipIcon,
   QueueListIcon,
   Squares2X2Icon,
-  SunIcon,
   UserCircleIcon,
   UserGroupIcon,
   XMarkIcon,
@@ -36,9 +34,29 @@ import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } 
 import { StoicIntake } from "@/components/stoic-intake";
 import { AssistantRichInline, AssistantRichText } from "@/components/rich-text";
 import { StoicMark } from "@/components/stoic-mark";
+import { DashboardAppearanceControl, useDashboardAppearance } from "@/components/dashboard-appearance";
 import { AgentSetupProgress } from "@/components/agent-setup-progress";
 import { KnowledgeCenter } from "@/components/knowledge-center";
 import { PromptLibraryView } from "@/components/prompt-library";
+import { ContactsWorkspace } from "@/components/contacts-workspace";
+import { useTheme } from "next-themes";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty as UiEmpty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 type Agent = { id: string; name: string; platform: Platform; harness_name?: string | null; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
 type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
@@ -51,8 +69,7 @@ type HandoffHistoryPage = { items: Handoff[]; nextCursor: string | null; hasMore
 type HandoffHistoryDetail = { handoff: Handoff; events: Event[]; artifacts: Artifact[] };
 type BoardMessage = { id: string; project_id: string; parent_id: string | null; author_key: string; kind: "message" | "run_report" | "suggestion" | "artifact"; body: string; created_at: string };
 type Idea = { id: string; workspace_id: string; project_id: string; run_id: string; title: string; summary: string; why_now: string; next_step: string; evidence_ids: string[]; status: "pending" | "accepted" | "archived"; accepted_handoff_id: string | null; accepted_at: string | null; archived_at: string | null; created_at: string; updated_at: string };
-type ContactSource = { id: string; source_label: string; source_url: string | null; notes: string; artifact_id: string | null; created_at: string };
-type Contact = { id: string; project_id: string | null; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: "new" | "contacted" | "qualified" | "customer" | "archived"; notes: string; created_at: string; updated_at: string; last_seen_at: string; sources: ContactSource[] };
+
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
 type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
@@ -105,9 +122,10 @@ function displayedAgentHealth(agent: Agent) {
 
 export function StoicDashboard({ email }: { email: string }) {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const { appearance, setAppearance } = useDashboardAppearance();
   const [state, setState] = useState<DashboardState | null>(null);
   const [tab, setTab] = useState<Tab>("assistant");
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -143,21 +161,7 @@ export function StoicDashboard({ email }: { email: string }) {
       window.removeEventListener("focus", refreshWhenVisible);
     };
   }, [tab, reload]);
-  useEffect(() => { const saved = window.localStorage.getItem("stoic-theme"); const frame = window.requestAnimationFrame(() => { if (saved === "dark" || saved === "light") setTheme(saved); }); return () => window.cancelAnimationFrame(frame); }, []);
-  useEffect(() => {
-    const syncTheme = (event: StorageEvent) => {
-      if (event.key === "stoic-theme" && (event.newValue === "dark" || event.newValue === "light")) setTheme(event.newValue);
-    };
-    window.addEventListener("storage", syncTheme);
-    return () => window.removeEventListener("storage", syncTheme);
-  }, []);
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
-
-  function changeTheme() {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    window.localStorage.setItem("stoic-theme", next);
-  }
 
   async function command(action: string, payload: Record<string, unknown> = {}) {
     setBusy(true); setError(""); setNotice("");
@@ -195,8 +199,6 @@ export function StoicDashboard({ email }: { email: string }) {
   const ideas = state.ideas || [];
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const activeHandoffs = handoffs.filter((h) => !["accepted", "canceled"].includes(h.status));
-  const names = Object.fromEntries(agents.map((a) => [a.id, a.name]));
-  const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const currentAgent = agents.find((a) => a.id === selectedAgent && a.status !== "revoked") || agents.find((a) => a.status !== "revoked");
   const dashboardGuidance = getDashboardGuidance({ agents, projects, handoffs, bossAgentId: workspace.boss_agent_id });
   const currentNavItem = nav.find((item) => item.id === tab) || nav[0];
@@ -207,20 +209,47 @@ export function StoicDashboard({ email }: { email: string }) {
     setTab(guidance.tab);
   }
 
-  return <div className="dashboard-shell" data-theme={theme}>
+  return <div className="dashboard-shell" data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
     <aside className={`dashboard-sidebar ${menuOpen ? "open" : ""}`}>
       <div className="sidebar-top"><Link href="/" className="brand" aria-label="Stoic Connector home" title="Stoic Connector"><span className="brand-mark"><StoicMark /></span><span className="brand-wordmark">Stoic <strong>Connector</strong></span></Link><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><XMarkIcon width={18} height={18} /></button></div>
       <div className="workspace-switch" role="group" aria-label={`Workspace: ${workspace.name}`} title={workspace.name}><span className="workspace-initial">{workspace.name.charAt(0).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Team workspace</small></div></div>
       <div className="sidebar-navigation">{navSections.map((section) => <section className="sidebar-nav-section" key={section.label}><p className="sidebar-label">{section.label}</p><nav aria-label={section.label}>{section.items.map((item) => { const Icon = item.icon; return <button key={item.id} className={tab === item.id ? "active" : ""} aria-label={item.label} title={item.label} aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setMenuOpen(false); if (item.id === "board" || item.id === "ideas") void reload().catch(() => {}); }}><Icon className="nav-item-icon" aria-hidden="true" /><span className="nav-item-label">{item.label}</span>{item.id === "handoffs" && activeHandoffs.length > 0 && <span className="nav-count">{activeHandoffs.length}</span>}{item.id === "overview" && pendingApprovals.length > 0 && <span className="nav-count amber">{pendingApprovals.length}</span>}</button>; })}</nav></section>)}</div>
       <div className="sidebar-bottom"><div className="sidebar-help"><strong>Let the team work at its own pace.</strong><p>Agents pick up handoffs on their next successful schedule. Stoic cannot wake an offline agent.</p></div><button className="user-row" onClick={signOut} aria-label={`Sign out ${email}`} title={`Sign out ${email}`}><span className="user-avatar">{email.charAt(0).toUpperCase()}</span><span><strong>{email}</strong><small>Sign out</small></span></button></div>
     </aside>
-    <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div><div className="header-right"><button className="icon-button theme-toggle" onClick={changeTheme} aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"} aria-pressed={theme === "dark"} title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}>{theme === "light" ? <MoonIcon aria-hidden="true" /> : <SunIcon aria-hidden="true" />}</button><span className="user-avatar" aria-label={`Account: ${email}`} title={email}>{email.charAt(0).toUpperCase()}</span></div></header>
-      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <div className="alert error" role="alert"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss">Dismiss</button></div>}{notice && <div className="alert success" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss">Dismiss</button></div>}
+    <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div><div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div></header>
+      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
         {tab === "ideas" && <IdeasView projects={projects} ideas={ideas} workspace={workspace} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} busy={busy} command={command} />}
-        {tab === "contacts" && <ContactsView projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
+        {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
         {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
-        {tab === "overview" && <><div className="page-heading"><div><span className="eyebrow muted">YOUR COMMAND CENTER</span><h1>Good to see you.</h1><p>Here’s where your agents and their work stand today.</p></div><button className="button" onClick={() => setTab("assistant")}>Start with Stoic</button></div><BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} /><div className="metric-grid"><Metric value={agents.filter((a) => a.status === "connected" && a.platform !== "muse").length} label="Active MCP credentials" detail="A successful inbox check verifies each connection" /><Metric value={activeHandoffs.length} label="Active handoffs" detail={`${state.usage?.handoffs || 0} created this month`} /><Metric value={pendingApprovals.length} label="Needs your review" detail="Approval requests and decisions" /></div><div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h2>Handoffs in motion</h2><p>Work your team is handling now.</p></div><button className="subtle-link" onClick={() => setTab("handoffs")}>View all</button></div>{activeHandoffs.length ? <div className="compact-list">{activeHandoffs.slice(0, 5).map((item) => <div className="compact-item" key={item.id}><div><strong><AssistantRichInline text={item.title} /></strong><small>{(item.assigned_agent_id ? names[item.assigned_agent_id] : null) || "Team queue"} · {projectNames[item.project_id] || "Project"}</small></div><Status status={item.status} /></div>)}</div> : <Empty title="Nothing in motion" text="Active assignments appear here. Open Handoffs to review completed work or create another assignment." />}</section><section className="panel"><div className="panel-heading"><div><h2>Agent check-ins</h2><p>Know who is ready to receive work.</p></div><button className="subtle-link" onClick={() => setTab("agents")}>Manage</button></div>{agents.filter((a) => a.status !== "revoked").length ? <div className="compact-list">{agents.filter((a) => a.status !== "revoked").slice(0, 5).map((agent) => { const health = displayedAgentHealth(agent); return <div className="compact-item" key={agent.id}><span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span><div><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)} · {agent.platform === "muse" ? "browser relay" : `last check ${timeAgo(agent.last_check_at)}`}</small></div><span className={`health ${health.tone}`}><i />{health.label}</span></div>; })}</div> : <Empty title="Build your team" text="Add your first agent, then give it an identity in Stoic." />}</section></div>{pendingApprovals.length > 0 && <section className="panel review-panel"><div className="panel-heading"><div><h2>Needs your decision</h2><p>Agents cannot approve these on their behalf.</p></div></div>{pendingApprovals.map((approval) => <div className="approval-row" key={approval.id}><div><strong><AssistantRichInline text={approval.action_summary} /></strong><small>For {handoffs.find((h) => h.id === approval.handoff_id)?.title || "a handoff"}</small></div><div className="row-actions"><button className="button button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</button><button className="button button-outline button-small" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</button></div></div>)}</section>}</>}
+        {tab === "overview" && <div className="space-y-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="space-y-1"><Badge variant="secondary">Workspace overview</Badge><h1 className="text-2xl font-semibold tracking-tight">Good to see you.</h1><p className="text-sm text-muted-foreground">See what is moving and where your team could use a hand.</p></div>
+            <Button onClick={() => setTab("assistant")}>Start with Stoic</Button>
+          </div>
+          <BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} />
+          <section aria-label="Workspace summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Card size="sm"><CardHeader><CardDescription>Active MCP credentials</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse").length}</p><p className="mt-1 text-xs text-muted-foreground">A successful inbox check verifies each connection.</p></CardContent></Card>
+            <Card size="sm"><CardHeader><CardDescription>Active handoffs</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{activeHandoffs.length}</p><p className="mt-1 text-xs text-muted-foreground">{state.usage?.handoffs || 0} created this month.</p></CardContent></Card>
+            <Card size="sm"><CardHeader><CardDescription>Needs your review</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{pendingApprovals.length}</p><p className="mt-1 text-xs text-muted-foreground">Agents cannot approve requests on your behalf.</p></CardContent></Card>
+          </section>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle>Handoffs in motion</CardTitle><CardDescription>Work your team is handling now.</CardDescription><CardAction><Button variant="ghost" size="sm" onClick={() => setTab("handoffs")}>View all</Button></CardAction></CardHeader>
+              <Separator />
+              <CardContent className="pt-4">{activeHandoffs.length ? <div className="divide-y">{activeHandoffs.slice(0, 5).map((item) => <div key={item.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-0"><p className="truncate text-sm font-medium"><AssistantRichInline text={item.title} /></p><p className="mt-1 truncate text-xs text-muted-foreground">{(item.assigned_agent_id ? agents.find((agent) => agent.id === item.assigned_agent_id)?.name : null) || "Team queue"} · {projects.find((project) => project.id === item.project_id)?.name || "Project"}</p></div><Badge variant="outline" className="shrink-0">{item.status.replaceAll("_", " ")}</Badge></div>)}</div> : <UiEmpty className="border-0 px-0 py-8"><EmptyHeader><EmptyTitle>Nothing in motion</EmptyTitle><EmptyDescription>Active assignments will appear here. You can review completed work in Handoffs.</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="sm" onClick={() => setTab("handoffs")}>Open handoffs</Button></EmptyContent></UiEmpty>}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Agent check-ins</CardTitle><CardDescription>Know who is ready to receive work.</CardDescription><CardAction><Button variant="ghost" size="sm" onClick={() => setTab("agents")}>Manage agents</Button></CardAction></CardHeader>
+              <Separator />
+              <CardContent className="pt-4">{agents.filter((agent) => agent.status !== "revoked").length ? <div className="divide-y">{agents.filter((agent) => agent.status !== "revoked").slice(0, 5).map((agent) => { const health = displayedAgentHealth(agent); return <div key={agent.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><Avatar><AvatarFallback>{agent.name.charAt(0).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{agent.name}{workspace.boss_agent_id === agent.id && <Badge variant="secondary" className="ml-2">Lead</Badge>}</p><p className="mt-1 truncate text-xs text-muted-foreground">{agentHarnessLabel(agent)} · {agent.platform === "muse" ? "browser relay" : `last check ${timeAgo(agent.last_check_at)}`}</p></div><Badge variant={health.tone === "good" ? "secondary" : "outline"} className="shrink-0">{health.label}</Badge></div>; })}</div> : <UiEmpty className="border-0 px-0 py-8"><EmptyHeader><EmptyTitle>Build your team</EmptyTitle><EmptyDescription>Add your first agent, then give it an identity in Stoic.</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="sm" onClick={() => setTab("agents")}>Set up an agent</Button></EmptyContent></UiEmpty>}</CardContent>
+            </Card>
+          </div>
+          {pendingApprovals.length > 0 && <Card>
+            <CardHeader><CardTitle>Needs your decision</CardTitle><CardDescription>Review each request; agents cannot approve these on your behalf.</CardDescription></CardHeader><Separator />
+            <CardContent className="divide-y pt-1">{pendingApprovals.map((approval) => <div key={approval.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="text-sm font-medium"><AssistantRichInline text={approval.action_summary} /></p><p className="mt-1 text-xs text-muted-foreground">For {handoffs.find((handoff) => handoff.id === approval.handoff_id)?.title || "a handoff"}</p></div><div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</Button><Button size="sm" variant="destructive" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</Button></div></div>)}</CardContent>
+          </Card>}
+        </div>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
         {tab === "board" && <BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} />}
         {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={(nextTab) => setTab(nextTab)} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
@@ -234,11 +263,15 @@ export function StoicDashboard({ email }: { email: string }) {
 }
 
 function BridgeGuide({ guidance, onNavigate }: { guidance: DashboardGuidance; onNavigate: (tab: DashboardGuideTab, agentId?: string) => void }) {
-  const progress = Math.round((guidance.completedSteps / guidance.steps.length) * 100);
-  return <section className="bridge-guide" aria-label="Get your agent team working together">
-    <div className="bridge-guide-intro"><span className="eyebrow muted">ONE USEFUL NEXT STEP</span><h2>{guidance.title}</h2><p>{guidance.detail}</p><button className="button button-small" onClick={() => onNavigate(guidance.tab, guidance.agentId)}>{guidance.buttonLabel}</button></div>
-    <div className="bridge-guide-progress"><div className="bridge-guide-progress-label"><strong>Team setup</strong><span>{guidance.completedSteps} of {guidance.steps.length} steps</span></div><div className="bridge-progress-track" role="progressbar" aria-label="Team setup progress" aria-valuemin={0} aria-valuemax={guidance.steps.length} aria-valuenow={guidance.completedSteps} aria-valuetext={`${guidance.completedSteps} of ${guidance.steps.length} steps complete`}><span style={{ width: `${progress}%` }} /></div><details><summary>See setup progress</summary><ol>{guidance.steps.map((step) => <li key={step.label} className={step.complete ? "done" : ""}><span>{step.complete ? "Done" : "Next"}</span><strong>{step.label}</strong></li>)}</ol><p>Access notes are optional. Add them only when they help the team understand an agent&apos;s available tools; never include credentials.</p></details></div>
-  </section>;
+  const progress = Math.round((guidance.completedSteps / Math.max(1, guidance.steps.length)) * 100);
+  return <Card aria-label="Get your agent team working together" className="border-primary/15 bg-primary/[0.035]">
+    <CardContent className="grid gap-5 p-5 md:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] md:items-center md:p-6">
+      <div className="space-y-3"><Badge variant="secondary">One useful next step</Badge><div className="space-y-1.5"><CardTitle className="text-xl">{guidance.title}</CardTitle><CardDescription className="max-w-prose leading-relaxed">{guidance.detail}</CardDescription></div><Button size="sm" onClick={() => onNavigate(guidance.tab, guidance.agentId)}>{guidance.buttonLabel}</Button></div>
+      <div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">Team setup</span><span className="text-muted-foreground">{guidance.completedSteps} of {guidance.steps.length} steps</span></div><Progress value={progress} aria-label="Team setup progress" />
+        <Accordion defaultValue={[]}><AccordionItem value="team-setup"><AccordionTrigger className="py-2 text-sm">See setup progress</AccordionTrigger><AccordionContent><ol className="space-y-2">{guidance.steps.map((step) => <li key={step.label} className="flex items-center justify-between gap-3 text-sm"><span>{step.label}</span><Badge variant={step.complete ? "secondary" : "outline"}>{step.complete ? "Done" : "Next"}</Badge></li>)}</ol><p className="mt-3 text-xs leading-relaxed text-muted-foreground">Access notes are optional. Add them only when they help the team understand an agent&apos;s available tools; never include credentials.</p></AccordionContent></AccordionItem></Accordion>
+      </div>
+    </CardContent>
+  </Card>;
 }
 
 function SubscriptionGate({ workspace, agents, email, busy, command, error }: { workspace: Workspace; agents: Agent[]; email: string; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; error: string }) {
@@ -409,39 +442,213 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   const selectedEvents = detail?.handoff.id === selected?.id ? detail.events : events.filter((event) => event.handoff_id === selected?.id);
   const selectedArtifacts = detail?.handoff.id === selected?.id ? detail.artifacts : artifacts.filter((artifact) => artifact.handoff_id === selected?.id);
 
-  return <>
-    <div className="page-heading"><div><span className="eyebrow muted">WORK IN MOTION</span><h1>Handoffs</h1><p>Search every project assignment, follow its complete timeline, and review the result.</p></div><button className="button" onClick={() => setShowForm(!showForm)}>{showForm ? "Close" : "New handoff"}</button></div>
-    {showForm && <section className="panel form-panel"><h2>Make a handoff</h2>{!workers.length && <div className="callout warning"><strong>Connect a worker first.</strong><p>Connected workers can claim a shared handoff on their next inbox check. The first claim gives that worker sole ownership.</p></div>}<form className="form-grid" onSubmit={(event) => submit(event).catch(() => {})}><div><label htmlFor="handoff-project">Project</label><select id="handoff-project" value={projectId} onChange={(event) => { const next = projects.find((project) => project.id === event.target.value); setProjectId(event.target.value); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }} required>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div><div><label htmlFor="handoff-assignee">Who can take this?</label><select id="handoff-assignee" value={teamQueue ? "team_queue" : effectiveAssigneeId} onChange={(event) => { const next = event.target.value; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }} required><option value="team_queue">All connected workers · first claim wins</option>{workers.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} only</option>)}</select></div><div className="full assignee-context" role="note"><strong>{teamQueue ? "Shared team queue" : selectedAssignee ? `${selectedAssignee.name}\u2019s access` : "Connect a worker first"}</strong><p>{teamQueue ? "Every connected worker can see this handoff on its next inbox check. The first to claim it becomes its sole owner." : selectedAssignee?.access_notes || "No app access has been described yet. Confirm what this agent can do before assigning work."}</p><small>{teamQueue ? "Stoic creates one handoff, so workers cannot accidentally receive duplicate copies." : "Owner-provided notes guide routing; the agent must verify live access and approval requirements."}</small></div><div className="full"><label htmlFor="handoff-title">Title</label><input id="handoff-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Research our launch options" minLength={3} maxLength={160} required /></div><div className="full"><label htmlFor="handoff-goal">What needs to be done?</label><textarea id="handoff-goal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Describe the outcome the agent should deliver…" minLength={10} maxLength={10000} required rows={4} /></div><div className="full"><label htmlFor="handoff-constraints">Constraints or decisions to keep in mind</label><textarea id="handoff-constraints" value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Budget, scope, approval boundaries…" maxLength={10000} rows={3} /></div><button className="button" disabled={busy || !projectId || !workers.length}>Create handoff</button></form></section>}
-    <div className="handoff-layout">
-      <section className="panel handoff-list">
-        <div className="panel-heading"><div><h2>Handoff history</h2><p>{historyItems.length} loaded · newest first</p></div></div>
-        <form className="handoff-history-filters" onSubmit={applyFilters}>
-          <label className="history-search">Search titles and goals<input value={filterInput.q} onChange={(event) => setFilterInput((current) => ({ ...current, q: event.target.value }))} maxLength={120} placeholder="Try a project or task phrase" disabled={historyLoadingMore} /></label>
-          <div className="history-filter-row">
-            <label>Project<select value={filterInput.projectId} onChange={(event) => setFilterInput((current) => ({ ...current, projectId: event.target.value }))} disabled={historyLoadingMore}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-            <label>Agent<select value={filterInput.agentId} onChange={(event) => setFilterInput((current) => ({ ...current, agentId: event.target.value }))} disabled={historyLoadingMore}><option value="all">All agents</option><option value="unassigned">Team queue</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
-            <label>Status<select value={filterInput.status} onChange={(event) => setFilterInput((current) => ({ ...current, status: event.target.value }))} disabled={historyLoadingMore}><option value="all">All statuses</option><option value="proposed">Proposed</option><option value="assigned">Assigned</option><option value="claimed">Claimed</option><option value="blocked">Blocked</option><option value="submitted">Submitted</option><option value="changes_requested">Changes requested</option><option value="accepted">Accepted</option><option value="canceled">Canceled</option></select></label>
+  const statusBadge = (status: string) => <Badge variant="outline" className="shrink-0 border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)] capitalize">{status.replaceAll("_", " ")}</Badge>;
+  const fieldClass = "text-[var(--dash-text)]";
+  const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
+  const selectClass = "w-full border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)]";
+  const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
+  const hasHistoryFilters = Boolean(filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all");
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="max-w-2xl space-y-2">
+        <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Work in motion</Badge>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Handoffs</h1>
+        <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Search every project assignment, follow its complete timeline, and review the result.</p>
+      </div>
+      <Button type="button" onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New handoff"}</Button>
+    </header>
+
+    {showForm && <Card className={cardClass}>
+      <CardHeader className="border-b border-[var(--dash-line)]">
+        <CardTitle className="text-lg">Make a handoff</CardTitle>
+        <CardDescription className="text-[var(--dash-muted)]">Give a connected worker a clear outcome and enough context to act.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5 pt-4">
+        {!workers.length && <Alert className="border-amber-700/20 bg-amber-500/10 text-[var(--dash-text)]">
+          <AlertTitle>Connect a worker first.</AlertTitle>
+          <AlertDescription className="text-[var(--dash-muted)]">Connected workers can claim a shared handoff on their next inbox check. The first claim gives that worker sole ownership.</AlertDescription>
+        </Alert>}
+        <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => submit(event).catch(() => {})}>
+          <Field>
+            <FieldLabel htmlFor="handoff-project" className={fieldClass}>Project</FieldLabel>
+            <Select value={projectId} onValueChange={(value) => { const next = projects.find((project) => project.id === (value || "")); setProjectId(value || ""); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }}>
+              <SelectTrigger id="handoff-project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
+              <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="handoff-assignee" className={fieldClass}>Who can take this?</FieldLabel>
+            <Select value={teamQueue ? "team_queue" : effectiveAssigneeId} onValueChange={(value) => { const next = value || "team_queue"; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }}>
+              <SelectTrigger id="handoff-assignee" className={selectClass}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="team_queue">All connected workers · first claim wins</SelectItem>
+                {workers.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name} only</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <div className="md:col-span-2 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-soft)] p-4" role="note">
+            <p className="mb-1 text-sm font-medium text-[var(--dash-text)]">{teamQueue ? "Shared team queue" : selectedAssignee ? `${selectedAssignee.name}\u2019s access` : "Connect a worker first"}</p>
+            <p className="text-sm leading-6 text-[var(--dash-muted)]">{teamQueue ? "Every connected worker can see this handoff on its next inbox check. The first to claim it becomes its sole owner." : selectedAssignee?.access_notes || "No app access has been described yet. Confirm what this agent can do before assigning work."}</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--dash-muted)]">{teamQueue ? "Stoic creates one handoff, so workers cannot accidentally receive duplicate copies." : "Owner-provided notes guide routing; the agent must verify live access and approval requirements."}</p>
           </div>
-          <div className="history-filter-actions"><button className="button button-small" type="submit" disabled={historyLoading || historyLoadingMore}>Search history</button><button className="subtle-link" type="button" onClick={clearFilters} disabled={historyLoadingMore}>Clear filters</button></div>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="handoff-title" className={fieldClass}>Title</FieldLabel>
+            <Input id="handoff-title" className={controlClass} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Research our launch options" minLength={3} maxLength={160} required />
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="handoff-goal" className={fieldClass}>What needs to be done?</FieldLabel>
+            <Textarea id="handoff-goal" className={controlClass} value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Describe the outcome the agent should deliver…" minLength={10} maxLength={10000} required rows={4} />
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="handoff-constraints" className={fieldClass}>Constraints or decisions to keep in mind</FieldLabel>
+            <Textarea id="handoff-constraints" className={controlClass} value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Budget, scope, approval boundaries…" maxLength={10000} rows={3} />
+          </Field>
+          <div className="md:col-span-2">
+            <Button type="submit" disabled={busy || !projectId || !workers.length}>{busy ? "Creating…" : "Create handoff"}</Button>
+          </div>
         </form>
-        {historyError && <p className="history-error" role="alert">{historyError}</p>}
-        {historyLoading && !historyItems.length ? <p className="history-loading-note" role="status">Loading project handoffs…</p> : historyItems.length ? <div aria-busy={historyLoading} className="handoff-history-results">{historyItems.map((task) => <button key={task.id} className={`handoff-list-item ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}><span><strong><AssistantRichInline text={task.title} /></strong><small>{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</small></span><Status status={task.status} /></button>)}</div> : <Empty title={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "No matching handoffs" : "Nothing handed off yet"} text={filters.q || filters.status !== "all" || filters.projectId !== "all" || filters.agentId !== "all" ? "Try a different phrase or clear the filters to see all project work." : "Start with one clear assignment to a connected agent."} />}
-        {nextCursor && <div className="history-load-more"><button className="button button-outline button-small" onClick={() => loadOlder().catch(() => {})} disabled={historyLoadingMore}>{historyLoadingMore ? "Loading older handoffs…" : "Load older handoffs"}</button></div>}
-        {!nextCursor && historyItems.length > 0 && <p className="history-end-note">All matching handoffs are loaded.</p>}
-      </section>
-      <section className="panel handoff-detail">
+      </CardContent>
+    </Card>}
+
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(20rem,0.86fr)_minmax(0,1.4fr)]">
+      <Card className={cardClass}>
+        <CardHeader className="gap-3 border-b border-[var(--dash-line)] sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Handoff history</CardTitle>
+            <CardDescription className="text-[var(--dash-muted)]">{historyItems.length} loaded · newest first</CardDescription>
+          </div>
+          <Badge variant="outline" className="w-fit border-[var(--dash-line)] text-[var(--dash-muted)]">Newest first</Badge>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <form className="grid gap-3" onSubmit={applyFilters}>
+            <Field>
+              <FieldLabel htmlFor="history-search" className={fieldClass}>Search titles and goals</FieldLabel>
+              <Input id="history-search" className={controlClass} value={filterInput.q} onChange={(event) => setFilterInput((current) => ({ ...current, q: event.target.value }))} maxLength={120} placeholder="Try a project or task phrase" disabled={historyLoadingMore} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field>
+                <FieldLabel className={fieldClass}>Project</FieldLabel>
+                <Select value={filterInput.projectId} onValueChange={(value) => setFilterInput((current) => ({ ...current, projectId: value || "all" }))} disabled={historyLoadingMore}>
+                  <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel className={fieldClass}>Agent</FieldLabel>
+                <Select value={filterInput.agentId} onValueChange={(value) => setFilterInput((current) => ({ ...current, agentId: value || "all" }))} disabled={historyLoadingMore}>
+                  <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All agents</SelectItem><SelectItem value="unassigned">Team queue</SelectItem>{agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel className={fieldClass}>Status</FieldLabel>
+                <Select value={filterInput.status} onValueChange={(value) => setFilterInput((current) => ({ ...current, status: value || "all" }))} disabled={historyLoadingMore}>
+                  <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem><SelectItem value="proposed">Proposed</SelectItem><SelectItem value="assigned">Assigned</SelectItem><SelectItem value="claimed">Claimed</SelectItem><SelectItem value="blocked">Blocked</SelectItem><SelectItem value="submitted">Submitted</SelectItem><SelectItem value="changes_requested">Changes requested</SelectItem><SelectItem value="accepted">Accepted</SelectItem><SelectItem value="canceled">Canceled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" size="sm" disabled={historyLoading || historyLoadingMore}>{historyLoading ? "Searching…" : "Search history"}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={clearFilters} disabled={historyLoadingMore}>Clear filters</Button>
+            </div>
+          </form>
+
+          {historyError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load handoffs</AlertTitle><AlertDescription>{historyError}</AlertDescription></Alert>}
+          {historyLoading && !historyItems.length ? <div className="space-y-2" role="status" aria-label="Loading project handoffs">
+            <p className="text-sm text-[var(--dash-muted)]">Loading project handoffs…</p>
+            {[0, 1, 2].map((item) => <div key={item} className="space-y-2 rounded-lg border border-[var(--dash-line)] p-3"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-4/5" /></div>)}
+          </div> : historyItems.length ? <div aria-busy={historyLoading} className="space-y-2">
+            {historyItems.map((task) => <Button key={task.id} type="button" variant="ghost" aria-pressed={selected?.id === task.id} onClick={() => setSelectedId(task.id)} className={`h-auto w-full items-start justify-between gap-3 whitespace-normal rounded-lg border px-3 py-3 text-left transition-colors ${selected?.id === task.id ? "border-[var(--dash-accent)] bg-[var(--dash-soft)]" : "border-[var(--dash-line)] bg-transparent hover:bg-[var(--dash-soft)]"}`}>
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="block truncate text-sm font-medium text-[var(--dash-text)]"><AssistantRichInline text={task.title} /></span>
+                <span className="block text-xs leading-5 text-[var(--dash-muted)]">{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</span>
+              </span>
+              {statusBadge(task.status)}
+            </Button>)}
+          </div> : <UiEmpty className="min-h-44 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
+            <EmptyHeader><EmptyTitle>{hasHistoryFilters ? "No matching handoffs" : "Nothing handed off yet"}</EmptyTitle><EmptyDescription className="text-[var(--dash-muted)]">{hasHistoryFilters ? "Try a different phrase or clear the filters to see all project work." : "Start with one clear assignment to a connected agent."}</EmptyDescription></EmptyHeader>
+            {hasHistoryFilters && <EmptyContent><Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button></EmptyContent>}
+          </UiEmpty>}
+          {nextCursor && <Button type="button" variant="outline" size="sm" className="w-full border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => loadOlder().catch(() => {})} disabled={historyLoadingMore}>{historyLoadingMore ? "Loading older handoffs…" : "Load older handoffs"}</Button>}
+          {!nextCursor && historyItems.length > 0 && <p className="pt-1 text-center text-xs text-[var(--dash-muted)]">All matching handoffs are loaded.</p>}
+        </CardContent>
+      </Card>
+
+      <Card className={cardClass}>
         {selected ? <>
-          <div className="detail-top"><div><span className="eyebrow muted">{selectedProject?.name || "Project"}</span><h2><AssistantRichInline text={selected.title} /></h2><p>{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</p></div><Status status={selected.status} /></div>
-          <div className="handoff-run-summary"><span>Last activity</span><strong>{timeAgo(selected.updated_at)}</strong><span>Created</span><strong>{new Date(selected.created_at).toLocaleString()}</strong><span>Outcome</span><strong>{selected.status === "accepted" ? "Accepted by the owner" : selected.status === "submitted" ? "Waiting for owner review" : selected.status === "blocked" ? "Blocked · review the latest update" : selected.status === "changes_requested" ? "Changes requested" : selected.status === "canceled" ? "Canceled" : selected.status.replaceAll("_", " ")}</strong></div>
-          <div className="detail-block"><span>GOAL</span><AssistantRichText text={selected.goal} /></div>
-          {selected.constraints && <div className="detail-block"><span>CONSTRAINTS</span><AssistantRichText text={selected.constraints} /></div>}
-          <div className="detail-block"><span>ACTIVITY</span>{detailError && <p className="history-error" role="alert">Could not load the complete timeline: {detailError}</p>}{!detailForSelected && !detailError && <p className="history-loading-note">Loading handoff activity…</p>}{detailForSelected && selectedEvents.length === 0 && <p className="history-loading-note">No updates have been posted yet.</p>}<div className="timeline">{selectedEvents.map((event) => { const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic"; return <div className="timeline-item" key={event.id}><i /><div><strong>{event.event_type.replaceAll("_", " ")}</strong><small>{actor} · {timeAgo(event.created_at)}</small>{event.body && <AssistantRichText text={event.body} />}</div></div>; })}</div></div>
-          {selectedArtifacts.length > 0 && <div className="detail-block"><span>FILES</span><ul className="handoff-file-list">{selectedArtifacts.map((artifact) => <li key={artifact.id}>{artifact.name}</li>)}</ul></div>}
-          <div className="detail-actions"><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context for your agent…" rows={2} /><div><button className="button button-outline button-small" onClick={() => act("update").catch(() => {})} disabled={busy || body.trim().length < 2}>Post update</button>{selected.status === "submitted" && <><button className="button button-small" disabled={busy} onClick={() => act("accept").catch(() => {})}>Accept result</button><button className="button button-outline button-small" disabled={busy || body.trim().length < 2} onClick={() => act("request_changes").catch(() => {})}>Request changes</button></>}{selected.status === "proposed" && <button className="button button-small" disabled={busy} onClick={() => act("approve_assignment").catch(() => {})}>Approve assignment</button>}</div></div>
-        </> : <Empty title="Select a handoff" text="Choose a task to see its complete trail." />}
-      </section>
+          <CardHeader className="gap-3 border-b border-[var(--dash-line)] sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-2">
+              <Badge variant="secondary" className="max-w-full truncate bg-[var(--dash-soft)] text-[var(--dash-muted)]">{selectedProject?.name || "Project"}</Badge>
+              <CardTitle className="text-xl sm:text-2xl"><AssistantRichInline text={selected.title} /></CardTitle>
+              <CardDescription className="text-[var(--dash-muted)]">{selected.assigned_agent_id ? `Assigned to ${agentNames[selected.assigned_agent_id] || "Agent"}` : selected.status === "proposed" ? "Waiting for owner approval before workers can see this" : "Open to connected workers · first claim owns it"}</CardDescription>
+            </div>
+            <CardAction>{statusBadge(selected.status)}</CardAction>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-4">
+            <div className="grid grid-cols-1 gap-3 rounded-lg bg-[var(--dash-soft)] p-4 sm:grid-cols-3">
+              <div><p className="text-xs text-[var(--dash-muted)]">Last activity</p><p className="mt-1 text-sm font-medium text-[var(--dash-text)]">{timeAgo(selected.updated_at)}</p></div>
+              <div><p className="text-xs text-[var(--dash-muted)]">Created</p><p className="mt-1 text-sm font-medium text-[var(--dash-text)]">{new Date(selected.created_at).toLocaleString()}</p></div>
+              <div><p className="text-xs text-[var(--dash-muted)]">Outcome</p><p className="mt-1 text-sm font-medium capitalize text-[var(--dash-text)]">{selected.status === "accepted" ? "Accepted by the owner" : selected.status === "submitted" ? "Waiting for owner review" : selected.status === "blocked" ? "Blocked · review the latest update" : selected.status === "changes_requested" ? "Changes requested" : selected.status === "canceled" ? "Canceled" : selected.status.replaceAll("_", " ")}</p></div>
+            </div>
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Goal</h3>
+              <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={selected.goal} /></div>
+            </section>
+            {selected.constraints && <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Constraints</h3>
+              <div className="rounded-lg border border-[var(--dash-line)] p-3 text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={selected.constraints} /></div>
+            </section>}
+            <Separator className="bg-[var(--dash-line)]" />
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Activity</h3>
+                {detailForSelected && <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{selectedEvents.length} updates</Badge>}
+              </div>
+              {detailError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load the complete timeline</AlertTitle><AlertDescription>{detailError}</AlertDescription></Alert>}
+              {!detailForSelected && !detailError && <p className="text-sm text-[var(--dash-muted)]" role="status">Loading handoff activity…</p>}
+              {detailForSelected && selectedEvents.length === 0 && <UiEmpty className="min-h-28 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]"><EmptyHeader><EmptyTitle className="text-sm">No updates yet</EmptyTitle><EmptyDescription className="text-[var(--dash-muted)]">Post context below to keep the handoff moving.</EmptyDescription></EmptyHeader></UiEmpty>}
+              {selectedEvents.length > 0 && <MessageGroup className="gap-0 divide-y divide-[var(--dash-line)]">
+                {selectedEvents.map((event) => {
+                  const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic";
+                  return <Message key={event.id} className="py-3">
+                    <MessageContent className="gap-2">
+                      <MessageHeader className="gap-2 px-0 text-[var(--dash-muted)]"><Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-text)] capitalize">{event.event_type.replaceAll("_", " ")}</Badge><span>{actor} · {timeAgo(event.created_at)}</span></MessageHeader>
+                      {event.body && <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={event.body} /></div>}
+                    </MessageContent>
+                  </Message>;
+                })}
+              </MessageGroup>}
+            </section>
+            {selectedArtifacts.length > 0 && <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Files</h3>
+              <div className="flex flex-wrap gap-2">{selectedArtifacts.map((artifact) => <Badge key={artifact.id} variant="secondary" className="max-w-full truncate bg-[var(--dash-soft)] text-[var(--dash-text)]">{artifact.name}</Badge>)}</div>
+            </section>}
+            <Separator className="bg-[var(--dash-line)]" />
+            <div className="space-y-3">
+              <Field>
+                <FieldLabel htmlFor="handoff-update" className={fieldClass}>Add context for your agent</FieldLabel>
+                <Textarea id="handoff-update" className={controlClass} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Share a decision, answer a question, or clarify the expected result…" rows={3} />
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => act("update").catch(() => {})} disabled={busy || body.trim().length < 2}>Post update</Button>
+                {selected.status === "submitted" && <>
+                  <Button type="button" size="sm" onClick={() => act("accept").catch(() => {})} disabled={busy}>Accept result</Button>
+                  <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => act("request_changes").catch(() => {})} disabled={busy || body.trim().length < 2}>Request changes</Button>
+                </>}
+                {selected.status === "proposed" && <Button type="button" size="sm" onClick={() => act("approve_assignment").catch(() => {})} disabled={busy}>Approve assignment</Button>}
+              </div>
+            </div>
+          </CardContent>
+        </> : <UiEmpty className="min-h-96 border-0 bg-transparent p-8 text-[var(--dash-text)]">
+          <EmptyHeader><EmptyTitle>Select a handoff</EmptyTitle><EmptyDescription className="text-[var(--dash-muted)]">Choose a task to see its complete trail.</EmptyDescription></EmptyHeader>
+        </UiEmpty>}
+      </Card>
     </div>
-  </>;
+  </div>;
 }
 
 function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSelect, onSecret, onNavigate, command }: { agents: Agent[]; workspace: Workspace; handoffs: Handoff[]; busy: boolean; selected?: Agent; secret: { agentId: string; value: string; type: "key" | "code" } | null; onSelect: (id: string) => void; onSecret: (value: { agentId: string; value: string; type: "key" | "code" } | null) => void; onNavigate: (tab: Tab) => void; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
@@ -450,8 +657,11 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
   const [customHarnessName, setCustomHarnessName] = useState("");
   const [boss, setBoss] = useState(workspace.boss_agent_id || "");
   const [level, setLevel] = useState(workspace.delegation_level);
-  const endpoint = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp";
+  const endpoint = typeof window !== "undefined" ? window.location.origin + "/api/mcp" : "/api/mcp";
   const schedulePrompt = selected ? schedulePromptFor(selected, workspace) : "";
+  const activeAgents = agents.filter((agent) => agent.status !== "revoked");
+  const activeCredentials = agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse").length;
+
   async function add(event: FormEvent) {
     event.preventDefault();
     const created = await command("add_agent", {
@@ -464,82 +674,245 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
     onSecret(null);
     onSelect(created.id);
   }
+
   async function issue(type: "key" | "code") {
     if (!selected) return;
     const value = await command(type === "key" ? "issue_key" : "pair_code", { agentId: selected.id }) as { key?: string; code?: string };
     onSecret({ agentId: selected.id, value: (type === "key" ? value.key : value.code) || "", type });
   }
+
   const isMuse = selected?.platform === "muse";
 
-  return <>
-    <div className="page-heading">
-      <div><span className="eyebrow muted">STEP 2 OF 3 · YOUR TEAM</span><h1>Connect your agents</h1><p>Name each agent, choose its harness, and give it a role in the team.</p></div>
-      <span className="count-pill">{agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse").length} active MCP credentials</span>
-    </div>
-    <div className="agents-layout">
-      <div>
-        <section className="panel">
-          <div className="panel-heading"><div><h2>Team members</h2><p>Each agent has its own Stoic profile and can be revoked independently.</p></div></div>
-          <div className="agent-list">{agents.filter((agent) => agent.status !== "revoked").map((agent) => {
-            const health = displayedAgentHealth(agent);
-            return <button className={`agent-list-item ${selected?.id === agent.id ? "selected" : ""}`} key={agent.id} onClick={() => { onSelect(agent.id); onSecret(null); }}>
-              <span className={`platform-avatar ${agent.platform}`}>{agent.name.charAt(0)}</span>
-              <span><strong>{agent.name}{workspace.boss_agent_id === agent.id && <span className="boss-tag">BOSS</span>}</strong><small>{agentHarnessLabel(agent)}</small></span>
-              <span className={`health ${health.tone}`}><i />{health.label}</span>
-            </button>;
-          })}</div>
-          <form className="add-agent-form" onSubmit={(event) => add(event).catch(() => {})}>
-            <h3>Add an agent</h3>
-            <div className="form-row">
-              <label>Your agent&apos;s name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Research assistant" minLength={2} maxLength={80} required /></label>
-              <label>Which harness does it use?<select value={harness} onChange={(event) => setHarness(event.target.value as AgentHarnessId)}>{AGENT_HARNESSES.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
-              {harness === "other" && <label>Harness name<input value={customHarnessName} onChange={(event) => setCustomHarnessName(event.target.value)} placeholder="For example, Local assistant" minLength={2} maxLength={60} required /></label>}
-              <button className="button button-small" disabled={busy}>Add agent</button>
-            </div>
-          </form>
-        </section>
-        <section className="panel policy-panel">
-          <div className="panel-heading"><div><h2>Team rules</h2><p>Your preferences are enforced by Stoic for connected MCP agents.</p></div></div>
-          <label htmlFor="team-boss">Who leads?</label>
-          <select id="team-boss" value={boss} onChange={(event) => setBoss(event.target.value)}>
-            <option value="">No boss yet</option>
-            {agents.filter((agent) => agent.status !== "revoked").map((agent) => <option value={agent.id} key={agent.id} disabled={agent.platform === "muse"}>{agent.name}{agent.platform === "muse" ? " · browser relay only" : ""}</option>)}
-          </select>
-          <label htmlFor="delegation-level">Delegation level</label>
-          <select id="delegation-level" value={level} onChange={(event) => setLevel(event.target.value as Workspace["delegation_level"])}>
-            <option value="observe">Observe — updates only</option><option value="propose">Propose — owner approves assignments</option><option value="delegate">Delegate — boss assigns directly</option>
-          </select>
-          <p className="field-help">Muse can share browser-based project ideas, but it is not a verified MCP handoff or boss connection. External actions still need your approval.</p>
-          <button className="button button-small" disabled={busy} onClick={() => command("set_policy", { bossAgentId: boss || null, delegationLevel: level }).catch(() => {})}>Save team rules</button>
-        </section>
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="space-y-2">
+        <Badge variant="secondary">Your team</Badge>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agents</h1>
+        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Connect each agent with its own Stoic profile, then set access notes and team rules.</p>
       </div>
-      <section className="panel setup-agent-panel">
+      <Card size="sm" className="sm:min-w-52">
+        <CardContent className="flex items-center justify-between gap-4 py-3">
+          <span className="text-sm text-muted-foreground">Active MCP credentials</span>
+          <span className="text-lg font-semibold tabular-nums">{activeCredentials}</span>
+        </CardContent>
+      </Card>
+    </header>
+
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)]">
+      <div className="space-y-5">
+        <Card>
+          <CardHeader>
+            <CardTitle>Team members</CardTitle>
+            <CardDescription>Each agent has its own Stoic profile and can be revoked independently.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeAgents.length ? <div className="flex flex-col gap-1" role="group" aria-label="Team members">
+              {activeAgents.map((agent) => {
+                const health = displayedAgentHealth(agent);
+                const isSelected = selected?.id === agent.id;
+                return <Button
+                  key={agent.id}
+                  type="button"
+                  variant={isSelected ? "secondary" : "ghost"}
+                  className="h-auto w-full justify-start gap-3 whitespace-normal px-3 py-3 text-left"
+                  aria-pressed={isSelected}
+                  onClick={() => { onSelect(agent.id); onSecret(null); }}
+                >
+                  <Avatar className="size-9 shrink-0">
+                    <AvatarFallback className="bg-primary/10 text-primary">{agent.name.charAt(0).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2 font-medium text-foreground">
+                      <span className="truncate">{agent.name}</span>
+                      {workspace.boss_agent_id === agent.id && <Badge variant="outline">Boss</Badge>}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{agentHarnessLabel(agent)}</span>
+                  </span>
+                  <Badge variant={health.tone === "muted" ? "outline" : "secondary"} className="shrink-0">{health.label}</Badge>
+                </Button>;
+              })}
+            </div> : <UiEmpty className="rounded-xl border border-dashed py-7">
+              <EmptyHeader>
+                <EmptyTitle>No agents connected</EmptyTitle>
+                <EmptyDescription>Add an agent below to give your team a Stoic profile.</EmptyDescription>
+              </EmptyHeader>
+            </UiEmpty>}
+          </CardContent>
+          <Separator />
+          <CardContent className="space-y-4 pt-4">
+            <div>
+              <h3 className="font-medium">Add an agent</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Give the profile a clear name and choose its harness.</p>
+            </div>
+            <form className="grid gap-4" onSubmit={(event) => add(event).catch(() => {})}>
+              <Field>
+                <FieldLabel htmlFor="new-agent-name">Agent name</FieldLabel>
+                <Input id="new-agent-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Research assistant" minLength={2} maxLength={80} required />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="new-agent-harness">Harness</FieldLabel>
+                <Select value={harness} onValueChange={(value) => setHarness((value || "codex") as AgentHarnessId)}>
+                  <SelectTrigger id="new-agent-harness"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
+                  <SelectContent>{AGENT_HARNESSES.map((option) => <SelectItem value={option.id} key={option.id}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              {harness === "other" && <Field>
+                <FieldLabel htmlFor="new-agent-custom-harness">Harness name</FieldLabel>
+                <Input id="new-agent-custom-harness" value={customHarnessName} onChange={(event) => setCustomHarnessName(event.target.value)} placeholder="For example, Local assistant" minLength={2} maxLength={60} required />
+              </Field>}
+              <Button type="submit" disabled={busy}>{busy ? "Adding agent…" : "Add agent"}</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Team rules</CardTitle>
+            <CardDescription>These preferences apply to connected MCP agents.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Field>
+              <FieldLabel htmlFor="team-boss">Who leads?</FieldLabel>
+              <Select value={boss || "none"} onValueChange={(value) => setBoss(!value || value === "none" ? "" : value)}>
+                <SelectTrigger id="team-boss"><SelectValue placeholder="Choose a lead agent" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No boss yet</SelectItem>
+                  {activeAgents.map((agent) => <SelectItem value={agent.id} key={agent.id} disabled={agent.platform === "muse"}>{agent.name}{agent.platform === "muse" ? " · browser relay only" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <FieldDescription>Muse is a browser relay and cannot be selected as a boss.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="delegation-level">Delegation level</FieldLabel>
+              <Select value={level} onValueChange={(value) => { if (value === "observe" || value === "propose" || value === "delegate") setLevel(value); }}>
+                <SelectTrigger id="delegation-level"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="observe">Observe · updates only</SelectItem>
+                  <SelectItem value="propose">Propose · owner approves assignments</SelectItem>
+                  <SelectItem value="delegate">Delegate · boss assigns directly</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Alert className="border-amber-500/30 bg-amber-500/5">
+              <AlertTitle>External actions still need your approval</AlertTitle>
+              <AlertDescription>Muse can share browser-based project ideas, but it is not a verified MCP handoff or boss connection.</AlertDescription>
+            </Alert>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => command("set_policy", { bossAgentId: boss || null, delegationLevel: level }).catch(() => {})}>Save team rules</Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="min-w-0">
         {selected ? <>
-          {!isMuse && <AgentProofSummary agent={selected} />}
-          <div className="panel-heading"><div><span className="eyebrow muted">AGENT SETUP</span><h2>Set up {selected.name}</h2><p>{agentHarnessLabel(selected)} · {isMuse ? (selected.status === "revoked" ? "Stoic profile revoked" : selected.status === "connected" ? "Browser relay setup · any prior MCP profile is unavailable" : "Browser relay setup · no MCP connection") : selected.status === "connected" ? selected.last_check_at ? "Verified by inbox check" : "Key or OAuth paired · awaiting first check" : "Not connected yet"}</p></div></div>
-          {!isMuse && <AgentSetupProgress agent={selected} bossAgentId={workspace.boss_agent_id} handoffs={handoffs} onOpenIntake={() => onNavigate("assistant")} />}
-          {isMuse
-            ? <MuseBrowserSetup key={selected.id} dashboardUrl={typeof window !== "undefined" ? `${window.location.origin}/login` : "https://stoic.bishoptech.dev/login"} />
-            : <>
+          <CardHeader className="border-b">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Set up {selected.name}</CardTitle>
+              <Badge variant={selected.status === "connected" ? "secondary" : "outline"}>{isMuse ? (selected.status === "revoked" ? "Revoked" : selected.status === "connected" ? "Browser relay" : "Setup") : selected.status === "connected" ? (selected.last_check_at ? "Inbox check verified" : "Paired · check pending") : "Not connected"}</Badge>
+            </div>
+            <CardDescription>{agentHarnessLabel(selected)} · {isMuse ? "Muse does not have an MCP connection through this setup." : selected.status === "connected" ? selected.last_check_at ? "Stoic has received a successful inbox check." : "A key or OAuth profile is paired; the first check is still pending." : "Finish the connection steps to verify this profile."}</CardDescription>
+          </CardHeader>
+          <CardContent className="min-w-0 space-y-5 pt-5">
+            {!isMuse && <AgentProofSummary agent={selected} />}
+            {!isMuse && <AgentSetupProgress agent={selected} bossAgentId={workspace.boss_agent_id} handoffs={handoffs} onOpenIntake={() => onNavigate("assistant")} />}
+            {isMuse ? <MuseBrowserSetup key={selected.id} dashboardUrl={typeof window !== "undefined" ? window.location.origin + "/login" : "https://stoic.bishoptech.dev/login"} /> : <>
               <AgentAccessEditor key={selected.id} agent={selected} busy={busy} command={command} />
-              {selected.platform === "grok" && !isGrokBotHarness(selected.harness_name) && <div className="callout warning"><strong>Grok web is interactive-first.</strong><p>Add Stoic through grok.com/connectors. A Business or Enterprise admin may need to provision the connector first. This setup does not establish an unattended inbox schedule.</p></div>}
-              {selected.platform === "grok" && isGrokBotHarness(selected.harness_name) && <div className="callout"><strong>Grok Bot routines are personal.</strong><p>A routine runs as the person who created it and reports in that person’s Bot conversation. It is not a team-wide schedule; verify the saved routine and a successful Stoic inbox check.</p></div>}
+              {selected.platform === "grok" && !isGrokBotHarness(selected.harness_name) && <Alert className="border-amber-500/30 bg-amber-500/5">
+                <AlertTitle>Grok web is interactive-first</AlertTitle>
+                <AlertDescription>Add Stoic through grok.com/connectors. A Business or Enterprise admin may need to provision it. This setup does not establish an unattended inbox schedule.</AlertDescription>
+              </Alert>}
+              {selected.platform === "grok" && isGrokBotHarness(selected.harness_name) && <Alert>
+                <AlertTitle>Grok Bot routines are personal</AlertTitle>
+                <AlertDescription>A routine runs as the person who created it and reports in that person’s Bot conversation. It is not a team-wide schedule; verify the saved routine and a successful Stoic inbox check.</AlertDescription>
+              </Alert>}
               <AgentConnectionStep key={selected.id} agent={selected} endpoint={endpoint} busy={busy} secret={secret} issue={issue} />
-              <div id="agent-schedule-setup" className="setup-step"><span className="step-number">2</span><div>
-                <h3>{selected.last_check_at ? "Set a calm inbox schedule" : "Next: set a calm inbox schedule"}</h3>
-                <p>{selected.last_check_at ? "Your connection has passed a successful server check. Now choose a cadence in the agent’s own scheduler." : "First complete the one-time check above. Once Stoic records it, choose a cadence in the agent’s own scheduler."} Use {agentScheduleSetupLabel(selected.harness_name, selected.platform)}. The agent runs checks with its provider account and model allowance; Stoic records the last successful call but cannot wake an offline host. Choose a cadence that fits your provider costs.</p>
-                <div className="prompt-box">{schedulePrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</button>
-                <details className="advanced-pairing"><summary>Also report work outside scheduled checks</summary><p>Add this to the agent’s persistent instructions so work outside the scheduled inbox check also reaches the board.</p><div className="prompt-box">{agentRunReportPrompt}</div><button className="subtle-link" onClick={() => navigator.clipboard.writeText(agentRunReportPrompt)}>Copy run-report instruction</button></details>
-                <div className="schedule-controls"><label><input type="checkbox" checked={selected.schedule_enabled} disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: event.target.checked, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})} /> I set up a native schedule</label><label>Check cadence <select aria-label="Expected inbox cadence" value={selected.schedule_cadence_minutes} disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)} onChange={(event) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(event.target.value) }).catch(() => {})}><option value={60}>Hourly</option><option value={360}>Every 6 hours</option><option value={1440}>Daily</option></select></label></div>
-                <p className="field-help">Changing this expectation also changes the setup prompt below. Update the native schedule in your agent to match. Last inbox check: {timeAgo(selected.last_check_at)}. Marking a schedule as set up does not prove it is running; a real check will update the time.</p>
-              </div></div>
-              <div className="setup-step"><span className="step-number">3</span><div><h3>Try one handoff</h3><p>Ask this agent to call <code>check_inbox</code>. Then make a small handoff and confirm it claims and reports back.</p></div></div>
+
+              <Card id="agent-schedule-setup" size="sm" className="scroll-mt-6">
+                <CardHeader className="sm:grid-cols-[1fr_auto]">
+                  <div className="space-y-1">
+                    <CardTitle>2 · Inbox schedule</CardTitle>
+                    <CardDescription>{selected.last_check_at ? "The connection passed a successful server check. Set a cadence in the agent’s own scheduler." : "Complete the one-time check above, then set a cadence in the agent’s own scheduler."} Use {agentScheduleSetupLabel(selected.harness_name, selected.platform)}. The agent uses its provider account and model allowance; Stoic cannot wake an offline host.</CardDescription>
+                  </div>
+                  <Badge variant={selected.schedule_enabled ? "secondary" : "outline"}>{selected.schedule_enabled ? "Owner declared" : "Not declared"}</Badge>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground"><code>{schedulePrompt}</code></pre>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(schedulePrompt)}>Copy schedule prompt</Button>
+                  </div>
+                  <Accordion defaultValue={[]}>
+                    <AccordionItem value="run-report" className="border-b-0">
+                      <AccordionTrigger>Also report work outside scheduled checks</AccordionTrigger>
+                      <AccordionContent>
+                        <p className="mb-3 text-sm leading-6 text-muted-foreground">Add this to the agent’s persistent instructions so work outside its inbox schedule can reach the board.</p>
+                        <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
+                          <pre className="whitespace-pre-wrap break-words text-xs leading-5 text-foreground"><code>{agentRunReportPrompt}</code></pre>
+                          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(agentRunReportPrompt)}>Copy run-report instruction</Button>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                  <Separator />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Native schedule declaration</p>
+                      <p className="text-xs leading-5 text-muted-foreground">This records your expectation; it does not prove the schedule is running.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={selected.schedule_enabled ? "secondary" : "outline"}
+                      aria-pressed={selected.schedule_enabled}
+                      disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)}
+                      onClick={() => command("set_schedule", { agentId: selected.id, enabled: !selected.schedule_enabled, cadenceMinutes: selected.schedule_cadence_minutes }).catch(() => {})}
+                    >{selected.schedule_enabled ? "Schedule marked as set up" : "Mark schedule as set up"}</Button>
+                  </div>
+                  <Field>
+                    <FieldLabel htmlFor="expected-inbox-cadence">Expected check cadence</FieldLabel>
+                    <Select
+                      value={String(selected.schedule_cadence_minutes)}
+                      onValueChange={(value) => command("set_schedule", { agentId: selected.id, enabled: selected.schedule_enabled, cadenceMinutes: Number(value) }).catch(() => {})}
+                      disabled={!harnessHasDocumentedScheduler(selected.harness_name, selected.platform)}
+                    >
+                      <SelectTrigger id="expected-inbox-cadence"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="60">Hourly</SelectItem>
+                        <SelectItem value="360">Every 6 hours</SelectItem>
+                        <SelectItem value="1440">Daily</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>Changing this expectation changes the setup prompt. Update the native schedule to match. Last inbox check: {timeAgo(selected.last_check_at)}.</FieldDescription>
+                  </Field>
+                  {!harnessHasDocumentedScheduler(selected.harness_name, selected.platform) && <p className="text-sm text-muted-foreground">This harness does not have a documented native scheduler in Stoic’s setup guide.</p>}
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader className="flex-row items-start gap-3">
+                  <Badge variant="outline">3</Badge>
+                  <div className="space-y-1">
+                    <CardTitle>Try one handoff</CardTitle>
+                    <CardDescription>Ask this agent to call check_inbox. Then make a small handoff and confirm it claims and reports back.</CardDescription>
+                  </div>
+                </CardHeader>
+              </Card>
             </>}
-          <div className="setup-step agent-revoke-step"><span className="step-number">×</span><div><h3>Remove this profile</h3><p>Revoking stops future access through this Stoic profile.</p><button className="danger-link" disabled={busy} onClick={() => { if (confirm(`Revoke ${selected.name}? Its key and OAuth pairing will stop working.`)) command("revoke_agent", { agentId: selected.id }).catch(() => {}); }}>Revoke this agent</button></div></div>
-        </> : <Empty title="Add your first agent" text="Choose an agent you use today and connect it to Stoic." />}
-      </section>
+            <Alert variant="destructive">
+              <AlertTitle>Remove this profile</AlertTitle>
+              <AlertDescription>Revoking stops future access through this Stoic profile.</AlertDescription>
+              <Button type="button" variant="destructive" size="sm" className="mt-3" disabled={busy} onClick={() => { if (confirm("Revoke " + selected.name + "? Its key and OAuth pairing will stop working.")) command("revoke_agent", { agentId: selected.id }).catch(() => {}); }}>Revoke this agent</Button>
+            </Alert>
+          </CardContent>
+        </> : <CardContent className="py-8">
+          <UiEmpty className="rounded-xl border border-dashed">
+            <EmptyHeader>
+              <EmptyTitle>Select an agent to get started</EmptyTitle>
+              <EmptyDescription>Choose a team member to see its connection proof, access boundaries, and setup steps.</EmptyDescription>
+            </EmptyHeader>
+            {!activeAgents.length && <EmptyContent><p>Add your first agent from the form in Team members.</p></EmptyContent>}
+          </UiEmpty>
+        </CardContent>}
+      </Card>
     </div>
-  </>;
+  </div>;
 }
 
 function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {
@@ -548,106 +921,260 @@ function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {
   async function copyPrompt() {
     try {
       await navigator.clipboard.writeText(prompt);
-      setCopyStatus("Copied. Paste this into the Muse agent after saving Stoic in its Secure Credentials.");
+      setCopyStatus("Copied. Paste this into Muse after saving Stoic in its Secure Credentials.");
     } catch {
       setCopyStatus("Clipboard access failed. Allow clipboard access and try again.");
     }
   }
-  return <div className="muse-browser-setup">
-    <div className="callout warning"><strong>Muse uses the browser in this setup.</strong><p>This is not a Stoic MCP connection. After you add this profile, save your Stoic username and password in Muse&apos;s stored credentials. The password is not saved in Stoic; Supabase Auth handles browser sign-in. Muse inherits the account&apos;s full Stoic dashboard access. The prompt guides it to read and post project ideas, but that limit is not enforced by a separate Muse permission role. Use an account whose access is appropriate and supervise its first runs.</p></div>
-    <div className="setup-step"><span className="step-number">1</span><div><h3>Save your Stoic login in Muse</h3><p>After saving this agent profile, open Muse&apos;s stored credentials and add your Stoic username or email and password. Keep them in that credential store only. Do not put either value in the prompt, agent notes, or regular chat.</p></div></div>
-    <div className="setup-step"><span className="step-number">2</span><div><h3>Copy the relay instructions into Muse</h3><p>The ready-to-paste prompt asks Muse to share concise project ideas three times a day and whenever you ask. Use a recurring browser task only if this Muse account visibly offers one, then verify its saved schedule and run history. Stoic cannot wake Muse or verify those runs.</p><div className="prompt-box muse-prompt-box">{prompt}</div><button className="button button-outline button-small" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</button>{copyStatus && <p className="field-help" role="status" aria-live="polite">{copyStatus}</p>}</div></div>
+
+  return <div className="space-y-4">
+    <Alert className="border-amber-500/30 bg-amber-500/5">
+      <AlertTitle>Muse uses the browser in this setup</AlertTitle>
+      <AlertDescription>This is not a Stoic MCP connection. Save your Stoic username and password in Muse’s stored credentials. The password is not saved in Stoic; Supabase Auth handles browser sign-in. Muse inherits the account’s full Stoic dashboard access. The prompt guides it to read and post project ideas, but that limit is not enforced by a separate Muse permission role. Use an account whose access is appropriate and supervise its first runs.</AlertDescription>
+    </Alert>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>1 · Save your Stoic login in Muse</CardTitle>
+        <CardDescription>After saving this agent profile, open Muse’s stored credentials and add your Stoic username or email and password. Keep them in that credential store only. Do not put either value in the prompt, agent notes, or regular chat.</CardDescription>
+      </CardHeader>
+    </Card>
+    <Card>
+      <CardHeader>
+        <CardTitle>2 · Copy the relay instructions into Muse</CardTitle>
+        <CardDescription>The prompt asks Muse to share concise project ideas three times a day and whenever you ask. Use a recurring browser task only if this Muse account visibly offers one, then verify its saved schedule and run history. Stoic cannot wake Muse or verify those runs.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/80 bg-muted/30 p-3 text-xs leading-5"><code>{prompt}</code></pre>
+        <Button type="button" variant="outline" size="sm" onClick={() => copyPrompt().catch(() => {})}>Copy Muse setup prompt</Button>
+        {copyStatus && <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{copyStatus}</p>}
+      </CardContent>
+    </Card>
   </div>;
 }
+
 function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: Agent; endpoint: string; busy: boolean; secret: { agentId: string; value: string; type: "key" | "code" } | null; issue: (type: "key" | "code") => Promise<void> }) {
   const [promptCopyStatus, setPromptCopyStatus] = useState("");
   const guide = agentConnectionGuide(agent.platform, endpoint, agent.harness_name || agentHarnessLabel(agent));
   const installPrompt = agentInstallPrompt(agent.harness_name || agentHarnessLabel(agent), endpoint, agent.schedule_cadence_minutes);
-  const oauthCommand = agent.platform === "codex" ? `codex mcp add stoic-connector --url ${endpoint}`
-    : agent.platform === "hermes" ? `hermes mcp add stoic-connector --url ${endpoint} --auth oauth`
-    : agent.platform === "openclaw" ? `openclaw mcp add stoic-connector --url ${endpoint} --transport streamable-http --auth oauth` : null;
+  const oauthCommand = agent.platform === "codex" ? "codex mcp add stoic-connector --url " + endpoint
+    : agent.platform === "hermes" ? "hermes mcp add stoic-connector --url " + endpoint + " --auth oauth"
+    : agent.platform === "openclaw" ? "openclaw mcp add stoic-connector --url " + endpoint + " --transport streamable-http --auth oauth" : null;
+
   function generateKey() {
-    if (agent.status === "connected" && !confirm(`Create a new Stoic key for ${agent.name}? Its previous key or OAuth pairing will stop working. You will need to test this connection again.`)) return;
+    if (agent.status === "connected" && !confirm("Create a new Stoic key for " + agent.name + "? Its previous key or OAuth pairing will stop working. You will need to test this connection again.")) return;
     void issue("key").catch(() => {});
   }
+
   async function copyHermesInstallPrompt() {
     try {
       const prompt = agent.platform === "hermes"
-        ? `${hermesInstallPrompt(endpoint)}\n\nAfter confirming the connection, add these persistent Stoic instructions:\n\n${stoicAgentInstructions()}`
+        ? hermesInstallPrompt(endpoint) + "\n\nAfter confirming the connection, add these persistent Stoic instructions:\n\n" + stoicAgentInstructions()
         : installPrompt;
       await navigator.clipboard.writeText(prompt);
-      setPromptCopyStatus(`Copied. Paste it into the ${agentHarnessLabel(agent)} installation you want to connect.`);
+      setPromptCopyStatus("Copied. Paste it into the " + agentHarnessLabel(agent) + " installation you want to connect.");
     } catch {
       setPromptCopyStatus("Clipboard access failed. Allow clipboard access and try again.");
     }
   }
-  return <div id="agent-connection" className="setup-step"><span className="step-number">1</span><div>
-    <h3>Connect the MCP server</h3>
-    <p>Give this installation its own Stoic key. Add the server URL in your agent&apos;s MCP settings, then store the key there as an HTTP bearer credential. Stoic never needs credentials for the other apps that agent uses.</p>
-    <div className="copy-box"><code>{endpoint}</code><button onClick={() => navigator.clipboard.writeText(endpoint)} aria-label="Copy MCP URL">Copy</button></div>
-    <button className="button button-outline button-small connection-key-button" disabled={busy || agent.platform === "muse"} onClick={generateKey}> {agent.status === "connected" ? "Create or replace agent key" : "Generate agent key"}</button>
-    {secret?.agentId === agent.id && secret.type === "key" && <div className="secret-box"><strong>Copy this key now. It will not appear again.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy key</button></div>}
-    {guide && <div className="connection-guide"><strong>Set up {agentHarnessLabel(agent)}</strong><p>{guide.text}</p><div className="copy-box"><code>{guide.code}</code><button onClick={() => navigator.clipboard.writeText(guide.code)} aria-label={`Copy ${agentHarnessLabel(agent)} setup`}>Copy</button></div><div className="hermes-install-prompt"><p>Or copy a ready-to-paste setup prompt. It includes the shared Stoic rules for ideas and contacts, and only describes scheduling when this harness has a verified native path.</p><button className="button button-outline button-small" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy {agentHarnessLabel(agent)} setup prompt</button>{promptCopyStatus && <p className="field-help" role="status" aria-live="polite">{promptCopyStatus}</p>}</div><a href={guide.docs} target="_blank" rel="noopener noreferrer">Platform setup reference </a></div>}
-    <p className="field-help">Use a different key for each agent profile. Replacing a key or switching to OAuth disconnects the previous installation. A fresh inbox check verifies the new connection.</p>
-    {agent.status !== "revoked" && !agent.last_check_at && <div id="first-inbox-check" className="connection-first-check"><div><strong>{agent.status === "connected" ? "Verify the connection once" : "Check in after pairing"}</strong><p>{agent.status === "connected" ? "Paste this into the connected agent. Stoic will mark it verified when check_inbox reaches the server; Stoic cannot wake an offline host." : "After you add the MCP server and save this agent’s key, paste this into that agent to confirm the connection."}</p></div><div className="copy-box"><code>{FIRST_INBOX_CHECK_PROMPT}</code><button onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy first-check prompt</button></div></div>}
-    <details className="advanced-pairing"><summary>Advanced: OAuth pairing</summary><p>OAuth requires a client registered with Stoic. Contact support to register your client before using this path. After sign-in, generate a one-time pairing code and ask the agent to call <code>pair_agent</code>. Pairing disables this profile&apos;s previous Stoic key.</p>{oauthCommand && <code className="command-example">{oauthCommand}</code>}<button className="subtle-link" disabled={busy || agent.platform === "muse"} onClick={() => issue("code").catch(() => {})}>Generate pairing code</button>{secret?.agentId === agent.id && secret.type === "code" && <div className="secret-box"><strong>Pairing code expires in 15 minutes.</strong><code>{secret.value}</code><button onClick={() => navigator.clipboard.writeText(secret.value)}>Copy code</button></div>}</details>
-  </div></div>;
+
+  return <Card id="agent-connection" className="scroll-mt-6">
+    <CardHeader>
+      <CardTitle>1 · Connect the MCP server</CardTitle>
+      <CardDescription>Give this installation its own Stoic key. Add the server URL in your agent’s MCP settings, then store the key there as an HTTP bearer credential. Stoic never needs credentials for the other apps that agent uses.</CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">MCP server URL</p>
+        <code className="block break-all text-xs">{endpoint}</code>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(endpoint)}>Copy URL</Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" disabled={busy || agent.platform === "muse"} onClick={generateKey}>{agent.status === "connected" ? "Create or replace agent key" : "Generate agent key"}</Button>
+        {agent.status === "connected" && <Badge variant="secondary">Replacing a key or OAuth pairing disconnects the previous installation.</Badge>}
+      </div>
+      {secret?.agentId === agent.id && secret.type === "key" && <Alert>
+        <AlertTitle>Copy this key now. It will not appear again.</AlertTitle>
+        <AlertDescription className="break-all font-mono">{secret.value}</AlertDescription>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(secret.value)}>Copy key</Button>
+      </Alert>}
+      {guide && <Card size="sm">
+        <CardHeader>
+          <CardTitle>Set up {agentHarnessLabel(agent)}</CardTitle>
+          <CardDescription>{guide.text}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
+            <pre className="whitespace-pre-wrap break-words text-xs leading-5"><code>{guide.code}</code></pre>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(guide.code)}>Copy setup</Button>
+          </div>
+          <p className="text-sm leading-6 text-muted-foreground">Or copy a ready-to-paste setup prompt. It includes the shared Stoic rules for ideas and contacts, and only describes scheduling when this harness has a verified native path.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy {agentHarnessLabel(agent)} setup prompt</Button>
+          {promptCopyStatus && <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{promptCopyStatus}</p>}
+          <Button type="button" variant="link" size="sm" render={<a href={guide.docs} target="_blank" rel="noopener noreferrer" />}>Platform setup reference</Button>
+        </CardContent>
+      </Card>}
+      <p className="text-sm leading-6 text-muted-foreground">Use a different key for each agent profile. Replacing a key or switching to OAuth disconnects the previous installation. A fresh inbox check verifies the new connection.</p>
+      {agent.status !== "revoked" && !agent.last_check_at && <Alert id="first-inbox-check" className="scroll-mt-6">
+        <AlertTitle>{agent.status === "connected" ? "Verify the connection once" : "Check in after pairing"}</AlertTitle>
+        <AlertDescription>{agent.status === "connected" ? "Paste this into the connected agent. Stoic marks it verified when check_inbox reaches the server; Stoic cannot wake an offline host." : "After you add the MCP server and save this agent’s key, paste this into that agent to confirm the connection."}</AlertDescription>
+        <div className="mt-3 rounded-lg border border-border/80 bg-muted/30 p-3">
+          <pre className="whitespace-pre-wrap break-words text-xs leading-5"><code>{FIRST_INBOX_CHECK_PROMPT}</code></pre>
+          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy first-check prompt</Button>
+        </div>
+      </Alert>}
+      <Accordion defaultValue={[]}>
+        <AccordionItem value="oauth" className="border-b-0">
+          <AccordionTrigger>Advanced: OAuth pairing</AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-3">
+              <p className="text-sm leading-6 text-muted-foreground">OAuth requires a client registered with Stoic. Contact support to register your client before using this path. After sign-in, generate a one-time pairing code and ask the agent to call pair_agent. Pairing disables this profile’s previous Stoic key.</p>
+              {oauthCommand && <pre className="overflow-auto rounded-lg border border-border/80 bg-muted/30 p-3 text-xs"><code>{oauthCommand}</code></pre>}
+              <Button type="button" variant="outline" size="sm" disabled={busy || agent.platform === "muse"} onClick={() => issue("code").catch(() => {})}>Generate pairing code</Button>
+              {secret?.agentId === agent.id && secret.type === "code" && <Alert>
+                <AlertTitle>Pairing code expires in 15 minutes.</AlertTitle>
+                <AlertDescription className="font-mono">{secret.value}</AlertDescription>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(secret.value)}>Copy code</Button>
+              </Alert>}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </CardContent>
+  </Card>;
 }
 
 function AgentProofSummary({ agent }: { agent: Agent }) {
   const summary = agentConnectionSummary(agent);
   const checkOverdue = summary.proof.label === "Last check received · overdue now";
-  return <section className="agent-proof-summary" aria-label={`Connection proof for ${agent.name}`}>
-    <div className="agent-proof-heading"><div><span className="eyebrow muted">CONNECTION PROOF</span><h3>What Stoic knows about this installation</h3><p>Server evidence, owner declarations, and host guidance stay visibly separate.</p></div><span className={`proof-badge ${summary.proof.tone}`}>{summary.proof.label}</span></div>
-    <div className="agent-proof-grid">
-      <ProofItem label="Authentication" value={summary.auth.label} evidence={summary.auth.evidence === "server_record" ? "Server record" : "Not recorded"} />
-      <ProofItem label="Stoic transport" value={summary.transport.label} evidence="Product config" />
-      <ProofItem label="Host posture" value={summary.host.label} detail={summary.host.note} evidence="Provider guidance" />
-      <ProofItem label="Schedule state" value={summary.schedule.label} evidence={summary.schedule.evidence === "owner_declared" ? "Owner declaration" : "Server record"} />
-      <ProofItem label="Access notes" value={summary.access.label} evidence={summary.access.evidence === "owner_declared" ? "Owner declaration" : "Not recorded"} />
-    </div>
-    <p className="agent-proof-note">{summary.proof.detail} A paired Stoic identity does not grant access to the apps, repositories, devices, or provider accounts named in the notes.</p>
-    {checkOverdue && <div className="connection-first-check" role="status"><div><strong>Check the native schedule</strong><p>{agent.name} last checked {timeAgo(agent.last_check_at)}. Confirm the schedule is still enabled in its own host, then run one manual check. The schedule command below is specific to this agent.</p></div><div className="copy-box"><code>{FIRST_INBOX_CHECK_PROMPT}</code><button onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy manual check prompt</button></div></div>}
-  </section>;
+
+  return <Card aria-label={"Connection proof for " + agent.name}>
+    <CardHeader className="sm:grid-cols-[1fr_auto]">
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Connection proof</p>
+        <CardTitle>What Stoic knows about this installation</CardTitle>
+        <CardDescription>Server evidence, owner declarations, and host guidance stay visibly separate.</CardDescription>
+      </div>
+      <Badge variant="outline" className="h-auto max-w-full whitespace-normal py-1 text-left">{summary.proof.label}</Badge>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <ProofItem label="Authentication" value={summary.auth.label} evidence={summary.auth.evidence === "server_record" ? "Server record" : "Not recorded"} />
+        <ProofItem label="Stoic transport" value={summary.transport.label} evidence="Product config" />
+        <ProofItem label="Host posture" value={summary.host.label} detail={summary.host.note} evidence="Provider guidance" />
+        <ProofItem label="Schedule state" value={summary.schedule.label} evidence={summary.schedule.evidence === "owner_declared" ? "Owner declaration" : "Server record"} />
+        <ProofItem label="Access notes" value={summary.access.label} evidence={summary.access.evidence === "owner_declared" ? "Owner declaration" : "Not recorded"} />
+      </div>
+      <Alert>
+        <AlertDescription>{summary.proof.detail} A paired Stoic identity does not grant access to the apps, repositories, devices, or provider accounts named in the notes.</AlertDescription>
+      </Alert>
+      {checkOverdue && <Alert className="border-amber-500/30 bg-amber-500/5" role="status">
+        <AlertTitle>Check the native schedule</AlertTitle>
+        <AlertDescription>{agent.name} last checked {timeAgo(agent.last_check_at)}. Confirm the schedule is still enabled in its own host, then run one manual check. The schedule command below is specific to this agent.</AlertDescription>
+        <div className="mt-3 rounded-lg border border-border/80 bg-muted/30 p-3">
+          <pre className="whitespace-pre-wrap break-words text-xs leading-5"><code>{FIRST_INBOX_CHECK_PROMPT}</code></pre>
+          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(FIRST_INBOX_CHECK_PROMPT)}>Copy manual check prompt</Button>
+        </div>
+      </Alert>}
+    </CardContent>
+  </Card>;
 }
 
 function ProofItem({ label, value, detail, evidence }: { label: string; value: string; detail?: string; evidence: string }) {
-  return <div className="agent-proof-item"><span>{label}</span><strong>{value}</strong>{detail && <p>{detail}</p>}<small>{evidence}</small></div>;
+  return <div className="min-w-0 rounded-lg border border-border/80 bg-muted/20 p-3">
+    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <p className="mt-1 break-words text-sm font-medium">{value}</p>
+    {detail && <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>}
+    <Badge variant="outline" className="mt-2">{evidence}</Badge>
+  </div>;
 }
 
 function AgentAccessEditor({ agent, busy, command }: { agent: Agent; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
   const [notes, setNotes] = useState(agent.access_notes || "");
   const changed = notes.trim() !== (agent.access_notes || "");
+
   async function save(event: FormEvent) {
     event.preventDefault();
     await command("set_agent_access", { agentId: agent.id, accessNotes: notes });
   }
-  return <form className="agent-access-editor" onSubmit={(event) => save(event).catch(() => {})}>
-    <div><h3>What can {agent.name} access?</h3><p>Describe connected apps and the work this agent may do there. Other agents can use this to route work. These notes are owner-provided and do not grant or verify access.</p></div>
-    <label htmlFor={`access-${agent.id}`}>Apps and boundaries</label>
-    <textarea id={`access-${agent.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} placeholder="Example: GitHub repository access for code review; can open draft PRs. Ask me before merging or deploying." />
-    <small>Never paste API keys, passwords, tokens, or private account details here. Keep credentials in each agent&apos;s own platform.</small>
-    <button className="button button-outline button-small" disabled={busy || !changed}>Save access notes</button>
-  </form>;
+
+  return <Card size="sm">
+    <CardHeader>
+      <CardTitle>What can {agent.name} access?</CardTitle>
+      <CardDescription>Describe connected apps and the work this agent may do there. Other agents can use this to route work. These notes are owner-provided and do not grant or verify access.</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <form className="space-y-3" onSubmit={(event) => save(event).catch(() => {})}>
+        <Field>
+          <FieldLabel htmlFor={"access-" + agent.id}>Apps and boundaries</FieldLabel>
+          <Textarea id={"access-" + agent.id} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} placeholder="Example: GitHub repository access for code review; can open draft PRs. Ask me before merging or deploying." />
+          <FieldDescription>Never paste API keys, passwords, tokens, or private account details here. Keep credentials in each agent’s own platform.</FieldDescription>
+        </Field>
+        <Button type="submit" variant="outline" size="sm" disabled={busy || !changed}>{busy ? "Saving access notes…" : "Save access notes"}</Button>
+      </form>
+    </CardContent>
+  </Card>;
 }
 
 function ScheduleGuide({ agent, workspace }: { agent?: Agent; workspace: Workspace }) {
   if (!agent || !["codex", "hermes", "openclaw"].includes(agent.platform)) return null;
+
   const prompt = schedulePromptFor(agent, workspace);
   const interval = agent.schedule_cadence_minutes === 1440 ? "24h" : agent.schedule_cadence_minutes === 360 ? "6h" : "1h";
   const cadenceLabel = agent.schedule_cadence_minutes === 1440 ? "day" : agent.schedule_cadence_minutes === 360 ? "6 hours" : "hour";
   const command = agent.platform === "hermes"
-    ? `hermes cron create 'every ${interval}' ${shellQuote(prompt)} --name ${shellQuote(`Stoic inbox - ${agent.name}`)} --deliver local`
+    ? "hermes cron create 'every " + interval + "' " + shellQuote(prompt) + " --name " + shellQuote("Stoic inbox - " + agent.name) + " --deliver local"
     : agent.platform === "openclaw"
-      ? `openclaw cron add --every ${interval} --message ${shellQuote(prompt)} --name ${shellQuote(`Stoic inbox - ${agent.name}`)} --session isolated --no-deliver`
-      : `In Codex, ask: Create a recurring automation every ${cadenceLabel} with this prompt: ${prompt}`;
-  return <section className="panel schedule-guide"><div className="panel-heading"><div><h2>Native schedule setup</h2><p>{agent.last_check_at ? "The first inbox check succeeded. Add this prompt to the agent’s native scheduler for recurring runs." : "Complete the one-time first check in the setup steps above, then add this prompt to the agent’s native scheduler."}</p></div></div><div className="copy-box"><code>{command}</code><button onClick={() => navigator.clipboard.writeText(command)} aria-label="Copy schedule setup">Copy</button></div><p className="field-help">The schedule runs in your agent account. Stoic shows a successful check only after <code>check_inbox</code> reaches the server.</p></section>;
+      ? "openclaw cron add --every " + interval + " --message " + shellQuote(prompt) + " --name " + shellQuote("Stoic inbox - " + agent.name) + " --session isolated --no-deliver"
+      : "In Codex, ask: Create a recurring automation every " + cadenceLabel + " with this prompt: " + prompt;
+
+  return <Card>
+    <CardHeader className="sm:grid-cols-[1fr_auto]">
+      <div className="space-y-1">
+        <CardTitle>Native schedule setup</CardTitle>
+        <CardDescription>{agent.last_check_at ? "The first inbox check succeeded. Add this prompt to the agent’s native scheduler for recurring runs." : "Complete the one-time first check in the setup steps above, then add this prompt to the agent’s native scheduler."}</CardDescription>
+      </div>
+      <Badge variant={agent.last_check_at ? "secondary" : "outline"}>{agent.last_check_at ? "First check complete" : "First check pending"}</Badge>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
+        <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words text-xs leading-5"><code>{command}</code></pre>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigator.clipboard.writeText(command)}>Copy schedule setup</Button>
+      </div>
+      <p className="text-sm leading-6 text-muted-foreground">The schedule runs in your agent account. Stoic shows a successful check only after check_inbox reaches the server.</p>
+    </CardContent>
+  </Card>;
 }
 
 function AgentCheckHistory({ agent, activity }: { agent?: Agent; activity: CheckActivity[] }) {
   if (!agent) return null;
-  const checks = activity.filter((entry) => entry.actor_key === `agent:${agent.id}`).slice(0, 5);
-  return <section className="panel schedule-guide"><div className="panel-heading"><div><h2>Recent inbox checks</h2><p>Successful calls to Stoic from {agent.name}. A check does not mean every handoff is complete.</p></div></div>{checks.length ? <div className="compact-list">{checks.map((entry) => <div className="compact-item" key={entry.id}><div><strong>{timeAgo(entry.created_at)}</strong><small>{entry.details.handoffCount ?? 0} active handoffs · {entry.details.unreadProjectCount ?? 0} projects with unread discussion</small></div></div>)}</div> : <p className="field-help">{agent.last_check_at ? `Last successful check: ${timeAgo(agent.last_check_at)}. Detailed history is not available for that check.` : "No check-ins yet."} The next successful <code>check_inbox</code> call will appear here.</p>}</section>;
+
+  const checks = activity.filter((entry) => entry.actor_key === "agent:" + agent.id).slice(0, 5);
+
+  return <Card>
+    <CardHeader>
+      <CardTitle>Recent inbox checks</CardTitle>
+      <CardDescription>Successful calls to Stoic from {agent.name}. A check does not mean every handoff is complete.</CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      {checks.length ? checks.map((entry) => <Card size="sm" key={entry.id}>
+        <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">{timeAgo(entry.created_at)}</p>
+            <p className="text-sm text-muted-foreground">Successful inbox check</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">{entry.details.handoffCount ?? 0} active handoffs</Badge>
+            <Badge variant="outline">{entry.details.unreadProjectCount ?? 0} projects with unread discussion</Badge>
+          </div>
+        </CardContent>
+      </Card>) : <UiEmpty className="rounded-xl border border-dashed py-6">
+        <EmptyHeader>
+          <EmptyTitle>{agent.last_check_at ? "Detailed history is unavailable" : "No check-ins yet"}</EmptyTitle>
+          <EmptyDescription>{agent.last_check_at ? "Last successful check: " + timeAgo(agent.last_check_at) + ". The next successful check_inbox call will appear here." : "The next successful check_inbox call will appear here."}</EmptyDescription>
+        </EmptyHeader>
+      </UiEmpty>}
+    </CardContent>
+  </Card>;
 }
 
 function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }: { projects: Project[]; handoffs: Handoff[]; agents: Agent[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onNavigate: (tab: Tab) => void }) {
@@ -657,6 +1184,7 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
   const selected = useMemo(() => projects.find((project) => project.id === selectedId) || projects[0], [projects, selectedId]);
   const agentNames = Object.fromEntries(agents.map((agent) => [agent.id, agent.name]));
   const projectHandoffs = handoffs.filter((handoff) => handoff.project_id === selected?.id && handoff.status !== "canceled");
+  const activeCount = projectHandoffs.filter((handoff) => handoff.status !== "accepted").length;
   const lanes = [
     { label: "Ready", statuses: ["assigned", "proposed"] },
     { label: "In progress", statuses: ["claimed"] },
@@ -673,14 +1201,110 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
     setNewName("");
   }
 
-  return <>
-    <div className="page-heading"><div><span className="eyebrow muted">WORK IN MOTION</span><h1>Projects</h1><p>Follow each agent’s assignments from the first handoff through review.</p></div><span className="count-pill">{projects.length} projects · {projectHandoffs.length} active and completed tasks</span></div>
-    <section className="panel project-selector"><div className="panel-heading"><div><h2>Project space</h2><p>Choose a project to view its work and shared context.</p></div></div><div className="project-switcher">{projects.map((project) => <button key={project.id} className={`project-chip ${selected?.id === project.id ? "selected" : ""}`} onClick={() => { setSelectedId(project.id); setBrief(project.brief); }}>{project.name}</button>)}<form className="add-project" onSubmit={(event) => createProject(event).catch(() => {})}><input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="New project name" minLength={2} maxLength={100} required /><button className="subtle-link add-project-button" aria-label="Add project" disabled={busy}>Add</button></form></div></section>
+  function selectProject(value: string | null) {
+    const project = projects.find((item) => item.id === value);
+    if (!project) return;
+    setSelectedId(project.id);
+    setBrief(project.brief);
+  }
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="space-y-2">
+        <Badge variant="secondary">Work in motion</Badge>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Projects</h1>
+        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Follow assignments from the first handoff through review. Each project keeps the shared context and work your agents need.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:min-w-64">
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Projects</p><p className="mt-1 text-xl font-semibold tabular-nums">{projects.length}</p></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Tasks in this project</p><p className="mt-1 text-xl font-semibold tabular-nums">{projectHandoffs.length}</p></CardContent></Card>
+      </div>
+    </header>
+
+    <Card>
+      <CardHeader className="gap-1">
+        <CardTitle>Project space</CardTitle>
+        <CardDescription>Choose a project to view its work and shared context, or create a new one.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        {projects.length ? <Field>
+          <FieldLabel htmlFor="project-space-select">Current project</FieldLabel>
+          <Select value={selected?.id || ""} onValueChange={selectProject}>
+            <SelectTrigger id="project-space-select" aria-label="Choose a project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
+            <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+          </Select>
+          <FieldDescription>Switching projects changes the board and shared brief below.</FieldDescription>
+        </Field> : <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Create a project to give your agents a shared workspace.</div>}
+        <form className="flex min-w-0 items-end gap-2" onSubmit={(event) => createProject(event).catch(() => {})}>
+          <Field className="min-w-0 flex-1">
+            <FieldLabel htmlFor="new-project-name">New project</FieldLabel>
+            <Input id="new-project-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Project name" minLength={2} maxLength={100} required />
+          </Field>
+          <Button type="submit" disabled={busy || newName.trim().length < 2}>Add project</Button>
+        </form>
+      </CardContent>
+    </Card>
+
     {selected ? <>
-      <section className="panel project-kanban-panel"><div className="panel-heading"><div><h2>{selected.name} · agent board</h2><p>Agents move tasks as they accept work, report progress, and submit results.</p></div><button className="button button-outline button-small" onClick={() => onNavigate("handoffs")}>Open handoffs</button></div><div className="project-kanban">{lanes.map((lane) => { const items = projectHandoffs.filter((handoff) => lane.statuses.includes(handoff.status)).sort((a, b) => b.updated_at.localeCompare(a.updated_at)); return <section className="project-lane" key={lane.label}><div className="project-lane-heading"><h3>{lane.label}</h3><span>{items.length}</span></div>{items.length ? items.map((handoff) => <button className="project-work-card" key={handoff.id} onClick={() => onNavigate("handoffs")}><span className={`status status-${handoff.status}`}>{handoff.status.replaceAll("_", " ")}</span><strong><AssistantRichInline text={handoff.title} /></strong><small>{handoff.assigned_agent_id ? agentNames[handoff.assigned_agent_id] || "Assigned agent" : "Team queue · open to workers"} · updated {timeAgo(handoff.updated_at)}</small><span className="project-work-open">View handoff </span></button>) : <p className="project-lane-empty">No tasks here yet.</p>}</section>; })}</div></section>
-      <section className="panel project-brief"><div className="panel-heading"><div><h2>Shared project brief</h2><p>Version {selected.brief_version} · the current decisions every agent reads.</p></div><span className="brief-label"> Shared with agents</span></div><label htmlFor="brief">What should every agent know?</label><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Project goal, decisions already made, important links, voice or style guidelines, constraints…" maxLength={20000} rows={10} /><div className="brief-footer"><span>{brief.length.toLocaleString()} / 20,000 characters</span><button className="button button-small" disabled={busy || brief === selected.brief} onClick={() => command("update_brief", { projectId: selected.id, brief, expectedVersion: selected.brief_version }).catch(() => {})}>Save brief</button></div></section>
-    </> : <section className="panel"><Empty title="Create your first project" text="Projects give your agents a shared brief and a place to track handoffs." /></section>}
-  </>;
+      <Card>
+        <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>{selected.name} · work board</CardTitle>
+            <CardDescription>{activeCount} active {activeCount === 1 ? "task" : "tasks"} and {projectHandoffs.length - activeCount} completed</CardDescription>
+          </div>
+          <Button type="button" variant="outline" onClick={() => onNavigate("handoffs")}>Open handoffs</Button>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {lanes.map((lane) => {
+            const items = projectHandoffs.filter((handoff) => lane.statuses.includes(handoff.status)).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+            return <section className="flex min-w-0 flex-col gap-3 rounded-xl border bg-muted/30 p-3" key={lane.label}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">{lane.label}</h3>
+                <Badge variant="secondary" className="tabular-nums">{items.length}</Badge>
+              </div>
+              {items.length ? items.map((handoff) => <Card className="min-w-0 shadow-none" key={handoff.id}>
+                <CardHeader className="gap-2 p-3">
+                  <Badge variant="outline" className="w-fit capitalize">{handoff.status.replaceAll("_", " ")}</Badge>
+                  <CardTitle className="text-sm leading-5"><AssistantRichInline text={handoff.title} /></CardTitle>
+                  <CardDescription>{handoff.assigned_agent_id ? agentNames[handoff.assigned_agent_id] || "Assigned agent" : "Team queue · open to workers"} · updated {timeAgo(handoff.updated_at)}</CardDescription>
+                </CardHeader>
+                <CardFooter className="px-3 pb-3 pt-0">
+                  <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => onNavigate("handoffs")}>View handoff</Button>
+                </CardFooter>
+              </Card>) : <div className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">No tasks here yet.</div>}
+            </section>;
+          })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>Shared project brief</CardTitle>
+            <Badge variant="secondary">Shared with agents</Badge>
+          </div>
+          <CardDescription>Version {selected.brief_version} · current decisions and reference information every agent reads.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Field>
+            <FieldLabel htmlFor="project-brief">What should every agent know?</FieldLabel>
+            <Textarea id="project-brief" value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Project goal, decisions already made, important links, voice or style guidelines, constraints…" maxLength={20000} rows={10} />
+            <FieldDescription>{brief.length.toLocaleString()} / 20,000 characters</FieldDescription>
+          </Field>
+          <div className="flex justify-end">
+            <Button type="button" disabled={busy || brief === selected.brief} onClick={() => command("update_brief", { projectId: selected.id, brief, expectedVersion: selected.brief_version }).catch(() => {})}>Save brief</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </> : <Card>
+      <UiEmpty className="border-0">
+        <EmptyHeader>
+          <EmptyTitle>Create your first project</EmptyTitle>
+          <EmptyDescription>Projects give your agents a shared brief and a place to track handoffs.</EmptyDescription>
+        </EmptyHeader>
+      </UiEmpty>
+    </Card>}
+  </div>;
 }
 
 function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { projects: Project[]; ideas: Idea[]; workspace: Workspace; hasWorkers: boolean; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
@@ -744,200 +1368,106 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
     return () => window.cancelAnimationFrame(frame);
   }, [workspace.ideas_timezone, command]);
 
-  return <>
-    <div className="page-heading"><div><span className="eyebrow muted">A QUIET DAILY REVIEW</span><h1>Ideas</h1><p>Stoic prepares three source-grounded ideas once a day after 8 AM in your workspace time zone. Nothing becomes work until you accept it.</p></div></div>
-    <section className="panel ideas-panel">
-      <div className="ideas-toolbar">
-        <div><h2>For your review</h2><p>{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"}</p></div>
-        <label>Project <select aria-label="Filter ideas by project" value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="all">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-      </div>
-      <div className="ideas-filters" role="group" aria-label="Filter ideas by status">{(["pending", "accepted", "archived", "all"] as const).map((item) => <button type="button" className={status === item ? "active" : ""} key={item} onClick={() => setStatus(item)}>{item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <span>{loadedIdeas.filter((idea) => idea.status === item).length}</span>}</button>)}</div>
-      {visibleIdeas.length ? <div className="ideas-list">{visibleIdeas.map((idea) => <article className="idea-card" key={idea.id}>
-        <div className="idea-card-meta"><span>{idea.status === "pending" ? "For owner review" : idea.status}</span><time dateTime={idea.created_at}>{timeAgo(idea.created_at)}</time></div>
-        <h3><AssistantRichInline text={idea.title} /></h3>
-        <AssistantRichText className="idea-card-body" text={idea.summary} />
-        <div className="idea-detail-pair"><div><strong>Why now</strong><AssistantRichText text={idea.why_now} /></div><div><strong>First step</strong><AssistantRichText text={idea.next_step} /></div></div>
-        <details className="idea-evidence"><summary>Evidence · {idea.evidence_ids.length}</summary><ul>{idea.evidence_ids.map((source) => <li key={source}>{source}</li>)}</ul></details>
-        <div className="idea-card-footer"><span>{projectNames[idea.project_id] || "Project"} · generated from shared context</span>{idea.status === "pending" ? <div className="row-actions">
-          <button className="button button-outline button-small" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => reviewIdea(idea.id, "accept_idea").catch(() => {})}>Accept as team handoff</button>
-          <button className="subtle-link" disabled={busy} onClick={() => reviewIdea(idea.id, "archive_idea").catch(() => {})}>Archive</button>
-        </div> : idea.accepted_handoff_id ? <span>Handoff created · {idea.accepted_handoff_id.slice(0, 8)}</span> : <span>Archived</span>}</div>
-        {idea.status === "pending" && !hasWorkers && <p className="field-help idea-action-note">Connect a worker before Stoic can queue an accepted idea.</p>}
-        {idea.status === "pending" && workspace.delegation_level === "observe" && <p className="field-help idea-action-note">Your team is in Observe mode. Change the delegation level before creating handoffs.</p>}
-      </article>)}</div> : <Empty title={status === "pending" ? "No ideas need review" : "Nothing in this view"} text="Stoic keeps each day's suggestions as their own records. Older ideas remain here until you accept or archive them." />}
-      {historyError && <p className="field-help error-message" role="alert">{historyError}</p>}
-      {nextOffset !== null && <div className="history-load-more"><button className="button button-outline button-small" onClick={() => loadOlderIdeas().catch(() => {})} disabled={historyLoading}>{historyLoading ? "Loading older ideas…" : "Load older ideas"}</button></div>}
-    </section>
-    <section className="panel ideas-timezone"><div><span className="eyebrow muted">DAILY SCHEDULE</span><h2>Keep the morning calm</h2><p>The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</p></div><label>Workspace time zone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Chicago" maxLength={100} /></label><button className="button button-outline button-small" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).catch(() => {})}>Save time zone</button></section>
-  </>;
+  const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
+  const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
+  const selectClass = "w-full border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)]";
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="max-w-3xl space-y-2">
+      <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">A quiet daily review</Badge>
+      <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Ideas</h1>
+      <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Stoic prepares three source-grounded ideas once a day after 8 AM in your workspace time zone. Nothing becomes work until you accept it.</p>
+    </header>
+
+    <Card className={cardClass}>
+      <CardHeader className="gap-4 border-b border-[var(--dash-line)] lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <CardTitle className="text-lg">For your review</CardTitle>
+          <CardDescription className="text-[var(--dash-muted)]">{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"} in this view</CardDescription>
+        </div>
+        <Field className="w-full max-w-xs">
+          <FieldLabel className="text-[var(--dash-text)]">Project</FieldLabel>
+          <Select value={projectId} onValueChange={(value) => setProjectId(value || "all")}>
+            <SelectTrigger aria-label="Filter ideas by project" className={selectClass}><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter ideas by status">
+          {(["pending", "accepted", "archived", "all"] as const).map((item) => <Button type="button" variant={status === item ? "secondary" : "outline"} size="sm" className={status === item ? "bg-[var(--dash-soft)] text-[var(--dash-text)]" : "border-[var(--dash-line)] text-[var(--dash-muted)]"} key={item} aria-pressed={status === item} onClick={() => setStatus(item)}>
+            {item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <Badge variant="outline" className="ml-1 border-[var(--dash-line)] px-1.5 text-[var(--dash-muted)]">{loadedIdeas.filter((idea) => idea.status === item).length}</Badge>}
+          </Button>)}
+        </div>
+        {visibleIdeas.length ? <div className="grid gap-4 lg:grid-cols-2">
+          {visibleIdeas.map((idea) => <Card key={idea.id} className={`${cardClass} overflow-visible`}>
+            <CardHeader className="gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Badge variant={idea.status === "pending" ? "secondary" : "outline"} className="border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)]">{idea.status === "pending" ? "For owner review" : idea.status}</Badge>
+                <time dateTime={idea.created_at} className="text-xs text-[var(--dash-muted)]">{timeAgo(idea.created_at)}</time>
+              </div>
+              <CardTitle className="text-base leading-6"><AssistantRichInline text={idea.title} /></CardTitle>
+              <CardDescription className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.summary} /></CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3">
+                  <h4 className="mb-1 text-xs font-semibold text-[var(--dash-text)]">Why now</h4>
+                  <div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.why_now} /></div>
+                </section>
+                <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3">
+                  <h4 className="mb-1 text-xs font-semibold text-[var(--dash-text)]">First step</h4>
+                  <div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.next_step} /></div>
+                </section>
+              </div>
+              <Accordion className="border-t border-[var(--dash-line)]" defaultValue={[]}>
+                <AccordionItem value={`evidence-${idea.id}`} className="border-[var(--dash-line)]">
+                  <AccordionTrigger className="text-[var(--dash-text)]">Evidence <Badge variant="outline" className="ml-2 border-[var(--dash-line)] text-[var(--dash-muted)]">{idea.evidence_ids.length}</Badge></AccordionTrigger>
+                  <AccordionContent>
+                    {idea.evidence_ids.length ? <ul className="grid gap-2 text-sm text-[var(--dash-muted)]">{idea.evidence_ids.map((source) => <li key={source} className="break-all rounded-md bg-[var(--dash-soft)] px-3 py-2">{source}</li>)}</ul> : <p className="text-sm text-[var(--dash-muted)]">No evidence references were attached.</p>}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </CardContent>
+            <CardFooter className="flex flex-col items-start gap-3 border-[var(--dash-line)] !bg-[var(--dash-bg)] sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-5 text-[var(--dash-muted)]">{projectNames[idea.project_id] || "Project"} · generated from shared context</p>
+              {idea.status === "pending" ? <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => reviewIdea(idea.id, "accept_idea").catch(() => {})}>Accept as team handoff</Button>
+                <Button type="button" variant="ghost" size="sm" className="text-[var(--dash-muted)]" disabled={busy} onClick={() => reviewIdea(idea.id, "archive_idea").catch(() => {})}>Archive</Button>
+              </div> : <Badge variant="outline" className="max-w-full border-[var(--dash-line)] text-[var(--dash-muted)]">{idea.accepted_handoff_id ? `Handoff created · ${idea.accepted_handoff_id.slice(0, 8)}` : "Archived"}</Badge>}
+              {idea.status === "pending" && (!hasWorkers || workspace.delegation_level === "observe") && <div className="basis-full space-y-2">
+                {!hasWorkers && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Connect a worker before Stoic can queue an accepted idea.</AlertDescription></Alert>}
+                {workspace.delegation_level === "observe" && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Your team is in Observe mode. Change the delegation level before creating handoffs.</AlertDescription></Alert>}
+              </div>}
+            </CardFooter>
+          </Card>)}
+        </div> : <UiEmpty className="min-h-56 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
+          <EmptyHeader><EmptyTitle>{status === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Stoic keeps each day's suggestions as their own records. Older ideas remain here until you accept or archive them.</EmptyDescription></EmptyHeader>
+        </UiEmpty>}
+        {historyError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load older ideas</AlertTitle><AlertDescription>{historyError}</AlertDescription></Alert>}
+        {nextOffset !== null && <Button type="button" variant="outline" size="sm" className="w-full border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => loadOlderIdeas().catch(() => {})} disabled={historyLoading}>{historyLoading ? "Loading older ideas…" : "Load older ideas"}</Button>}
+      </CardContent>
+    </Card>
+
+    <Card className={cardClass}>
+      <CardHeader>
+        <Badge variant="secondary" className="w-fit bg-[var(--dash-soft)] text-[var(--dash-muted)]">Daily schedule</Badge>
+        <CardTitle className="text-lg">Keep the morning calm</CardTitle>
+        <CardDescription className="max-w-3xl leading-6 text-[var(--dash-muted)]">The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <Field>
+          <FieldLabel htmlFor="ideas-timezone" className="text-[var(--dash-text)]">Workspace time zone</FieldLabel>
+          <FieldDescription className="text-[var(--dash-muted)]">Use an IANA time zone, such as America/Chicago.</FieldDescription>
+          <Input id="ideas-timezone" className={controlClass} value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Chicago" maxLength={100} />
+        </Field>
+        <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).catch(() => {})}>Save time zone</Button>
+      </CardContent>
+    </Card>
+  </div>;
 }
 
-function ContactsView({ projects, busy, command, onOpenPrompts }: { projects: Project[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onOpenPrompts: () => void }) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [total, setTotal] = useState(0);
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [importIdempotencyKey, setImportIdempotencyKey] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState("");
-  const [linkMessage, setLinkMessage] = useState("");
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const query = new URLSearchParams({ q: search, offset: String(offset) });
-      if (status) query.set("status", status);
-      const response = await fetch(`/api/contacts?${query}`, { cache: "no-store" });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not load contacts");
-      const data = json.data as { contacts: Contact[]; total: number; nextOffset: number | null };
-      setContacts(data.contacts);
-      setTotal(data.total);
-      setNextOffset(data.nextOffset);
-    } catch (cause) {
-      setLoadError(cause instanceof Error ? cause.message : "Could not load contacts");
-    } finally {
-      setLoading(false);
-    }
-  }, [offset, search, status]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => { void refresh(); }, search ? 250 : 0);
-    return () => window.clearTimeout(timer);
-  }, [refresh, search, status, offset]);
-
-  async function addContact(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    await command("create_contact", {
-      fullName: String(form.get("fullName")),
-      email: String(form.get("email") || "") || null,
-      phone: String(form.get("phone") || "") || null,
-      company: String(form.get("company") || "") || null,
-      projectId: String(form.get("projectId") || "") || null,
-      sourceLabel: String(form.get("sourceLabel")),
-      sourceUrl: String(form.get("sourceUrl") || "") || null,
-      notes: String(form.get("notes") || ""),
-      idempotencyKey: crypto.randomUUID(),
-    });
-    formElement.reset();
-    await refresh();
-  }
-
-  async function importCsv(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!file) return;
-    const formElement = event.currentTarget;
-    setImporting(true);
-    setImportMessage("");
-    try {
-      const form = new FormData(formElement);
-      form.set("file", file);
-      form.set("idempotencyKey", importIdempotencyKey || crypto.randomUUID());
-      const response = await fetch("/api/contacts/import", { method: "POST", body: form });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not import this CSV");
-      const result = json.data as { created: number; updated: number; skipped: number };
-      setImportMessage(`${result.created} added · ${result.updated} updated · ${result.skipped} skipped`);
-      setFile(null);
-      setImportIdempotencyKey("");
-      formElement.reset();
-      setOffset(0);
-      await refresh();
-    } catch (cause) {
-      setImportMessage(cause instanceof Error ? cause.message : "Could not import this CSV");
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  return <>
-    <div className="page-heading"><div><span className="eyebrow muted">PRIVATE WORKSPACE CRM</span><h1>Contacts</h1><p>Keep real leads and relationship context with the project and source that produced them. Stoic records contacts; it never sends outreach.</p><button type="button" className="subtle-link" onClick={onOpenPrompts}>Copy the Contact Link agent prompt</button></div><span className="count-pill">{total} contacts</span></div>
-    <div className="contacts-tools">
-      <section className="panel"><div className="panel-heading"><div><h2>Add a contact</h2><p>Save only details you have confirmed.</p></div></div><form className="contact-form" onSubmit={(event) => addContact(event).catch(() => {})}>
-        <label>Name<input name="fullName" placeholder="Full name" minLength={2} maxLength={160} required /></label><label>Email<input name="email" type="email" maxLength={254} placeholder="name@example.com" /></label><label>Phone<input name="phone" type="tel" maxLength={60} placeholder="Optional" /></label><label>Company<input name="company" maxLength={160} placeholder="Optional" /></label>
-        <label>Project<select name="projectId"><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>Source<input name="sourceLabel" placeholder="Where you found them" minLength={2} maxLength={180} required /></label><label className="contact-wide">Source URL<input name="sourceUrl" type="url" placeholder="https://…" maxLength={2000} /></label><label className="contact-wide">Notes<textarea name="notes" rows={2} maxLength={5000} placeholder="Useful context, not private conversation logs" /></label>
-        <button className="button button-small" disabled={busy}>Save contact</button>
-      </form></section>
-      <section className="panel"><div className="panel-heading"><div><h2>Import a CSV</h2><p>Stoic maps a sample, then keeps the source trail.</p></div></div><form className="contact-import-form" onSubmit={(event) => importCsv(event).catch(() => {})}>
-        <label>CSV file<input type="file" accept=".csv,text/csv" onChange={(event) => { const nextFile = event.target.files?.[0] || null; setFile(nextFile); setImportIdempotencyKey(nextFile ? crypto.randomUUID() : ""); }} required /></label><label>Source label<input name="sourceLabel" defaultValue="CSV import" minLength={2} maxLength={180} required /></label><label>Project<select name="projectId"><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-        <button className="button button-outline button-small" disabled={!file || importing}>{importing ? "Importing…" : "Review and import"}</button>{importMessage && <p className="field-help" role="status">{importMessage}</p>}
-      </form></section>
-    </div>
-    <section className="panel contacts-panel"><div className="ideas-toolbar"><div><h2>Your contacts</h2><p>Deduplicated within this workspace</p></div><label>Status <select aria-label="Filter contacts by status" value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0); }}><option value="">All contacts</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></label><label>Search <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0); }} placeholder="Name, email, company…" /></label></div>
-      {loadError && <p className="form-error contacts-error" role="alert">{loadError}</p>}{linkMessage && <p className="contact-link-message" role="status">{linkMessage}</p>}{loading ? <p className="contacts-loading">Loading contacts…</p> : contacts.length ? <div className="contact-list">{contacts.map((contact) => <ContactCard key={`${contact.id}:${contact.updated_at}`} contact={contact} busy={busy} command={command} onSaved={refresh} onLinked={setLinkMessage} />)}</div> : <Empty title="No contacts here yet" text="Add a confirmed lead or import a CSV to start a private, source-aware contact list." />}
-      <div className="contacts-pagination"><span>{total} total</span><div><button type="button" className="button button-outline button-small" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button type="button" className="button button-outline button-small" disabled={nextOffset === null || loading} onClick={() => nextOffset !== null && setOffset(nextOffset)}>Next</button></div></div>
-    </section>
-  </>;
-}
-
-function ContactCard({ contact, busy, command, onSaved, onLinked }: { contact: Contact; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onSaved: () => Promise<void>; onLinked: (message: string) => void }) {
-  const [status, setStatus] = useState(contact.status);
-  const [notes, setNotes] = useState(contact.notes);
-  const [sourceHistory, setSourceHistory] = useState<ContactSource[] | null>(null);
-  const [sourceTotal, setSourceTotal] = useState<number | null>(null);
-  const [sourceNextOffset, setSourceNextOffset] = useState<number | null>(null);
-  const [sourceLoading, setSourceLoading] = useState(false);
-  const [sourceError, setSourceError] = useState("");
-  const linkAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
-  async function loadSources(offset: number) {
-    setSourceLoading(true);
-    setSourceError("");
-    try {
-      const query = new URLSearchParams({ sourcesFor: contact.id, offset: String(offset) });
-      const response = await fetch(`/api/contacts?${query}`, { cache: "no-store" });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not load interaction history");
-      const result = json.data as { sources: ContactSource[]; total: number; nextOffset: number | null };
-      setSourceHistory((previous) => offset === 0 ? result.sources : [...(previous || []), ...result.sources]);
-      setSourceTotal(result.total);
-      setSourceNextOffset(result.nextOffset);
-    } catch (cause) {
-      setSourceError(cause instanceof Error ? cause.message : "Could not load interaction history");
-    } finally {
-      setSourceLoading(false);
-    }
-  }
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    await command("update_contact", { contactId: contact.id, status, notes });
-    await onSaved();
-  }
-  async function linkSource(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const payload = {
-      contactId: contact.id,
-      sourceLabel: String(form.get("sourceLabel") || ""),
-      sourceUrl: String(form.get("sourceUrl") || "") || null,
-      notes: String(form.get("notes") || ""),
-      email: String(form.get("email") || "") || null,
-      phone: String(form.get("phone") || "") || null,
-      company: String(form.get("company") || "") || null,
-    };
-    const fingerprint = JSON.stringify(payload);
-    if (linkAttempt.current?.fingerprint !== fingerprint) linkAttempt.current = { fingerprint, key: crypto.randomUUID() };
-    const result = await command("link_contact", { ...payload, idempotencyKey: linkAttempt.current.key }) as { updated: boolean; alreadyLinked: boolean };
-    onLinked(result.alreadyLinked ? `This source was already saved for ${contact.full_name}.` : `A new source was linked to ${contact.full_name}.`);
-    linkAttempt.current = null;
-    formElement.reset();
-    await onSaved();
-  }
-  return <article className="contact-card"><div className="contact-card-top"><div><h3><AssistantRichInline text={contact.full_name} /></h3><p>{[contact.job_title, contact.company].filter(Boolean).join(" · ") || "Contact"}</p></div><select aria-label={`Status for ${contact.full_name}`} value={status} onChange={(event) => setStatus(event.target.value as Contact["status"])}><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="customer">Customer</option><option value="archived">Archived</option></select></div>
-    <div className="contact-details">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
-    <form onSubmit={(event) => save(event).catch(() => {})}><label>Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={10000} rows={2} /></label><button className="subtle-link" type="submit" disabled={busy || (status === contact.status && notes === contact.notes)}>Save changes</button></form>
-    <details className="contact-link"><summary>Add a verified interaction</summary><form onSubmit={(event) => linkSource(event).catch(() => {})}><label>Source and date<input name="sourceLabel" minLength={2} maxLength={180} placeholder="Email, Oct 3" required /></label><label>Source URL, if safe<input name="sourceUrl" type="url" maxLength={2000} placeholder="https://…" /></label><label>What happened<textarea name="notes" maxLength={5000} rows={2} placeholder="Short factual note, not a conversation transcript" /></label>{!contact.email && <label>Confirmed email<input name="email" type="email" maxLength={254} /></label>}{!contact.phone && <label>Confirmed phone<input name="phone" type="tel" maxLength={60} /></label>}{!contact.company && <label>Confirmed company<input name="company" maxLength={160} /></label>}<button type="submit" className="button button-outline button-small" disabled={busy}>Link interaction</button></form></details>
-    <details className="contact-sources" onToggle={(event) => { if (event.currentTarget.open && sourceHistory === null && !sourceLoading) void loadSources(0); }}><summary>Interaction history{sourceTotal !== null ? ` · ${sourceTotal}` : ""}</summary>{sourceError && <p role="alert">{sourceError} <button type="button" className="subtle-link" onClick={() => void loadSources(0)}>Retry</button></p>}{sourceLoading && sourceHistory === null && <p>Loading sources…</p>}{(sourceHistory || contact.sources).length > 0 ? <ul>{(sourceHistory || contact.sources).map((source) => <li key={source.id}><strong>{source.source_label}</strong>{source.source_url && <> · <a href={source.source_url} target="_blank" rel="noreferrer">Open source</a></>}{source.artifact_id && <> · <button type="button" className="subtle-link" onClick={() => command("artifact_download", { artifactId: source.artifact_id }).then((data) => window.open((data as { downloadUrl: string }).downloadUrl, "_blank", "noopener,noreferrer")).catch(() => {})}>Open artifact</button></>}{source.notes && <p>{source.notes}</p>}<time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></li>)}</ul> : !sourceLoading && <p>No sources recorded.</p>}{sourceNextOffset !== null && <button type="button" className="subtle-link contact-load-sources" disabled={sourceLoading} onClick={() => void loadSources(sourceNextOffset)}>Load more interactions</button>}</details>
-  </article>;
-}
 
 function BoardView({ projects, agents, messages, busy, command, refresh }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
@@ -989,20 +1519,159 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
     const userMessage = message.author_key.startsWith("user:");
     const author = agentNames[message.author_key] || (userMessage ? "You" : message.kind === "artifact" ? "Stoic Connector" : "Stoic idea");
     const kindLabel = message.kind === "run_report" ? "Run report" : message.kind === "suggestion" ? "Suggestion · review first" : message.kind === "artifact" ? "File shared" : "Message";
-    return <div className="chat-thread" key={message.id}>
-      <article className={`board-message chat-message ${userMessage ? "from-owner" : "from-agent"} ${message.kind !== "message" ? `kind-${message.kind}` : ""}`} style={{ marginLeft: `${Math.min(depth, 3) * 18}px` }}>
-        <span className={`chat-avatar ${userMessage ? "owner-avatar" : "agent-avatar"}`}>{author.charAt(0).toUpperCase()}</span>
-        <div className="chat-bubble"><div className="board-message-meta"><strong>{author}</strong><span>{kindLabel} · {timeAgo(message.created_at)}</span></div><AssistantRichText text={message.body} />{message.kind !== "suggestion" && <button className="subtle-link" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>Reply</button>}</div>
-      </article>
+    const indentClass = depth === 0 ? "" : depth === 1 ? "ml-4 border-l pl-3 sm:ml-5 sm:pl-4" : depth === 2 ? "ml-8 border-l pl-3 sm:ml-10 sm:pl-4" : "ml-12 border-l pl-3 sm:ml-14 sm:pl-4";
+    return <div className={`min-w-0 space-y-3 ${indentClass}`} key={message.id}>
+      <Message align={userMessage ? "end" : "start"} className="items-start">
+        <MessageAvatar className="self-start bg-transparent after:hidden">
+          <Avatar size="sm"><AvatarFallback className={userMessage ? "bg-[var(--dash-owner)] font-medium text-[var(--dash-text)]" : "bg-[var(--dash-soft)] font-medium text-[var(--dash-text)]"}>{author.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
+        </MessageAvatar>
+        <MessageContent className={`max-w-[min(100%,48rem)] rounded-xl border p-3 ${userMessage ? "border-[var(--dash-accent)] bg-[var(--dash-owner)]" : "border-[var(--dash-line)] bg-[var(--dash-panel)]"}`}>
+          <MessageHeader className="flex-wrap gap-x-2 gap-y-1 px-0 text-[var(--dash-muted)]">
+            <span className="font-medium text-[var(--dash-text)]">{author}</span>
+            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{kindLabel}</Badge>
+            <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>
+          </MessageHeader>
+          <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={message.body} /></div>
+          {message.kind !== "suggestion" && <Button type="button" variant="ghost" size="sm" className="w-fit px-0 text-[var(--dash-muted)] hover:bg-transparent hover:text-[var(--dash-text)]" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>Reply</Button>}
+        </MessageContent>
+      </Message>
       {(children.get(message.id) || []).map((reply) => renderMessage(reply, depth + 1))}
     </div>;
   }
 
-  return <><div className="page-heading"><div><span className="eyebrow muted">TEAM CHECK-IN</span><h1>Message board</h1><p>Agents share progress, ask each other questions, and leave a useful trail between runs.</p></div><button className="button button-outline button-small" onClick={() => refresh().catch(() => {})}>Refresh board</button></div><section className="panel board-panel"><div className="panel-heading"><div><h2>Project conversation</h2><p>Agent check-ins arrive when their next native schedule runs · {updatedAt ? `updated ${timeAgo(updatedAt)}` : "no messages yet"}</p></div><select aria-label="Board project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setReplyTo(null); }}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div>{roots.length ? <div className="board-list">{roots.map((message) => renderMessage(message))}<div ref={newestMessageRef} /></div> : <Empty title="No messages yet" text="Post a project note, or ask an agent to leave a short check-in after its next run." />}{projects.length > 0 && <form className="board-compose" onSubmit={(event) => post(event).catch(() => {})}>{replyingTo && <div className="board-reply">Replying to <strong>{agentNames[replyingTo.author_key] || (replyingTo.author_key.startsWith("user:") ? "you" : "an agent")}</strong><span>{replyingTo.body.slice(0, 90)}{replyingTo.body.length > 90 ? "…" : ""}</span><button type="button" onClick={() => setReplyTo(null)}>Cancel</button></div>}<label htmlFor="board-kind">Post type</label><select id="board-kind" value={postKind} disabled={Boolean(replyTo)} onChange={(event) => setPostKind(event.target.value as "message" | "suggestion")}><option value="message">Message</option><option value="suggestion">Suggestion · review first</option></select>{postKind === "suggestion" && <p className="field-help">This is an idea for the owner to review. It does not assign work or approve a decision.</p>}<label htmlFor="board-body">{postKind === "suggestion" ? "Share an idea" : "Add a message"}</label><textarea id="board-body" value={body} onChange={(event) => setBody(event.target.value)} maxLength={12000} rows={3} placeholder={postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required /><button className="button button-small" disabled={busy || !body.trim()}>{postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</button></form>}</section></>;
+  const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
+  const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
+  const selectClass = "w-full border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)]";
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="max-w-2xl space-y-2">
+        <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Team check-in</Badge>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Message board</h1>
+        <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Agents share progress, ask each other questions, and leave a useful trail between runs.</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh board</Button>
+    </header>
+
+    <Card className={cardClass}>
+      <CardHeader className="gap-4 border-b border-[var(--dash-line)] lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-1">
+          <CardTitle className="text-lg">Project conversation</CardTitle>
+          <CardDescription className="max-w-2xl leading-5 text-[var(--dash-muted)]">Agent check-ins arrive when their next native schedule runs.</CardDescription>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{updatedAt ? `Updated ${timeAgo(updatedAt)}` : "No messages yet"}</Badge>
+          {projects.length > 0 && <Field className="w-full min-w-48 sm:w-auto">
+            <FieldLabel className="sr-only">Project</FieldLabel>
+            <Select value={projectId} onValueChange={(value) => { setProjectId(value || ""); setReplyTo(null); }}>
+              <SelectTrigger aria-label="Board project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
+              <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>}
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-5 pt-4">
+        {roots.length ? <ScrollArea className="h-[min(62vh,44rem)] min-h-72 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3 sm:p-4">
+          <MessageGroup className="gap-4 pr-3">
+            {roots.map((message) => renderMessage(message))}
+            <div ref={newestMessageRef} aria-hidden="true" className="h-px" />
+          </MessageGroup>
+        </ScrollArea> : <UiEmpty className="min-h-52 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
+          <EmptyHeader><EmptyTitle>No messages yet</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Post a project note, or ask an agent to leave a short check-in after its next run.</EmptyDescription></EmptyHeader>
+        </UiEmpty>}
+
+        {projects.length > 0 && <form className="space-y-4 rounded-xl border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4" onSubmit={(event) => post(event).catch(() => {})}>
+          {replyingTo && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <AlertTitle>Replying to {agentNames[replyingTo.author_key] || (replyingTo.author_key.startsWith("user:") ? "you" : "an agent")}</AlertTitle>
+                <AlertDescription className="line-clamp-2 break-words text-[var(--dash-muted)]">{replyingTo.body.slice(0, 90)}{replyingTo.body.length > 90 ? "…" : ""}</AlertDescription>
+              </div>
+              <Button type="button" variant="ghost" size="sm" className="w-fit text-[var(--dash-muted)]" onClick={() => setReplyTo(null)}>Cancel reply</Button>
+            </div>
+          </Alert>}
+          <div className="grid gap-4 sm:grid-cols-[minmax(12rem,0.38fr)_minmax(0,1fr)] sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="board-kind" className="text-[var(--dash-text)]">Post type</FieldLabel>
+              <Select value={postKind} disabled={Boolean(replyTo)} onValueChange={(value) => setPostKind((value || "message") as "message" | "suggestion")}>
+                <SelectTrigger id="board-kind" className={selectClass}><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="message">Message</SelectItem><SelectItem value="suggestion">Suggestion · review first</SelectItem></SelectContent>
+              </Select>
+            </Field>
+            {postKind === "suggestion" && <Alert className="h-fit border-[var(--dash-line)] bg-[var(--dash-panel)] sm:col-span-2">
+              <AlertDescription className="text-[var(--dash-muted)]">This is an idea for the owner to review. It does not assign work or approve a decision.</AlertDescription>
+            </Alert>}
+          </div>
+          <Field>
+            <FieldLabel htmlFor="board-body" className="text-[var(--dash-text)]">{postKind === "suggestion" ? "Share an idea" : "Add a message"}</FieldLabel>
+            <Textarea id="board-body" className={controlClass} value={body} onChange={(event) => setBody(event.target.value)} maxLength={12000} rows={3} placeholder={postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required />
+            <FieldDescription className="text-[var(--dash-muted)]">{body.length}/12,000 characters</FieldDescription>
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={busy || !body.trim()}>{busy ? "Posting…" : postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</Button>
+          </div>
+        </form>}
+      </CardContent>
+    </Card>
+  </div>;
 }
 
 function RoutingView({ projects, agents, bossAgentId, busy, command }: { projects: Project[]; agents: Agent[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  return <section className="panel routing-panel"><div className="panel-heading"><div><h2>Project routing</h2><p>Choose a connected MCP worker for each project. The boss can omit an assignee when creating an MCP handoff, and Stoic will send it here.</p></div></div><div className="routing-list">{projects.map((project) => <label key={project.id}><span>{project.name}</span><select value={project.default_agent_id === bossAgentId ? "" : project.default_agent_id || ""} disabled={busy} onChange={(event) => command("set_project_routing", { projectId: project.id, agentId: event.target.value || null }).catch(() => {})}><option value="">No default agent</option>{agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse").map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>)}</div></section>;
+  const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse");
+  const workerNames = Object.fromEntries(workers.map((agent) => [agent.id, agent.name]));
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="space-y-2">
+      <Badge variant="secondary">Project settings</Badge>
+      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Project routing</h1>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Choose a connected MCP worker for each project. When the boss creates a handoff without an assignee, Stoic uses that project’s default.</p>
+    </header>
+
+    {!projects.length ? <Card><UiEmpty className="border-0">
+      <EmptyHeader>
+        <EmptyTitle>No projects yet</EmptyTitle>
+        <EmptyDescription>Create a project before choosing where its unassigned handoffs should go.</EmptyDescription>
+      </EmptyHeader>
+    </UiEmpty></Card> : <>
+      {!workers.length && <Alert>
+        <AlertTitle>No connected workers are available</AlertTitle>
+        <AlertDescription>Connect an eligible MCP worker in Agents, then return here to set a project default. Projects can still use the team queue.</AlertDescription>
+      </Alert>}
+      <div className="grid gap-3 md:grid-cols-2">
+        {projects.map((project) => {
+          const assignedWorker = project.default_agent_id ? workerNames[project.default_agent_id] : undefined;
+          const hasUnavailableDefault = Boolean(project.default_agent_id && project.default_agent_id !== bossAgentId && !assignedWorker);
+          return <Card className="min-w-0" key={project.id}>
+            <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <CardTitle className="truncate">{project.name}</CardTitle>
+                <CardDescription>{assignedWorker ? "New unassigned handoffs go to " + assignedWorker + "." : "New unassigned handoffs stay in the team queue."}</CardDescription>
+              </div>
+              <Badge variant={assignedWorker ? "secondary" : "outline"}>{assignedWorker ? "Default worker" : "Team queue"}</Badge>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {hasUnavailableDefault && <Alert>
+                <AlertTitle>Current worker is unavailable</AlertTitle>
+                <AlertDescription>Choose a connected worker or select No default to return this project to the team queue.</AlertDescription>
+              </Alert>}
+              <Field>
+                <FieldLabel htmlFor={"routing-" + project.id}>Default worker</FieldLabel>
+                <Select value={assignedWorker ? project.default_agent_id || "__none__" : "__none__"} disabled={busy} onValueChange={(value) => command("set_project_routing", { projectId: project.id, agentId: value === "__none__" ? null : value || null }).catch(() => {})}>
+                  <SelectTrigger id={"routing-" + project.id} aria-label={"Default worker for " + project.name}><SelectValue placeholder="No default agent" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No default agent</SelectItem>
+                    {workers.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>Only connected MCP workers can be selected. The boss remains the handoff creator.</FieldDescription>
+              </Field>
+            </CardContent>
+          </Card>;
+        })}
+      </div>
+    </>}
+  </div>;
 }
 
 type ArtifactFilter = "all" | "document" | "image" | "audio" | "video" | "archive" | "other";
@@ -1030,9 +1699,16 @@ function artifactPreview(artifact: Artifact) {
 }
 
 function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, onManageProjects }: { projects: Project[]; handoffs: Handoff[]; artifacts: Artifact[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; setNotice: (value: string) => void; onManageProjects: () => void }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id || ""); const [handoffId, setHandoffId] = useState(""); const [file, setFile] = useState<File | null>(null); const [uploading, setUploading] = useState(false);
-  const [filter, setFilter] = useState<ArtifactFilter>("all"); const [query, setQuery] = useState("");
+  const [projectId, setProjectId] = useState(projects[0]?.id || "");
+  const [handoffId, setHandoffId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [filter, setFilter] = useState<ArtifactFilter>("all");
+  const [query, setQuery] = useState("");
+  const [artifactToDelete, setArtifactToDelete] = useState<Artifact | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const uploadKey = useRef<string | null>(null);
+
   async function upload(event: FormEvent) {
     event.preventDefault();
     if (!file) return;
@@ -1051,28 +1727,235 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
       uploadKey.current = null;
       setFile(null);
       setNotice("File is ready to share with your agents.");
-    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "Upload failed"); }
-    finally { setUploading(false); }
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   }
-  async function download(id: string) { const data = await command("artifact_download", { artifactId: id }) as { downloadUrl: string }; window.open(data.downloadUrl, "_blank", "noopener,noreferrer"); }
+
+  async function download(id: string) {
+    const data = await command("artifact_download", { artifactId: id }) as { downloadUrl: string };
+    window.open(data.downloadUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function deleteArtifact() {
+    if (!artifactToDelete) return;
+    const target = artifactToDelete;
+    setDeletingId(target.id);
+    try {
+      await command("delete_artifact", { artifactId: target.id });
+      setNotice("File deleted.");
+    } catch {
+      // The dashboard command surface owns the error state.
+    } finally {
+      setDeletingId(null);
+      setArtifactToDelete(null);
+    }
+  }
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredArtifacts = artifacts.filter((artifact) => {
     if (filter !== "all" && artifactCategory(artifact) !== filter) return false;
     if (!normalizedQuery) return true;
     const projectName = projects.find((project) => project.id === artifact.project_id)?.name || "";
     const handoffTitle = handoffs.find((handoff) => handoff.id === artifact.handoff_id)?.title || "";
-    return `${artifact.name} ${projectName} ${handoffTitle}`.toLowerCase().includes(normalizedQuery);
+    return (artifact.name + " " + projectName + " " + handoffTitle).toLowerCase().includes(normalizedQuery);
   });
-  const sizeLabel = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return <><div className="page-heading"><div><span className="eyebrow muted">SHARED ARTIFACTS</span><h1>Artifacts</h1><p>Keep source files, notes, and work products together for the agents who need them.</p></div></div><section className="panel upload-panel"><div className="panel-heading"><div><h2>Share a file</h2><p>Project files appear in agents’ unread project updates at their next check. A handoff file is available to that handoff’s worker, the boss, and you. Any file type can be attached up to 25 MB. Stoic previews common text, RTF, PDF, DOCX, XLSX, PPTX, OpenDocument, image, and audio formats; other files remain available to agents but do not receive an intake preview.</p></div></div>{!projects.length ? <div className="artifact-no-project"><p>Create a project before uploading so Stoic knows where the file belongs.</p><button className="button button-outline button-small" onClick={onManageProjects}>Set up a project</button></div> : <form className="upload-form" onSubmit={(event) => upload(event).catch(() => {})}><select aria-label="File project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setHandoffId(""); uploadKey.current = null; }} required>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><select aria-label="Optional file handoff" value={handoffId} onChange={(event) => { setHandoffId(event.target.value); uploadKey.current = null; }}><option value="">No specific handoff</option>{handoffs.filter((h) => h.project_id === projectId).map((h) => <option key={h.id} value={h.id}>{h.title}</option>)}</select><input aria-label="Choose any file up to 25 MB" type="file" onChange={(event) => { setFile(event.target.files?.[0] || null); uploadKey.current = null; }} required /><button className="button button-small" disabled={busy || uploading || !file}>{uploading ? "Uploading…" : "Upload file"}</button></form>}</section><section className="panel files-panel"><div className="artifact-library-head"><div><h2>Shared files</h2><p>{artifacts.length} {artifacts.length === 1 ? "file" : "files"} in this workspace</p></div><label>Search <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, project, or handoff" /></label></div><div className="artifact-filters" role="group" aria-label="Filter files by type">{artifactFilters.map((item) => <button key={item.id} className={filter === item.id ? "selected" : ""} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{item.id === "all" ? artifacts.length : artifacts.filter((artifact) => artifactCategory(artifact) === item.id).length}</span></button>)}</div>{filteredArtifacts.length ? <div className="artifact-grid">{filteredArtifacts.map((artifact) => {
-    const handoffTitle = handoffs.find((handoff) => handoff.id === artifact.handoff_id)?.title;
-    const category = artifactCategory(artifact);
-    const categoryLabel = artifactFilters.find((item) => item.id === category)?.label || "Other";
-    return <article className="artifact-card" key={artifact.id}><div className="artifact-card-meta"><span>{categoryLabel}</span><time dateTime={artifact.created_at}>{timeAgo(artifact.created_at)}</time></div><h3 title={artifact.name}>{artifact.name}</h3><p className="artifact-card-context">{projects.find((project) => project.id === artifact.project_id)?.name || "Project"}{handoffTitle ? ` · ${handoffTitle}` : " · Project file"} · {sizeLabel(artifact.size_bytes)}</p><p className="artifact-card-preview">{artifactPreview(artifact)}</p><div className="artifact-card-actions"><button className="subtle-link" onClick={() => download(artifact.id).catch(() => {})}>Download</button><button className="danger-link" disabled={busy} onClick={() => { if (confirm(`Delete ${artifact.name}? Agents will no longer be able to download it.`)) command("delete_artifact", { artifactId: artifact.id }).then(() => setNotice("File deleted.")).catch(() => {}); }}>Delete</button></div></article>;
-  })}</div> : artifacts.length ? <Empty title="No matching files" text="Try a different search or file type." /> : <Empty title="No files shared yet" text="Upload any file for your agents to use. Stoic previews common formats and keeps other types as downloadable attachments." />}</section></>;
+  const sizeLabel = (bytes: number) => bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="space-y-2">
+      <Badge variant="secondary">Shared files</Badge>
+      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Artifacts</h1>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Keep source files, notes, and work products together for the agents who need them.</p>
+    </header>
+
+    <Card>
+      <CardHeader className="gap-2">
+        <CardTitle>Share a file</CardTitle>
+        <CardDescription>Project files appear in agents’ unread project updates at their next check. A handoff file is available to that handoff’s worker, the boss, and you. Any file type can be attached up to 25 MB. Stoic previews common text, RTF, PDF, DOCX, XLSX, PPTX, OpenDocument, image, and audio formats; other files remain available to agents but do not receive an intake preview.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!projects.length ? <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">Create a project before uploading so Stoic knows where the file belongs.</p>
+          <Button type="button" variant="outline" onClick={onManageProjects}>Set up a project</Button>
+        </div> : <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => upload(event).catch(() => {})}>
+          <Field>
+            <FieldLabel htmlFor="artifact-project">Project</FieldLabel>
+            <Select value={projectId} onValueChange={(value) => { setProjectId(value || ""); setHandoffId(""); uploadKey.current = null; }}>
+              <SelectTrigger id="artifact-project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
+              <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="artifact-handoff">Handoff (optional)</FieldLabel>
+            <Select value={handoffId || "__none__"} onValueChange={(value) => { setHandoffId(value === "__none__" ? "" : value || ""); uploadKey.current = null; }}>
+              <SelectTrigger id="artifact-handoff"><SelectValue placeholder="Project file, visible to its agents" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No specific handoff</SelectItem>
+                {handoffs.filter((handoff) => handoff.project_id === projectId).map((handoff) => <SelectItem key={handoff.id} value={handoff.id}>{handoff.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <FieldDescription>A handoff attachment follows that handoff’s access rules.</FieldDescription>
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="artifact-file">Choose a file</FieldLabel>
+            <Input id="artifact-file" aria-label="Choose any file up to 25 MB" type="file" onChange={(event) => { setFile(event.target.files?.[0] || null); uploadKey.current = null; }} required />
+            <FieldDescription>{file ? file.name + " · " + sizeLabel(file.size) : "Any file type, up to 25 MB."}</FieldDescription>
+          </Field>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
+            <p className="text-sm text-muted-foreground" role="status">{uploading ? "Sending file…" : "Files are shared only with the project or handoff participants."}</p>
+            <Button type="submit" disabled={busy || uploading || !file}>{uploading ? "Sending…" : "Upload file"}</Button>
+          </div>
+        </form>}
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <CardTitle>Shared files</CardTitle>
+          <CardDescription>{artifacts.length} {artifacts.length === 1 ? "file" : "files"} in this workspace</CardDescription>
+        </div>
+        <Field className="w-full sm:max-w-xs">
+          <FieldLabel htmlFor="artifact-search">Search files</FieldLabel>
+          <Input id="artifact-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, project, or handoff" />
+        </Field>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter files by type">
+          {artifactFilters.map((item) => {
+            const count = item.id === "all" ? artifacts.length : artifacts.filter((artifact) => artifactCategory(artifact) === item.id).length;
+            return <Button key={item.id} type="button" variant={filter === item.id ? "secondary" : "outline"} size="sm" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>
+              {item.label}<Badge variant="outline" className="ml-1 tabular-nums">{count}</Badge>
+            </Button>;
+          })}
+        </div>
+        {filteredArtifacts.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredArtifacts.map((artifact) => {
+            const handoffTitle = handoffs.find((handoff) => handoff.id === artifact.handoff_id)?.title;
+            const category = artifactCategory(artifact);
+            const categoryLabel = artifactFilters.find((item) => item.id === category)?.label || "Other";
+            return <Card className="min-w-0 shadow-none" key={artifact.id}>
+              <CardHeader className="gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="secondary">{categoryLabel}</Badge>
+                  <time className="shrink-0 text-xs text-muted-foreground" dateTime={artifact.created_at}>{timeAgo(artifact.created_at)}</time>
+                </div>
+                <CardTitle className="break-words text-base leading-5" title={artifact.name}>{artifact.name}</CardTitle>
+                <CardDescription className="break-words">{projects.find((project) => project.id === artifact.project_id)?.name || "Project"}{handoffTitle ? " · " + handoffTitle : " · Project file"} · {sizeLabel(artifact.size_bytes)}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex h-full flex-col gap-4">
+                <p className="min-h-10 text-sm text-muted-foreground">{artifactPreview(artifact)}</p>
+                <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => download(artifact.id).catch(() => {})}>Download</Button>
+                  <Button type="button" variant="destructive" size="sm" disabled={busy || deletingId === artifact.id} onClick={() => setArtifactToDelete(artifact)}>Delete</Button>
+                </div>
+              </CardContent>
+            </Card>;
+          })}
+        </div> : <UiEmpty className="rounded-xl border border-dashed">
+          <EmptyHeader>
+            <EmptyTitle>{artifacts.length ? "No matching files" : "No files shared yet"}</EmptyTitle>
+            <EmptyDescription>{artifacts.length ? "Try a different search or file type." : "Upload a file for your agents to use. Stoic previews supported formats and keeps other types as downloadable attachments."}</EmptyDescription>
+          </EmptyHeader>
+          {!artifacts.length && <EmptyContent><p className="text-muted-foreground">Choose a project and file above to add the first shared artifact.</p></EmptyContent>}
+        </UiEmpty>}
+      </CardContent>
+    </Card>
+
+    <AlertDialog open={Boolean(artifactToDelete)} onOpenChange={(open) => { if (!open && deletingId === null) setArtifactToDelete(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this shared file?</AlertDialogTitle>
+          <AlertDialogDescription>{artifactToDelete ? <><strong>{artifactToDelete.name}</strong> will no longer be available for agent downloads. This action cannot be undone.</> : "This file will no longer be available for agent downloads."}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deletingId !== null}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={deletingId !== null} onClick={(event) => { event.preventDefault(); deleteArtifact().catch(() => {}); }}>{deletingId ? "Deleting…" : "Delete file"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>;
 }
 
 function BillingView({ workspace, monthlyPrice, usage, busy, command }: { workspace: Workspace; monthlyPrice?: number | null; usage: { handoffs: number; storageBytes: number }; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  async function portal() { const result = await command("billing_portal") as { url: string }; window.location.href = result.url; }
-  return <><div className="page-heading"><div><span className="eyebrow muted">WORKSPACE MEMBERSHIP</span><h1>Plan & billing</h1><p>One required subscription for your whole agent workspace.</p></div></div><div className="billing-grid"><section className="panel"><div className="panel-heading"><div><h2>Stoic Connector</h2><p>{workspace.plan === "pro" ? "Your subscription is active." : "An active subscription is required to use coordination features."}</p></div><span className="header-plan">{workspace.plan === "pro" ? "ACTIVE" : "INACTIVE"}</span></div><div className="usage-row"><span>Your current price</span><strong>{monthlyPrice == null ? "See Stripe portal" : `$${monthlyPrice} / month`}</strong></div><div className="usage-row"><span>Handoffs created this month</span><strong>{usage.handoffs}</strong></div><div className="usage-row"><span>Private storage currently used</span><strong>{(usage.storageBytes / 1024 / 1024).toFixed(1)} MB</strong></div><ul className="billing-features"><li> No monthly usage quotas or application-level request throttles</li><li> Private files and project routing</li><li> Human approval controls and data export</li></ul><div className="billing-actions">{workspace.stripe_customer_id && <button className="button button-outline" disabled={busy} onClick={() => portal().catch(() => {})}>Manage billing</button>}<a className="button button-outline" href="/api/export">Export workspace data </a></div></section></div><p className="billing-footnote">Agent provider subscriptions and any model usage from native schedules are billed by those providers. Individual uploads are limited to 25 MB.</p></>;
+  async function portal() {
+    const result = await command("billing_portal") as { url: string };
+    window.location.href = result.url;
+  }
+
+  const storageLabel = (usage.storageBytes / 1024 / 1024).toFixed(1) + " MB";
+  const isActive = workspace.plan === "pro";
+
+  return <div className="space-y-5 sm:space-y-6">
+    <header className="space-y-2">
+      <Badge variant="secondary">Workspace membership</Badge>
+      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Plan & billing</h1>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Manage the subscription for your whole agent workspace and export its data.</p>
+    </header>
+
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+      <Card>
+        <CardHeader className="sm:grid-cols-[1fr_auto]">
+          <div className="space-y-1">
+            <CardTitle>Stoic Connector</CardTitle>
+            <CardDescription>{isActive ? "Your subscription is active." : "An active subscription is required to use coordination features."}</CardDescription>
+          </div>
+          <Badge variant={isActive ? "default" : "outline"}>{isActive ? "Active" : "Inactive"}</Badge>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <Separator />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Card size="sm">
+              <CardContent className="space-y-1 py-3">
+                <p className="text-xs text-muted-foreground">Your current price</p>
+                <p className="font-semibold tabular-nums">{monthlyPrice == null ? "See Stripe portal" : "$" + monthlyPrice + " / month"}</p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent className="space-y-1 py-3">
+                <p className="text-xs text-muted-foreground">Handoffs created this month</p>
+                <p className="font-semibold tabular-nums">{usage.handoffs}</p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent className="space-y-1 py-3">
+                <p className="text-xs text-muted-foreground">Private storage used</p>
+                <p className="font-semibold tabular-nums">{storageLabel}</p>
+              </CardContent>
+            </Card>
+          </div>
+          <Alert>
+            <AlertTitle>No monthly usage quotas</AlertTitle>
+            <AlertDescription>Stoic does not apply monthly usage quotas or application-level request throttles. The counts above are for visibility.</AlertDescription>
+          </Alert>
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Included workspace features</h3>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              <li className="rounded-lg border border-border/80 bg-muted/20 p-3 text-sm">Private files and project routing</li>
+              <li className="rounded-lg border border-border/80 bg-muted/20 p-3 text-sm">Human approval controls and data export</li>
+            </ul>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {workspace.stripe_customer_id && <Button type="button" variant="outline" disabled={busy} onClick={() => portal().catch(() => {})}>{busy ? "Opening Stripe…" : "Manage billing"}</Button>}
+            <Button type="button" variant="outline" render={<a href="/api/export" />}>Export workspace data</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle>Provider costs</CardTitle>
+          <CardDescription>Native schedules run through each agent’s provider account.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm leading-6 text-muted-foreground">Agent provider subscriptions and model usage from native schedules are billed by those providers.</p>
+          <Separator />
+          <p className="text-sm leading-6 text-muted-foreground">Individual uploads are limited to 25 MB.</p>
+        </CardContent>
+      </Card>
+    </div>
+  </div>;
 }

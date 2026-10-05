@@ -5,6 +5,7 @@ import { requireActiveWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
 import { canReadScopedHandoff } from "@/lib/handoff-access";
 import { MAX_CONTACT_CSV_BYTES, mapContactCsvColumns, mapContactCsvRows, parseContactCsv } from "@/lib/contact-csv";
+import { contactSearchSchema, literalIlikePattern, recentContactCutoff, type ContactSearchFilters, type ContactSearchInput } from "@/lib/contact-filters";
 
 type ContactActor = { agent: AgentIdentity; userId?: never } | { agent?: never; userId: string };
 const BUCKET = "stoic-artifacts";
@@ -323,22 +324,55 @@ async function contactsWithSources(workspaceId: string, rows: Record<string, unk
   return rows.map((row) => ({ ...row, sources: byContact.get(row.id as string) || [] }));
 }
 
-async function contactSearch(actor: ContactActor, search: string, offset: number, status?: string) {
+async function contactSearch(actor: ContactActor, input: ContactSearchFilters) {
   const workspaceId = await actorWorkspace(actor);
   const db = adminDb();
-  let query = db.from("contacts").select("id,project_id,full_name,email,phone,company,job_title,status,notes,created_at,updated_at,last_seen_at", { count: "exact" })
-    .eq("workspace_id", workspaceId).order("updated_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 49);
-  if (status) query = query.eq("status", status);
-  if (search.trim()) query = query.textSearch("search_document", search.trim().slice(0, 120), { type: "plain", config: "simple" });
-  const { data, count, error } = await query;
+  const sourceSearch = Boolean(input.search && input.field === "source");
+  const columns = "id,project_id,full_name,email,phone,company,job_title,status,notes,created_at,updated_at,last_seen_at";
+  let query = db.from("contacts")
+    .select(sourceSearch ? `${columns},contact_sources!inner(id)` : columns, { count: "exact" })
+    .eq("workspace_id", workspaceId);
+  if (input.status !== "all") query = query.eq("status", input.status);
+  if (input.projectId === "unassigned") query = query.is("project_id", null);
+  else if (input.projectId !== "all") query = query.eq("project_id", input.projectId);
+  switch (input.contactability) {
+    case "has_email": query = query.not("email", "is", null); break;
+    case "missing_email": query = query.is("email", null); break;
+    case "has_phone": query = query.not("phone", "is", null); break;
+    case "missing_phone": query = query.is("phone", null); break;
+    case "no_direct": query = query.is("email", null).is("phone", null); break;
+  }
+  const cutoff = recentContactCutoff(input.activity);
+  if (cutoff) query = query.gte("last_seen_at", cutoff);
+  if (input.search) {
+    if (input.field === "all") query = query.textSearch("search_document", input.search, { type: "plain", config: "simple" });
+    else {
+      const column = { name: "full_name", company: "company", email: "email", phone: "phone", notes: "notes", source: "contact_sources.source_label" }[input.field];
+      query = query.ilike(column, literalIlikePattern(input.search));
+    }
+  }
+  const sort = {
+    recent: { column: "updated_at", ascending: false },
+    last_seen: { column: "last_seen_at", ascending: false },
+    newest: { column: "created_at", ascending: false },
+    oldest: { column: "created_at", ascending: true },
+    name_asc: { column: "full_name", ascending: true },
+    name_desc: { column: "full_name", ascending: false },
+  }[input.sort];
+  const { data, count, error } = await query.order(sort.column, { ascending: sort.ascending })
+    .order("id", { ascending: sort.ascending }).range(input.offset, input.offset + 49);
   if (error) throw error;
-  const contacts = await contactsWithSources(workspaceId, (data || []) as Record<string, unknown>[]);
-  return { contacts, total: count || 0, nextOffset: offset + contacts.length < (count || 0) ? offset + contacts.length : null };
+  const rows = ((data || []) as unknown as Record<string, unknown>[]).map((row) => {
+    const clean = { ...row };
+    delete clean.contact_sources;
+    return clean;
+  });
+  const contacts = await contactsWithSources(workspaceId, rows);
+  return { contacts, total: count || 0, nextOffset: input.offset + contacts.length < (count || 0) ? input.offset + contacts.length : null };
 }
 
-export async function listContacts(ownerId: string, input: { search?: string; offset?: number; status?: string } = {}) {
-  await requireActiveWorkspace(ownerId);
-  return contactSearch({ userId: ownerId }, input.search || "", input.offset || 0, input.status);
+export async function listContacts(ownerId: string, input: ContactSearchInput = {}) {
+  return contactSearch({ userId: ownerId }, contactSearchSchema.parse(input));
 }
 
 export async function listContactSources(ownerId: string, contactId: string, offset = 0) {
@@ -357,8 +391,8 @@ export async function listContactSources(ownerId: string, contactId: string, off
   return { sources, total: count || 0, nextOffset: offset + sources.length < (count || 0) ? offset + sources.length : null };
 }
 
-export async function searchContactsForAgent(agent: AgentIdentity, search: string, offset = 0) {
-  return contactSearch({ agent }, search, offset);
+export async function searchContactsForAgent(agent: AgentIdentity, input: ContactSearchInput = {}) {
+  return contactSearch({ agent }, contactSearchSchema.parse(input));
 }
 
 export async function updateContact(ownerId: string, raw: unknown) {

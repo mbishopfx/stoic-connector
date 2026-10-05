@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { AppError, currentUser, responseError } from "@/lib/supabase";
+import { currentUser, responseError } from "@/lib/supabase";
 import { listContacts, listContactSources } from "@/lib/contacts";
+import { contactSearchSchema } from "@/lib/contact-filters";
 
 export const runtime = "nodejs";
 
@@ -14,9 +15,17 @@ export async function GET(request: Request) {
       const data = await listContactSources(user.id, z.uuid().parse(sourcesFor), offset);
       return Response.json({ data }, { headers: { "Cache-Control": "no-store" } });
     }
-    const status = url.searchParams.get("status") || undefined;
-    if (status && !["new", "contacted", "qualified", "customer", "archived"].includes(status)) throw new AppError("Choose a valid contact status", 400);
-    const data = await listContacts(user.id, { search: url.searchParams.get("q") || "", offset, status });
+    const filters = contactSearchSchema.parse({
+      search: url.searchParams.get("q") || "",
+      field: url.searchParams.get("field") || undefined,
+      status: url.searchParams.get("status") || undefined,
+      projectId: url.searchParams.get("projectId") || undefined,
+      contactability: url.searchParams.get("contactability") || undefined,
+      activity: url.searchParams.get("activity") || undefined,
+      sort: url.searchParams.get("sort") || undefined,
+      offset,
+    });
+    const data = await listContacts(user.id, filters);
     return Response.json({ data }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return responseError(error);

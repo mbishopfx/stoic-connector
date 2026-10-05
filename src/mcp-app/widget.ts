@@ -2,6 +2,7 @@ import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
 import { safeArtifactMime } from "../lib/artifact-mime";
 import { parseRichInline, parseRichText, plainRichText } from "../lib/rich-text";
 import { promptLibrary, renderStoicPrompt } from "../lib/prompt-library";
+import { DEFAULT_CONTACT_FILTERS, type ContactSearchFilters } from "../lib/contact-filters";
 
 type Agent = {
   id: string;
@@ -59,7 +60,7 @@ type IntakeProposal = {
 };
 type ChatTurn = { id: string; role: "user" | "stoic"; body: string; attachments?: ChatAttachment[]; proposal?: IntakeProposal; thinking?: boolean };
 type ContactSource = { id: string; source_label: string; notes: string; artifact_id: string | null; created_at: string };
-type Contact = { id: string; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: string; sources: ContactSource[] };
+type Contact = { id: string; project_id: string | null; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: string; last_seen_at: string; sources: ContactSource[] };
 type NavTab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "projects" | "agents" | "prompts" | "knowledge" | "files" | "billing";
 
 const app = new App({ name: "Stoic Connector", version: "0.1.0" });
@@ -113,8 +114,7 @@ const state: {
   selectedNote: string | null;
   selectedNoteBody: string;
   searchTerm: string;
-  contactQuery: string;
-  contactOffset: number;
+  contactFilters: ContactSearchFilters;
   chatTurns: ChatTurn[];
   chatMessage: string;
   chatFiles: File[];
@@ -125,7 +125,7 @@ const state: {
   recordingChunks: BlobPart[];
 } = {
   inbox: [], handoffs: [], messages: [], checks: [], projectId: "", tab: "assistant",
-  replyTo: null, selectedNote: null, selectedNoteBody: "", searchTerm: "", contactQuery: "", contactOffset: 0,
+  replyTo: null, selectedNote: null, selectedNoteBody: "", searchTerm: "", contactFilters: { ...DEFAULT_CONTACT_FILTERS },
   chatTurns: [], chatMessage: "", chatFiles: [], chatBusy: false, voiceReply: false,
   recorder: null, recordingStream: null, recordingChunks: [],
 };
@@ -1123,32 +1123,72 @@ function contactField(label: string, type = "text", maxLength = 180) {
   return { wrapper, input };
 }
 
+function contactSelect(label: string, options: { value: string; label: string }[], value: string) {
+  const wrapper = el("label", "field");
+  const select = el("select") as HTMLSelectElement;
+  for (const item of options) {
+    const option = el("option", "", item.label);
+    option.value = item.value;
+    select.append(option);
+  }
+  select.value = value;
+  wrapper.append(el("span", "field-label", label), select);
+  return { wrapper, select };
+}
+
 async function renderContacts() {
   const page = makePage("PRIVATE WORKSPACE", "Contacts", "Keep confirmed leads and relationship context in one private source trail. Stoic never sends outreach.");
-  const search = makeSurface("Find a person", "Search the workspace before creating a contact or linking another interaction.");
-  const searchForm = el("form", "form");
-  const query = contactField("Name, email, phone, or company", "search", 120);
-  query.input.value = state.contactQuery;
+  const search = makeSurface("Find and filter contacts", "Search first, then narrow by status, project, missing contact details, or recent activity.");
+  const searchForm = el("form", "form contacts-filter-form");
+  const query = contactField("Search contacts", "search", 120);
+  query.input.value = state.contactFilters.search;
+  const field = contactSelect("Search in", [
+    { value: "all", label: "All fields" }, { value: "name", label: "Name" }, { value: "company", label: "Company" },
+    { value: "email", label: "Email" }, { value: "phone", label: "Phone" }, { value: "notes", label: "Notes" },
+    { value: "source", label: "Source label" },
+  ], state.contactFilters.field);
+  const status = contactSelect("Status", ["all", "new", "contacted", "qualified", "customer", "archived"].map((value) => ({ value, label: value === "all" ? "All statuses" : value.charAt(0).toUpperCase() + value.slice(1) })), state.contactFilters.status);
+  const project = contactSelect("Project", [
+    { value: "all", label: "All projects" }, { value: "unassigned", label: "Unassigned" },
+    ...(state.context?.projects || []).map((item) => ({ value: item.id, label: item.name })),
+  ], state.contactFilters.projectId);
+  const contactability = contactSelect("Contact details", [
+    { value: "any", label: "Any details" }, { value: "has_email", label: "Has email" }, { value: "missing_email", label: "Missing email" },
+    { value: "has_phone", label: "Has phone" }, { value: "missing_phone", label: "Missing phone" }, { value: "no_direct", label: "No email or phone" },
+  ], state.contactFilters.contactability);
+  const activity = contactSelect("Last activity", [
+    { value: "any", label: "Any time" }, { value: "7d", label: "Past 7 days" },
+    { value: "30d", label: "Past 30 days" }, { value: "90d", label: "Past 90 days" },
+  ], state.contactFilters.activity);
+  const sort = contactSelect("Sort by", [
+    { value: "recent", label: "Recently updated" }, { value: "last_seen", label: "Last interaction" },
+    { value: "newest", label: "Newest added" }, { value: "oldest", label: "Oldest added" },
+    { value: "name_asc", label: "Name A to Z" }, { value: "name_desc", label: "Name Z to A" },
+  ], state.contactFilters.sort);
   const searchActions = el("div", "row-actions");
-  const submitSearch = makeButton("Search contacts", "button primary");
+  const submitSearch = makeButton("Apply filters", "button primary");
   submitSearch.type = "submit";
   searchActions.append(submitSearch, makeButton("Clear", "button text", async () => {
-    state.contactQuery = "";
-    state.contactOffset = 0;
+    state.contactFilters = { ...DEFAULT_CONTACT_FILTERS };
     await renderCurrentTab();
   }));
-  searchForm.append(query.wrapper, searchActions);
+  searchForm.append(query.wrapper, field.wrapper, status.wrapper, project.wrapper, contactability.wrapper, activity.wrapper, sort.wrapper, searchActions);
   searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    state.contactQuery = query.input.value.trim();
-    state.contactOffset = 0;
+    state.contactFilters = {
+      search: query.input.value.trim(), field: field.select.value as ContactSearchFilters["field"],
+      status: status.select.value as ContactSearchFilters["status"], projectId: project.select.value,
+      contactability: contactability.select.value as ContactSearchFilters["contactability"],
+      activity: activity.select.value as ContactSearchFilters["activity"],
+      sort: sort.select.value as ContactSearchFilters["sort"], offset: 0,
+    };
     void renderCurrentTab();
   });
   search.body.append(searchForm);
   page.append(search.surface);
 
-  const result = await callTool<{ contacts: Contact[]; total: number; nextOffset: number | null }>("search_contacts", { search: state.contactQuery, offset: state.contactOffset });
-  const found = makeSurface("Your contacts", `${result.total} workspace contacts · ${state.contactQuery ? "filtered results" : "recently updated"}`);
+  const result = await callTool<{ contacts: Contact[]; total: number; nextOffset: number | null }>("search_contacts", state.contactFilters);
+  const found = makeSurface("Your contacts", `${result.total} matching · ${result.contacts?.length ? `showing ${state.contactFilters.offset + 1}–${state.contactFilters.offset + result.contacts.length}` : "no rows on this page"}`);
   if (!result.contacts?.length) found.body.append(emptyState("No matching contacts", "Confirm the person's identity before creating a new record."));
   else {
     const list = el("div", "list");
@@ -1156,7 +1196,8 @@ async function renderContacts() {
       const card = el("article", "row-card");
       const top = el("div", "row-top");
       top.append(el("strong", "", contact.full_name), statusTag(contact.status));
-      card.append(top, el("div", "row-meta", [contact.email, contact.phone, contact.company, contact.job_title].filter(Boolean).join(" · ") || "Confirmed contact"));
+      const projectName = state.context?.projects.find((item) => item.id === contact.project_id)?.name || "Unassigned";
+      card.append(top, el("div", "row-meta", [contact.email || "No email", contact.phone || "No phone", contact.company, projectName, "Last activity " + dateValue(contact.last_seen_at)].filter(Boolean).join(" · ")));
       const sources = el("details", "details");
       sources.append(el("summary", "", "Recent sources · " + (contact.sources?.length || 0)));
       if (contact.sources?.length) {
@@ -1217,12 +1258,12 @@ async function renderContacts() {
     found.body.append(list);
   }
   const pagination = el("div", "row-actions");
-  if (state.contactOffset > 0) pagination.append(makeButton("Previous", "button", async () => {
-    state.contactOffset = Math.max(0, state.contactOffset - 50);
+  if (state.contactFilters.offset > 0) pagination.append(makeButton("Previous", "button", async () => {
+    state.contactFilters.offset = Math.max(0, state.contactFilters.offset - 50);
     await renderCurrentTab();
   }));
   if (result.nextOffset !== null) pagination.append(makeButton("Next", "button", async () => {
-    state.contactOffset = result.nextOffset!;
+    state.contactFilters.offset = result.nextOffset!;
     await renderCurrentTab();
   }));
   found.body.append(pagination);

@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { promptLibrary, renderStoicPrompt, type StoicPromptId } from "@/lib/prompt-library";
 
 const STOIC_ENDPOINT = "https://stoic.bishoptech.dev/api/mcp";
@@ -20,14 +26,62 @@ export function PromptLibraryView({ onOpenAgents, onOpenContacts }: { onOpenAgen
     }
   }
 
-  return <>
-    <div className="page-heading"><div><span className="eyebrow muted">READY-TO-PASTE PLAYBOOKS</span><h1>Prompt library</h1><p>Give your agents a consistent Stoic workflow. Copying a prompt does not connect an agent or grant access to email.</p></div></div>
-    <section className="panel prompt-library-intro" aria-label="Before using a prompt"><div><h2>Connect first, then give the agent a task</h2><p>Use a separate private Stoic connection for each MCP agent. Browser-only agents use the owner-authorized Contacts screen instead. These prompts capture verified context; they do not run automatically, import a mailbox, or contact anyone.</p></div><div className="prompt-library-actions"><button type="button" className="button button-small" onClick={onOpenAgents}>Set up agents</button><button type="button" className="button button-outline button-small" onClick={onOpenContacts}>Open Contacts</button></div></section>
-    {copyError && <p className="form-error" role="alert">{copyError}</p>}
-    <div className="prompt-library-grid">{promptLibrary.map((item) => <article className="panel prompt-library-card" key={item.id}>
-      <span className="eyebrow muted">{item.audience}</span><h2>{item.title}</h2><p>{item.description}</p>
-      <div className="prompt-library-card-actions"><button type="button" className="button button-small" onClick={() => void copy(item.id)} aria-label={`Copy ${item.title} prompt`}>{copied === item.id ? "Copied" : "Copy prompt"}</button><details><summary>Preview prompt</summary><pre>{renderStoicPrompt(item.id, STOIC_ENDPOINT)}</pre></details></div>
-    </article>)}</div>
-    <p className="prompt-library-note" role="status" aria-live="polite">{copied ? `${promptLibrary.find((item) => item.id === copied)?.title} copied. Paste it into the agent you selected and verify its Stoic read-back.` : "No prompt has been copied yet."}</p>
-  </>;
+  return <div className="grid gap-5 text-foreground">
+    <header className="border-b pb-5">
+      <Badge variant="outline" className="mb-2">Ready-to-paste playbooks</Badge>
+      <h1 className="text-3xl font-semibold tracking-tight">Prompt library</h1>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Give your agents a consistent Stoic workflow. Copying a prompt does not connect an agent or grant access to email.</p>
+    </header>
+
+    <Card className="border-primary/15 bg-primary/[0.03]">
+      <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-2">
+          <Badge variant="secondary" className="w-fit">Before you begin</Badge>
+          <CardTitle className="text-xl">Connect first, then give the agent a task</CardTitle>
+          <CardDescription className="max-w-3xl text-sm leading-6">Use a separate private Stoic connection for each MCP agent. Browser-only agents use the owner-authorized Contacts screen instead. These prompts capture verified context; they do not run automatically, import a mailbox, or contact anyone.</CardDescription>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" onClick={onOpenAgents}>Set up agents</Button>
+          <Button type="button" variant="outline" onClick={onOpenContacts}>Open Contacts</Button>
+        </div>
+      </CardHeader>
+    </Card>
+
+    {copyError && <Alert variant="destructive">
+      <div><AlertTitle>Prompt was not copied</AlertTitle><AlertDescription>{copyError}</AlertDescription></div>
+    </Alert>}
+
+    {promptLibrary.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {promptLibrary.map((item) => <Card key={item.id} className="h-full min-w-0">
+        <CardHeader className="flex-1">
+          <Badge variant="outline" className="w-fit">{item.audience}</Badge>
+          <CardTitle className="pt-1 text-lg leading-snug">{item.title}</CardTitle>
+          <CardDescription className="text-sm leading-6">{item.description}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Accordion className="border-t">
+            <AccordionItem value={item.id} className="border-0">
+              <AccordionTrigger className="py-3 text-sm">Preview prompt</AccordionTrigger>
+              <AccordionContent>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-5 text-foreground">{renderStoicPrompt(item.id, STOIC_ENDPOINT)}</pre>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground">{copied === item.id ? "Ready to paste" : "Review before sharing"}</span>
+          <Button type="button" variant={copied === item.id ? "secondary" : "default"} onClick={() => void copy(item.id)} aria-label={`Copy ${item.title} prompt`}>
+            {copied === item.id ? "Copied" : "Copy prompt"}
+          </Button>
+        </CardFooter>
+      </Card>)}
+    </div> : <Empty className="min-h-64 rounded-xl border bg-card p-8">
+      <EmptyHeader><EmptyTitle>No prompts are available</EmptyTitle><EmptyDescription>Prompt templates will appear here when they have been added to the library.</EmptyDescription></EmptyHeader>
+    </Empty>}
+
+    <Alert role="status" className="border-border bg-muted/20 text-foreground">
+      <AlertTitle>{copied ? `${promptLibrary.find((item) => item.id === copied)?.title} copied` : "Prompts are copied only when you choose"}</AlertTitle>
+      <AlertDescription>{copied ? "Paste it into the agent you selected and verify its Stoic read-back." : "No prompt has been copied yet."}</AlertDescription>
+    </Alert>
+  </div>;
 }

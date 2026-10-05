@@ -17,6 +17,7 @@ import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, r
 import { draftIntakeForAgent, intakeDraftInputSchema } from "@/lib/intake-drafts";
 import { listTeamIdeas } from "@/lib/ideas";
 import { createContact, importContactsFromArtifact, linkContact, searchContactsForAgent, contactInputSchema, contactLinkInputSchema } from "@/lib/contacts";
+import { contactSearchSchema } from "@/lib/contact-filters";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -260,9 +261,9 @@ const handler = createMcpHandler((server) => {
   server.registerTool("search_contacts", {
     annotations: readAnnotations,
     title: "Search workspace contacts",
-    description: "Search contact records visible to this connected agent within its own workspace. Contact details are private workspace data; never copy them into public board messages or send outreach without owner approval.",
-    inputSchema: z.object({ search: z.string().trim().max(120).default(""), offset: pageOffset }),
-  }, async ({ search, offset }, ctx) => run(ctx, (agent) => searchContactsForAgent(agent, search, offset)));
+    description: "Search and filter contacts visible to this connected agent within its own workspace. Search by name, company, email, phone, notes, or source label; filter status, project, missing contact methods, and recent activity. Contact details are private; never copy them into public board messages or send outreach without owner approval.",
+    inputSchema: contactSearchSchema,
+  }, async (args, ctx) => run(ctx, (agent) => searchContactsForAgent(agent, args)));
 
   server.registerTool("link_contact", {
     annotations: writeAnnotations,
