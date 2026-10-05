@@ -1,3 +1,4 @@
+// Retired vanilla renderer. The MCP App build now bundles widget-react.tsx and widget.css.
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
 import { safeArtifactMime } from "../lib/artifact-mime";
 import { parseRichInline, parseRichText, plainRichText } from "../lib/rich-text";

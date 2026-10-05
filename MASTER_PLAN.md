@@ -268,7 +268,7 @@ The owner's pilot workspace was observed on the Pro plan with three profiles (Co
 - `src/lib/knowledge.ts`, `src/lib/knowledge-store.ts`, `src/lib/knowledge-steward.ts`, `src/app/api/knowledge/route.ts`, and `src/components/knowledge-center.tsx` — validated Markdown memory, owner note editing, scheduled runner, scoped reads, and the graph surface. Production run acceptance remains open.
 - `src/app/api/handoffs/route.ts` and `src/lib/handoff-history.ts` — paid, owner-scoped cursor pagination, indexed full-text search, status/project/agent filters, and selected handoff event/artifact history.
 - `src/components/relay-dashboard.tsx` — owner dashboard, board, kanban, agent setup, knowledge, and billing screens.
-- `src/mcp-app/widget.ts` and `src/lib/mcp-app-resource.ts` — embedded MCP App frontend and its host resource.
+- `src/mcp-app/widget-react.tsx`, `src/mcp-app/tabs/`, `src/mcp-app/widget.css`, `scripts/build-mcp-app.mjs`, and `src/lib/mcp-app-resource.ts` — ShadCN embedded MCP App frontend, generated assets, and host resource. `src/mcp-app/widget.ts` is the retired vanilla renderer and is not built.
 - `supabase/migrations/` — schema and database-enforced permissions/history.
 - `scripts/hermes-stoic-hook.py` — optional privacy-bounded Hermes run metadata hook; it does not check the inbox or start schedules.
 

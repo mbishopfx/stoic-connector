@@ -390,7 +390,7 @@ const handler = createMcpHandler((server) => {
     description: "List ready project-level files you can share with this team. For files attached to an assignment, call get_handoff. Pass an artifact ID to get_artifact for a short-lived download URL.",
     inputSchema: z.object({ projectId: z.uuid(), offset: pageOffset }),
   }, async ({ projectId, offset }, ctx) => run(ctx, (agent) => listProjectArtifacts(agent, projectId, offset)));
-}, { serverInfo: { name: "Stoic Connector", version: "0.1.0" }, maxSubscriptions: 0 });
+}, { serverInfo: { name: "Stoic Connector", version: "0.2.0" }, maxSubscriptions: 0 });
 
 const handlerWithOpenAIMetadata = async (request: Request) => {
   const metadataRequest = request.clone();
