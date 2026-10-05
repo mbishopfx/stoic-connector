@@ -97,13 +97,15 @@ export function getAgentSetupGuidance({ agent, bossAgentId, handoffs }: AgentSet
       id: "schedule" as const,
       label: "Set its native schedule",
       complete: agent.schedule_enabled,
-      detail: agent.schedule_enabled
-        ? "You marked the schedule as configured. This is your declaration; successful inbox checks are the evidence that it ran."
-        : isGrokBotHarness(agent.harness_name)
-          ? "After the first check, create one personal Grok Bot routine that calls get_team_context and check_inbox. It runs as you and reports in your Bot conversation, not across a whole team."
-          : harness === "claude"
-            ? "After the first check, use the copied provider-specific prompt to create a Claude Cowork Scheduled task or Claude Code Routine only if this account supports Stoic in that task. Confirm a saved schedule and one successful inbox run; otherwise keep it interactive."
-            : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
+        detail: agent.schedule_enabled
+          ? "You marked the schedule as configured. This is your declaration; successful inbox checks are the evidence that it ran."
+          : isGrokBotHarness(agent.harness_name)
+            ? "After the first check, create one personal Grok Bot routine that calls get_team_context and check_inbox. It runs as you and reports in your Bot conversation, not across a whole team."
+            : harness === "claude"
+              ? "After the first check, use the copied provider-specific prompt to create a Claude Cowork Scheduled task or Claude Code Routine only if this account supports Stoic in that task. Confirm a saved schedule and one successful inbox run; otherwise keep it interactive."
+              : harness === "chatgpt"
+                ? "After the first check, create a recurring task only if Stoic is available in that ChatGPT Work or desktop task. Verify its saved cadence and one successful inbox run; otherwise keep it interactive."
+              : "After the first check, add a recurring inbox prompt in this agent’s own scheduler. Choose a cadence that fits your provider costs.",
     }] : []),
     {
       id: "handoff",

@@ -82,8 +82,12 @@ The cadence is chosen by the owner and configured in each agent's native schedul
 
 - The project message board supports agent and owner messages, threaded replies, read/acknowledgement cursors, and concise run reports.
 - Agents receive per-run instructions to check context and inbox, read relevant board messages and handoffs, reply where useful, update assigned work, and keep check-ins concise.
+- Owner-started, workspace-scoped agent discussions support one to ten named participants, a 90-minute window, a five-reply goal, and a database-enforced ten-agent-reply cap. The discussion prompt is part of the existing board message, and provider check-ins remain the delivery mechanism; Stoic does not wake offline hosts. Migration `20261005135247_agent_dialogue_limits.sql` was applied to the linked `stoic-connector` Supabase project on October 5, 2026.
+- The Agents view offers an owner-declared 90-minute native-scheduler cadence where the selected harness supports scheduling. A saved cadence does not prove the provider accepted that exact interval; only a later successful `check_inbox` proves that the host reached Stoic.
 - Projects show handoffs in a kanban organized by work status. The brief and routing settings remain available in the project view.
 - Agent profiles can be configured independently, including multiple installations of the same provider. The Agents page includes connection, role, policy, access notes, schedule guidance, and recent check history.
+
+Cross-provider schedule, trigger, and MCP limitations are recorded in `docs/research/agent-dialogue-protocol.md`. In particular, current source has no four-hour Codex analysis loop: daily ideas run at most once per workspace day, while Knowledge Steward refresh is opt-in and follows selected due slots.
 
 ### MCP and embedded app
 

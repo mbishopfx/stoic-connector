@@ -22,12 +22,13 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Plan, type Platform } from "@/lib/config";
-import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, isGrokBotHarness, type AgentHarnessId } from "@/lib/agent-harness";
+import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, harnessSupports90MinuteCadence, isGrokBotHarness, type AgentHarnessId } from "@/lib/agent-harness";
 import { agentConnectionGuide } from "@/lib/agent-connection-guidance";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
 import { agentInstallPrompt, stoicAgentInstructions } from "@/lib/agent-install-guidance";
 import { agentRunReportPrompt, schedulePromptFor } from "@/lib/agent-run-guidance";
+import { AGENT_DIALOGUE_MARKER, AGENT_DIALOGUE_MAX_PARTICIPANTS, AGENT_DIALOGUE_MAX_REPLIES, AGENT_DIALOGUE_TARGET_REPLIES, AGENT_DIALOGUE_WINDOW_MINUTES, buildAgentDialogueKickoff, isAgentDialogueKickoff } from "@/lib/agent-dialogue";
 import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { canPreviewImageArtifact, canPreviewTextArtifact, safeArtifactMime } from "@/lib/artifact-mime";
 import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } from "@/lib/dashboard-guidance";
@@ -47,6 +48,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Empty as UiEmpty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -875,6 +877,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
                       <SelectTrigger id="expected-inbox-cadence"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="60">Hourly</SelectItem>
+                        {harnessSupports90MinuteCadence(selected.harness_name, selected.platform) && <SelectItem value="90">Every 90 minutes</SelectItem>}
                         <SelectItem value="360">Every 6 hours</SelectItem>
                         <SelectItem value="1440">Daily</SelectItem>
                       </SelectContent>
@@ -1119,8 +1122,8 @@ function ScheduleGuide({ agent, workspace }: { agent?: Agent; workspace: Workspa
   if (!agent || !["codex", "hermes", "openclaw"].includes(agent.platform)) return null;
 
   const prompt = schedulePromptFor(agent, workspace);
-  const interval = agent.schedule_cadence_minutes === 1440 ? "24h" : agent.schedule_cadence_minutes === 360 ? "6h" : "1h";
-  const cadenceLabel = agent.schedule_cadence_minutes === 1440 ? "day" : agent.schedule_cadence_minutes === 360 ? "6 hours" : "hour";
+  const interval = agent.schedule_cadence_minutes === 1440 ? "24h" : agent.schedule_cadence_minutes === 360 ? "6h" : agent.schedule_cadence_minutes === 90 ? "90m" : "1h";
+  const cadenceLabel = agent.schedule_cadence_minutes === 1440 ? "day" : agent.schedule_cadence_minutes === 360 ? "6 hours" : agent.schedule_cadence_minutes === 90 ? "90 minutes" : "hour";
   const command = agent.platform === "hermes"
     ? "hermes cron create 'every " + interval + "' " + shellQuote(prompt) + " --name " + shellQuote("Stoic inbox - " + agent.name) + " --deliver local"
     : agent.platform === "openclaw"
@@ -1474,8 +1477,11 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
   const [body, setBody] = useState("");
   const [postKind, setPostKind] = useState<"message" | "suggestion">("message");
   const [replyTo, setReplyTo] = useState<string | null>(null);
-  const postAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [discussionMode, setDiscussionMode] = useState(false);
+  const [discussionAgentIds, setDiscussionAgentIds] = useState<string[]>([]);
+  const postAttempt = useRef<{ fingerprint: string; key: string; body: string } | null>(null);
   const newestMessageRef = useRef<HTMLDivElement>(null);
+  const discussionParticipants = agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse");
   const agentNames = Object.fromEntries(agents.map((agent) => [`agent:${agent.id}`, agent.name]));
   const visible = messages.filter((message) => message.project_id === projectId).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const visibleIds = new Set(visible.map((message) => message.id));
@@ -1487,6 +1493,17 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
   const roots = visible.filter((message) => !message.parent_id || !visibleIds.has(message.parent_id));
   const replyingTo = visible.find((message) => message.id === replyTo);
   const updatedAt = visible.at(-1)?.created_at || null;
+
+  function countAgentReplies(rootId: string) {
+    const pending = [...(children.get(rootId) || [])];
+    let count = 0;
+    while (pending.length) {
+      const message = pending.pop()!;
+      if (message.author_key.startsWith("agent:")) count += 1;
+      pending.push(...(children.get(message.id) || []));
+    }
+    return count;
+  }
 
   useEffect(() => {
     const refreshIfVisible = () => { if (!document.hidden) void refresh().catch(() => {}); };
@@ -1505,20 +1522,35 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
   async function post(event: FormEvent) {
     event.preventDefault();
     if (!body.trim() || !projectId) return;
-    const parentId = postKind === "suggestion" ? null : replyTo;
-    const fingerprint = JSON.stringify([projectId, parentId, postKind, body.trim()]);
-    if (postAttempt.current?.fingerprint !== fingerprint) postAttempt.current = { fingerprint, key: crypto.randomUUID() };
-    await command("post_board_message", { projectId, parentId, body: body.trim(), kind: postKind, idempotencyKey: postAttempt.current.key });
+    const selectedParticipants = discussionParticipants.filter((agent) => discussionAgentIds.includes(agent.id));
+    if (discussionMode && selectedParticipants.length === 0) return;
+    const parentId = discussionMode || postKind === "suggestion" ? null : replyTo;
+    const fingerprint = JSON.stringify([projectId, parentId, postKind, discussionMode, selectedParticipants.map((agent) => agent.id), body.trim()]);
+    if (postAttempt.current?.fingerprint !== fingerprint) {
+      const postedBody = discussionMode
+        ? buildAgentDialogueKickoff(body.trim(), selectedParticipants.map(({ id, name }) => ({ id, name })))
+        : body.trim();
+      postAttempt.current = { fingerprint, key: crypto.randomUUID(), body: postedBody };
+    }
+    await command("post_board_message", { projectId, parentId, body: postAttempt.current.body, kind: postKind, idempotencyKey: postAttempt.current.key });
     postAttempt.current = null;
     setBody("");
     setReplyTo(null);
     setPostKind("message");
+    setDiscussionMode(false);
+    setDiscussionAgentIds([]);
   }
 
   function renderMessage(message: BoardMessage, depth = 0): ReactNode {
     const userMessage = message.author_key.startsWith("user:");
     const author = agentNames[message.author_key] || (userMessage ? "You" : message.kind === "artifact" ? "Stoic Connector" : "Stoic idea");
     const kindLabel = message.kind === "run_report" ? "Run report" : message.kind === "suggestion" ? "Suggestion · review first" : message.kind === "artifact" ? "File shared" : "Message";
+    const dialogueRoot = depth === 0 && isAgentDialogueKickoff(message.body);
+    const dialogueReplyCount = dialogueRoot ? countAgentReplies(message.id) : 0;
+    const dialogueWindowEnded = dialogueRoot && Date.now() >= Date.parse(message.created_at) + AGENT_DIALOGUE_WINDOW_MINUTES * 60_000;
+    const displayBody = dialogueRoot
+      ? message.body.replace(AGENT_DIALOGUE_MARKER, "").replace(/^Invited agent IDs:.*\r?\n/m, "").trim()
+      : message.body;
     const indentClass = depth === 0 ? "" : depth === 1 ? "ml-4 border-l pl-3 sm:ml-5 sm:pl-4" : depth === 2 ? "ml-8 border-l pl-3 sm:ml-10 sm:pl-4" : "ml-12 border-l pl-3 sm:ml-14 sm:pl-4";
     return <div className={`min-w-0 space-y-3 ${indentClass}`} key={message.id}>
       <Message align={userMessage ? "end" : "start"} className="items-start">
@@ -1529,9 +1561,14 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
           <MessageHeader className="flex-wrap gap-x-2 gap-y-1 px-0 text-[var(--dash-muted)]">
             <span className="font-medium text-[var(--dash-text)]">{author}</span>
             <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{kindLabel}</Badge>
+            {dialogueRoot && <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Agent discussion</Badge>}
             <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>
           </MessageHeader>
-          <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={message.body} /></div>
+          {dialogueRoot && <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{dialogueReplyCount}/{AGENT_DIALOGUE_MAX_REPLIES} agent replies · goal {AGENT_DIALOGUE_TARGET_REPLIES}–{AGENT_DIALOGUE_MAX_REPLIES}</Badge>
+            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{dialogueReplyCount >= AGENT_DIALOGUE_MAX_REPLIES ? "Reply cap reached" : dialogueWindowEnded ? "90-minute window ended" : `${AGENT_DIALOGUE_WINDOW_MINUTES}-minute window`}</Badge>
+          </div>}
+          <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={displayBody} /></div>
           {message.kind !== "suggestion" && <Button type="button" variant="ghost" size="sm" className="w-fit px-0 text-[var(--dash-muted)] hover:bg-transparent hover:text-[var(--dash-text)]" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>Reply</Button>}
         </MessageContent>
       </Message>
@@ -1550,8 +1587,17 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Message board</h1>
         <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Agents share progress, ask each other questions, and leave a useful trail between runs.</p>
       </div>
-      <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh board</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" disabled={!discussionParticipants.length || !projects.length} title={!discussionParticipants.length ? "Connect an MCP agent first" : !projects.length ? "Create a project first" : undefined} onClick={() => {
+          setDiscussionMode(true);
+          setReplyTo(null);
+          setPostKind("message");
+          setDiscussionAgentIds(discussionParticipants.slice(0, AGENT_DIALOGUE_MAX_PARTICIPANTS).map((agent) => agent.id));
+        }}>Start agent discussion</Button>
+        <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh board</Button>
+      </div>
     </header>
+    {!discussionParticipants.length && <p className="text-sm text-[var(--dash-muted)]">Connect an MCP agent in Agents before starting a team discussion. Muse browser relays do not receive Stoic MCP messages.</p>}
 
     <Card className={cardClass}>
       <CardHeader className="gap-4 border-b border-[var(--dash-line)] lg:flex-row lg:items-center lg:justify-between">
@@ -1582,6 +1628,10 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
         </UiEmpty>}
 
         {projects.length > 0 && <form className="space-y-4 rounded-xl border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4" onSubmit={(event) => post(event).catch(() => {})}>
+          {discussionMode && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]">
+            <AlertTitle>Start a threaded agent discussion</AlertTitle>
+            <AlertDescription className="text-[var(--dash-muted)]">Invite connected MCP agents, then give them one clear question. The target is 5–10 useful agent replies in {AGENT_DIALOGUE_WINDOW_MINUTES} minutes. Replies are best-effort: each host must check in, and Stoic cannot wake an idle agent. The thread remains on the board after its discussion window.</AlertDescription>
+          </Alert>}
           {replyingTo && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 space-y-1">
@@ -1591,7 +1641,7 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
               <Button type="button" variant="ghost" size="sm" className="w-fit text-[var(--dash-muted)]" onClick={() => setReplyTo(null)}>Cancel reply</Button>
             </div>
           </Alert>}
-          <div className="grid gap-4 sm:grid-cols-[minmax(12rem,0.38fr)_minmax(0,1fr)] sm:items-end">
+          {!discussionMode && <div className="grid gap-4 sm:grid-cols-[minmax(12rem,0.38fr)_minmax(0,1fr)] sm:items-end">
             <Field>
               <FieldLabel htmlFor="board-kind" className="text-[var(--dash-text)]">Post type</FieldLabel>
               <Select value={postKind} disabled={Boolean(replyTo)} onValueChange={(value) => setPostKind((value || "message") as "message" | "suggestion")}>
@@ -1602,14 +1652,27 @@ function BoardView({ projects, agents, messages, busy, command, refresh }: { pro
             {postKind === "suggestion" && <Alert className="h-fit border-[var(--dash-line)] bg-[var(--dash-panel)] sm:col-span-2">
               <AlertDescription className="text-[var(--dash-muted)]">This is an idea for the owner to review. It does not assign work or approve a decision.</AlertDescription>
             </Alert>}
-          </div>
+          </div>}
+          {discussionMode && <div className="space-y-2">
+            <p className="text-sm font-medium text-[var(--dash-text)]">Invite agents · up to {AGENT_DIALOGUE_MAX_PARTICIPANTS}</p>
+            {discussionParticipants.length ? <div className="grid gap-2 sm:grid-cols-2">
+              {discussionParticipants.map((agent) => <label key={agent.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-panel)] p-3">
+                <Checkbox checked={discussionAgentIds.includes(agent.id)} disabled={!discussionAgentIds.includes(agent.id) && discussionAgentIds.length >= AGENT_DIALOGUE_MAX_PARTICIPANTS} onCheckedChange={(checked) => setDiscussionAgentIds((current) => checked === true ? current.length < AGENT_DIALOGUE_MAX_PARTICIPANTS ? [...new Set([...current, agent.id])] : current : current.filter((id) => id !== agent.id))} />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-[var(--dash-text)]">{agent.name}</span>
+                  <span className="block text-xs text-[var(--dash-muted)]">{agent.harness_name || agentHarnessLabel(agent)} · {agent.last_check_at ? "inbox check succeeded" : "first inbox check pending"} · {agent.schedule_enabled ? `schedule declared every ${agent.schedule_cadence_minutes} minutes` : "interactive or owner-scheduled"}</span>
+                </span>
+              </label>)}
+            </div> : <p className="text-sm text-[var(--dash-muted)]">Connect an MCP agent to invite it. Muse browser relays do not receive Stoic MCP messages.</p>}
+          </div>}
           <Field>
-            <FieldLabel htmlFor="board-body" className="text-[var(--dash-text)]">{postKind === "suggestion" ? "Share an idea" : "Add a message"}</FieldLabel>
-            <Textarea id="board-body" className={controlClass} value={body} onChange={(event) => setBody(event.target.value)} maxLength={12000} rows={3} placeholder={postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required />
-            <FieldDescription className="text-[var(--dash-muted)]">{body.length}/12,000 characters</FieldDescription>
+            <FieldLabel htmlFor="board-body" className="text-[var(--dash-text)]">{discussionMode ? "Discussion question" : postKind === "suggestion" ? "Share an idea" : "Add a message"}</FieldLabel>
+            <Textarea id="board-body" className={controlClass} value={body} onChange={(event) => setBody(event.target.value)} maxLength={discussionMode ? 9000 : 12000} rows={discussionMode ? 4 : 3} placeholder={discussionMode ? "What should the agents reason through together?" : postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required />
+            <FieldDescription className="text-[var(--dash-muted)]">{body.length}/{discussionMode ? "9,000" : "12,000"} characters{discussionMode ? " · the discussion window ends after 90 minutes" : ""}</FieldDescription>
           </Field>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={busy || !body.trim()}>{busy ? "Posting…" : postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</Button>
+          <div className="flex justify-between gap-3">
+            {discussionMode ? <Button type="button" variant="ghost" className="text-[var(--dash-muted)]" onClick={() => { setDiscussionMode(false); setDiscussionAgentIds([]); setBody(""); }}>Cancel discussion</Button> : <span />}
+            <Button type="submit" disabled={busy || !body.trim() || (discussionMode && !discussionAgentIds.some((id) => discussionParticipants.some((agent) => agent.id === id)))}>{busy ? "Posting…" : discussionMode ? "Start discussion" : postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</Button>
           </div>
         </form>}
       </CardContent>

@@ -102,7 +102,9 @@ export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuida
       ? "daily"
       : overdueAgent.schedule_cadence_minutes === 360
         ? "six-hour"
-        : "hourly";
+        : overdueAgent.schedule_cadence_minutes === 90
+          ? "90-minute"
+          : "hourly";
     return {
       ...base,
       title: `Review ${overdueAgent.name}’s inbox schedule`,

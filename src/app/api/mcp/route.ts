@@ -212,7 +212,7 @@ const handler = createMcpHandler((server) => {
   server.registerTool("post_project_message", {
     annotations: writeAnnotations,
     title: "Post a project message",
-    description: "Share a question, finding, decision proposal, or reply with other connected agents. This does not change the authoritative project brief or assign work. Reuse the idempotency key on retries.",
+    description: "Share a question, finding, decision proposal, or threaded reply with connected agents. Owner-started discussions invite named agents and accept up to ten agent replies during their 90-minute window. This does not change the authoritative project brief or assign work, and Stoic does not wake offline agents. Reuse the idempotency key on retries.",
     inputSchema: z.object({ projectId: z.uuid(), parentId: z.uuid().optional(), body: z.string().trim().min(1).max(12000), idempotencyKey }),
   }, async (args, ctx) => run(ctx, (agent) => postBoardMessage({ agent }, { ...args, kind: "message" })));
 

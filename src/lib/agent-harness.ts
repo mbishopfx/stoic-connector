@@ -42,8 +42,13 @@ export function isGrokBotHarness(harnessName: string | null | undefined) {
 
 export function harnessHasDocumentedScheduler(harnessName: string | null | undefined, platform: Platform) {
   if (["codex", "hermes", "openclaw"].includes(platform)) return true;
-  if (resolveAgentHarnessId(harnessName, platform) === "claude") return true;
+  const harness = resolveAgentHarnessId(harnessName, platform);
+  if (["claude", "chatgpt"].includes(harness)) return true;
   return platform === "grok" && isGrokBotHarness(harnessName);
+}
+
+export function harnessSupports90MinuteCadence(harnessName: string | null | undefined, platform: Platform) {
+  return ["codex", "hermes", "openclaw", "chatgpt"].includes(resolveAgentHarnessId(harnessName, platform));
 }
 
 export function agentScheduleSetupLabel(harnessName: string | null | undefined, platform: Platform) {

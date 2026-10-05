@@ -60,7 +60,11 @@ export async function postBoardMessage(actor: Actor, raw: unknown) {
     p_idempotency_key: input.idempotencyKey,
   });
   if (error) {
-    const status = error.message.includes("subscription_required") ? 402 : error.message.includes("forbidden") ? 403 : error.message.includes("not_found") ? 404 : error.message.includes("conflict") ? 409 : 400;
+    const status = error.message.includes("subscription_required") ? 402
+      : error.message.includes("discussion_agent_not_invited") || error.message.includes("forbidden") ? 403
+        : error.message.includes("not_found") ? 404
+          : error.message.includes("discussion_window_ended") || error.message.includes("discussion_reply_cap_reached") || error.message.includes("conflict") ? 409
+            : 400;
     throw new AppError(error.message.replaceAll("_", " "), status);
   }
   return data;
