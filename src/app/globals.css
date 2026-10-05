@@ -1005,3 +1005,6 @@
 .dark .dashboard-shell[data-component-system="shadcn"][data-accent="clay"]{--primary:oklch(.77 .12 55);--primary-foreground:oklch(.17 .025 48);--ring:oklch(.72 .12 55);--accent:oklch(.31 .04 52);--accent-foreground:oklch(.95 .02 60)}
 .dashboard-shell[data-component-system="shadcn"] :is(input,select,textarea):focus{border-color:var(--ring)!important;box-shadow:0 0 0 3px color-mix(in oklch,var(--ring) 28%,transparent)!important}
 .dashboard-shell[data-component-system="shadcn"] :is(button,a,summary,input,select,textarea):focus-visible{outline:none}
+.dashboard-shell[data-component-system="shadcn"] .dashboard-content:not(.assistant-content){max-width:1440px;padding:clamp(1.25rem,2.5vw,2.25rem)}
+.dashboard-shell[data-component-system="shadcn"][data-density="compact"] .dashboard-content:not(.assistant-content){padding:clamp(1rem,2vw,1.75rem)}
+@media(max-width:760px){.dashboard-shell[data-component-system="shadcn"] .dashboard-content:not(.assistant-content){padding:20px 16px}.dashboard-shell[data-component-system="shadcn"][data-density="compact"] .dashboard-content:not(.assistant-content){padding:16px 14px}}

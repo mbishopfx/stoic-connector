@@ -26,7 +26,7 @@ export function PromptLibraryView({ onOpenAgents, onOpenContacts }: { onOpenAgen
     }
   }
 
-  return <div className="grid gap-5 text-foreground">
+  return <div className="grid gap-4 text-foreground sm:gap-5">
     <header className="border-b pb-5">
       <Badge variant="outline" className="mb-2">Ready-to-paste playbooks</Badge>
       <h1 className="text-3xl font-semibold tracking-tight">Prompt library</h1>
@@ -59,7 +59,7 @@ export function PromptLibraryView({ onOpenAgents, onOpenContacts }: { onOpenAgen
           <CardDescription className="text-sm leading-6">{item.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Accordion className="border-t">
+          <Accordion defaultValue={[]} className="border-t">
             <AccordionItem value={item.id} className="border-0">
               <AccordionTrigger className="py-3 text-sm">Preview prompt</AccordionTrigger>
               <AccordionContent>

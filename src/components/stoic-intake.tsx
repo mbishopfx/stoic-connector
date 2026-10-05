@@ -291,10 +291,10 @@ export function StoicIntake({ projects, agents, bossAgentId, guidance, command, 
     <MessageScrollerProvider autoScroll defaultScrollPosition="end" scrollEdgeThreshold={80}>
       <MessageScroller className="flex-1">
         <MessageScrollerViewport role="log" aria-label="Conversation with Stoic" aria-live="polite" className="focus-visible:outline-none">
-          <MessageScrollerContent className="mx-auto w-full max-w-5xl gap-6 px-4 py-6 md:px-8 md:py-8">
-            {!visibleTurns.length && <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.8fr)]">
+          <MessageScrollerContent className="mx-auto w-full max-w-5xl gap-5 px-4 py-6 md:px-8 md:py-8">
+            {!visibleTurns.length && <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.8fr)]">
               <Card className="justify-center border-0 bg-muted/35 shadow-none sm:min-h-72">
-                <CardContent className="space-y-5 p-5 sm:p-8">
+                <CardContent className="space-y-4 p-5 sm:space-y-5 sm:p-8">
                   <Badge variant="secondary" className="gap-1.5"><SparklesIcon />A clear place to start</Badge>
                   <div className="max-w-2xl space-y-3"><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">What should your team move forward?</h2><p className="text-sm leading-relaxed text-muted-foreground sm:text-base">Send a note, record a voice memo, or add files. Stoic prepares one focused handoff for your review. Approved work enters the shared queue for workers to pick up on their next check-in.</p></div>
                   <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setMessage("Review our current project brief and propose one next task for the team.")}>Find the next clear step</Button><Button type="button" variant="outline" onClick={() => setMessage("Turn these notes into one focused task for the team.")}>Turn notes into a handoff</Button></div>

@@ -278,7 +278,7 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
     }
   }
 
-  return <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 pb-8">
+  return <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 pb-8 sm:gap-5">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-3xl">
         <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">Private workspace CRM</Badge>
@@ -354,7 +354,7 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
           </div>
         </div>
 
-        <Accordion>
+        <Accordion defaultValue={[]}>
           <AccordionItem value="more-filters" className="border-t border-border/70">
             <AccordionTrigger className="py-3 text-sm hover:no-underline">
               <span className="flex items-center gap-2">
@@ -575,7 +575,7 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
       </CardFooter>
     </Card>
 
-    <Accordion className="grid gap-3 lg:grid-cols-2">
+    <Accordion defaultValue={[]} className="grid gap-3 lg:grid-cols-2">
       <AccordionItem value="add-contact" className="rounded-xl border border-border/80 bg-card px-4 shadow-sm sm:px-5">
         <AccordionTrigger className="py-4 hover:no-underline">
           <span className="flex min-w-0 items-center gap-3">
@@ -832,7 +832,7 @@ function ContactDetail({ contact, projectName, busy, command, onSaved, onNotice 
       </div>
     </form>
 
-    <Accordion multiple className="rounded-xl border border-border/80 px-4">
+    <Accordion multiple defaultValue={[]} className="rounded-xl border border-border/80 px-4">
       <AccordionItem value="link-interaction">
         <AccordionTrigger className="gap-3 py-3 hover:no-underline">
           <span className="flex items-center gap-2"><Link2 aria-hidden="true" className="size-4 text-muted-foreground" />Link a verified interaction</span>

@@ -19,7 +19,7 @@ describe("Stoic plugin contact surfaces", () => {
     expect(widgetBundle).toContain("Prompt library");
     expect(widgetSource).toContain("state.contactFilters");
     expect(widgetBundle).toContain("Missing email");
-    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.js?v=20261003-contacts-ux");
+    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.js?v=20261005-appearance-v2");
   });
 
   it("keeps the portable plugin's contact copy and tool inventory aligned", () => {

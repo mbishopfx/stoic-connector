@@ -1597,33 +1597,138 @@ byId("refresh-button").addEventListener("click", () => {
 });
 
 const themeButton = byId("theme-button") as HTMLButtonElement;
+type WidgetAppearance = { accent: "forest" | "slate" | "ocean" | "clay"; density: "comfortable" | "compact"; corners: "soft" | "crisp" };
+const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = { accent: "forest", density: "comfortable", corners: "soft" };
+const APPEARANCE_STORAGE_KEY = "stoic-appearance";
+function isWidgetAppearance(value: unknown): value is WidgetAppearance {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return ["forest", "slate", "ocean", "clay"].includes(String(candidate.accent))
+    && ["comfortable", "compact"].includes(String(candidate.density))
+    && ["soft", "crisp"].includes(String(candidate.corners));
+}
+function readWidgetAppearance(): WidgetAppearance {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(APPEARANCE_STORAGE_KEY) || "null");
+    if (isWidgetAppearance(value)) return value;
+  } catch { /* Storage may be disabled or contain malformed preferences. */ }
+  return { ...DEFAULT_WIDGET_APPEARANCE };
+}
+function applyAppearance(appearance: WidgetAppearance, persist = true) {
+  const root = byId("stoic-app");
+  root.dataset.accent = appearance.accent;
+  root.dataset.density = appearance.density;
+  root.dataset.corners = appearance.corners;
+  (byId("appearance-accent") as HTMLSelectElement).value = appearance.accent;
+  (byId("appearance-density") as HTMLSelectElement).value = appearance.density;
+  (byId("appearance-corners") as HTMLSelectElement).value = appearance.corners;
+  if (persist) {
+    try { localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(appearance)); } catch { /* Appearance still applies for this app session. */ }
+  }
+}
+let widgetAppearance = readWidgetAppearance();
+applyAppearance(widgetAppearance, false);
+for (const [id, key] of [["appearance-accent", "accent"], ["appearance-density", "density"], ["appearance-corners", "corners"]] as const) {
+  byId(id).addEventListener("change", () => {
+    const controls = {
+      accent: (byId("appearance-accent") as HTMLSelectElement).value,
+      density: (byId("appearance-density") as HTMLSelectElement).value,
+      corners: (byId("appearance-corners") as HTMLSelectElement).value,
+    };
+    const candidate = { ...widgetAppearance, [key]: controls[key] };
+    if (isWidgetAppearance(candidate)) {
+      widgetAppearance = candidate;
+      applyAppearance(widgetAppearance);
+    }
+  });
+}
+byId("appearance-menu").addEventListener("toggle", () => {
+  if (!(byId("appearance-menu") as HTMLDetailsElement).open) return;
+  themeSelect.focus();
+});
+
+type WidgetThemeMode = "system" | "light" | "dark";
+const themeSelect = byId("appearance-theme") as HTMLSelectElement;
+function getThemeMode(): WidgetThemeMode {
+  try {
+    const dashboardTheme = localStorage.getItem("stoic-theme");
+    if (dashboardTheme === "light" || dashboardTheme === "dark" || dashboardTheme === "system") return dashboardTheme;
+    const widgetTheme = localStorage.getItem("stoic-widget-theme");
+    return widgetTheme === "light" || widgetTheme === "dark" ? widgetTheme : "system";
+  } catch { return "system"; }
+}
+let themeMode = getThemeMode();
+let savedTheme: "light" | "dark" | null = themeMode === "system" ? null : themeMode;
+themeSelect.value = themeMode;
+function systemTheme(): "light" | "dark" {
+  const hostTheme = app.getHostContext()?.theme;
+  if (hostTheme === "light" || hostTheme === "dark") return hostTheme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 function applyTheme(theme: "light" | "dark", persist = true) {
   byId("stoic-app").setAttribute("data-theme", theme);
   themeButton.replaceChildren(svgIcon(theme === "light" ? "moon" : "sun"));
   themeButton.setAttribute("aria-label", theme === "light" ? "Switch to dark theme" : "Switch to light theme");
   themeButton.title = theme === "light" ? "Switch to dark theme" : "Switch to light theme";
   if (persist) {
+    themeMode = theme;
+    savedTheme = theme;
+    themeSelect.value = theme;
     try {
       localStorage.setItem("stoic-theme", theme);
       localStorage.setItem("stoic-widget-theme", theme);
     } catch { /* Storage may be disabled in an embedded app. */ }
   }
 }
+function applySystemTheme() {
+  themeMode = "system";
+  savedTheme = null;
+  themeSelect.value = "system";
+  applyTheme(systemTheme(), false);
+}
+themeSelect.addEventListener("change", () => {
+  const value = themeSelect.value;
+  if (value === "light" || value === "dark") applyTheme(value);
+  else if (value === "system") {
+    try {
+      localStorage.setItem("stoic-theme", "system");
+      localStorage.removeItem("stoic-widget-theme");
+    } catch { /* System mode still applies for this app session. */ }
+    applySystemTheme();
+  } else themeSelect.value = themeMode;
+});
 themeButton.addEventListener("click", () => {
   const next = byId("stoic-app").getAttribute("data-theme") === "dark" ? "light" : "dark";
   applyTheme(next);
 });
 window.addEventListener("storage", (event) => {
-  if (event.key === "stoic-theme" && (event.newValue === "light" || event.newValue === "dark")) applyTheme(event.newValue, false);
+  if (event.key === APPEARANCE_STORAGE_KEY) {
+    widgetAppearance = readWidgetAppearance();
+    applyAppearance(widgetAppearance, false);
+  }
+  if (event.key === "stoic-theme" || event.key === "stoic-widget-theme") {
+    themeMode = getThemeMode();
+    savedTheme = themeMode === "system" ? null : themeMode;
+    themeSelect.value = themeMode;
+    if (savedTheme) applyTheme(savedTheme, false);
+    else applySystemTheme();
+  }
 });
-try {
-  const savedTheme = localStorage.getItem("stoic-theme") || localStorage.getItem("stoic-widget-theme");
-  applyTheme(savedTheme === "dark" ? "dark" : "light", savedTheme !== null);
-} catch { applyTheme("light", false); }
+function applyHostTheme(theme: unknown) {
+  if (savedTheme || (theme !== "light" && theme !== "dark")) return;
+  applyTheme(theme, false);
+}
+app.onhostcontextchanged = (context) => applyHostTheme(context.theme);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!savedTheme && app.getHostContext()?.theme !== "light" && app.getHostContext()?.theme !== "dark") applySystemTheme();
+});
+if (savedTheme) applyTheme(savedTheme, false);
+else applySystemTheme();
 
 async function start() {
   try {
     await app.connect(new PostMessageTransport(window.parent, window.parent));
+    if (!savedTheme) applySystemTheme();
     await loadWorkspace(true);
   } catch (error) {
     contextStatus.querySelector("span:last-child")!.textContent = "Not connected";

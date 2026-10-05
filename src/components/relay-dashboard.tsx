@@ -28,7 +28,6 @@ import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
 import { agentInstallPrompt, stoicAgentInstructions } from "@/lib/agent-install-guidance";
 import { agentRunReportPrompt, schedulePromptFor } from "@/lib/agent-run-guidance";
-import { AGENT_DIALOGUE_MARKER, AGENT_DIALOGUE_MAX_PARTICIPANTS, AGENT_DIALOGUE_MAX_REPLIES, AGENT_DIALOGUE_TARGET_REPLIES, AGENT_DIALOGUE_WINDOW_MINUTES, buildAgentDialogueKickoff, isAgentDialogueKickoff } from "@/lib/agent-dialogue";
 import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { canPreviewImageArtifact, canPreviewTextArtifact, safeArtifactMime } from "@/lib/artifact-mime";
 import { getDashboardGuidance, type DashboardGuidance, type DashboardGuideTab } from "@/lib/dashboard-guidance";
@@ -40,6 +39,7 @@ import { AgentSetupProgress } from "@/components/agent-setup-progress";
 import { KnowledgeCenter } from "@/components/knowledge-center";
 import { PromptLibraryView } from "@/components/prompt-library";
 import { ContactsWorkspace } from "@/components/contacts-workspace";
+import { BoardDiscussionView } from "@/components/board-discussion";
 import { useTheme } from "next-themes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -48,13 +48,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Empty as UiEmpty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
+import { Message, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1472,212 +1470,8 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
 
 
 
-function BoardView({ projects, agents, messages, busy, command, refresh }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id || "");
-  const [body, setBody] = useState("");
-  const [postKind, setPostKind] = useState<"message" | "suggestion">("message");
-  const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [discussionMode, setDiscussionMode] = useState(false);
-  const [discussionAgentIds, setDiscussionAgentIds] = useState<string[]>([]);
-  const postAttempt = useRef<{ fingerprint: string; key: string; body: string } | null>(null);
-  const newestMessageRef = useRef<HTMLDivElement>(null);
-  const discussionParticipants = agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse");
-  const agentNames = Object.fromEntries(agents.map((agent) => [`agent:${agent.id}`, agent.name]));
-  const visible = messages.filter((message) => message.project_id === projectId).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const visibleIds = new Set(visible.map((message) => message.id));
-  const children = new Map<string, BoardMessage[]>();
-  for (const message of visible) {
-    if (!message.parent_id || !visibleIds.has(message.parent_id)) continue;
-    children.set(message.parent_id, [...(children.get(message.parent_id) || []), message]);
-  }
-  const roots = visible.filter((message) => !message.parent_id || !visibleIds.has(message.parent_id));
-  const replyingTo = visible.find((message) => message.id === replyTo);
-  const updatedAt = visible.at(-1)?.created_at || null;
-
-  function countAgentReplies(rootId: string) {
-    const pending = [...(children.get(rootId) || [])];
-    let count = 0;
-    while (pending.length) {
-      const message = pending.pop()!;
-      if (message.author_key.startsWith("agent:")) count += 1;
-      pending.push(...(children.get(message.id) || []));
-    }
-    return count;
-  }
-
-  useEffect(() => {
-    const refreshIfVisible = () => { if (!document.hidden) void refresh().catch(() => {}); };
-    const interval = window.setInterval(refreshIfVisible, 30_000);
-    window.addEventListener("focus", refreshIfVisible);
-    document.addEventListener("visibilitychange", refreshIfVisible);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshIfVisible);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
-    };
-  }, [refresh]);
-
-  useEffect(() => { newestMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [projectId]);
-
-  async function post(event: FormEvent) {
-    event.preventDefault();
-    if (!body.trim() || !projectId) return;
-    const selectedParticipants = discussionParticipants.filter((agent) => discussionAgentIds.includes(agent.id));
-    if (discussionMode && selectedParticipants.length === 0) return;
-    const parentId = discussionMode || postKind === "suggestion" ? null : replyTo;
-    const fingerprint = JSON.stringify([projectId, parentId, postKind, discussionMode, selectedParticipants.map((agent) => agent.id), body.trim()]);
-    if (postAttempt.current?.fingerprint !== fingerprint) {
-      const postedBody = discussionMode
-        ? buildAgentDialogueKickoff(body.trim(), selectedParticipants.map(({ id, name }) => ({ id, name })))
-        : body.trim();
-      postAttempt.current = { fingerprint, key: crypto.randomUUID(), body: postedBody };
-    }
-    await command("post_board_message", { projectId, parentId, body: postAttempt.current.body, kind: postKind, idempotencyKey: postAttempt.current.key });
-    postAttempt.current = null;
-    setBody("");
-    setReplyTo(null);
-    setPostKind("message");
-    setDiscussionMode(false);
-    setDiscussionAgentIds([]);
-  }
-
-  function renderMessage(message: BoardMessage, depth = 0): ReactNode {
-    const userMessage = message.author_key.startsWith("user:");
-    const author = agentNames[message.author_key] || (userMessage ? "You" : message.kind === "artifact" ? "Stoic Connector" : "Stoic idea");
-    const kindLabel = message.kind === "run_report" ? "Run report" : message.kind === "suggestion" ? "Suggestion · review first" : message.kind === "artifact" ? "File shared" : "Message";
-    const dialogueRoot = depth === 0 && isAgentDialogueKickoff(message.body);
-    const dialogueReplyCount = dialogueRoot ? countAgentReplies(message.id) : 0;
-    const dialogueWindowEnded = dialogueRoot && Date.now() >= Date.parse(message.created_at) + AGENT_DIALOGUE_WINDOW_MINUTES * 60_000;
-    const displayBody = dialogueRoot
-      ? message.body.replace(AGENT_DIALOGUE_MARKER, "").replace(/^Invited agent IDs:.*\r?\n/m, "").trim()
-      : message.body;
-    const indentClass = depth === 0 ? "" : depth === 1 ? "ml-4 border-l pl-3 sm:ml-5 sm:pl-4" : depth === 2 ? "ml-8 border-l pl-3 sm:ml-10 sm:pl-4" : "ml-12 border-l pl-3 sm:ml-14 sm:pl-4";
-    return <div className={`min-w-0 space-y-3 ${indentClass}`} key={message.id}>
-      <Message align={userMessage ? "end" : "start"} className="items-start">
-        <MessageAvatar className="self-start bg-transparent after:hidden">
-          <Avatar size="sm"><AvatarFallback className={userMessage ? "bg-[var(--dash-owner)] font-medium text-[var(--dash-text)]" : "bg-[var(--dash-soft)] font-medium text-[var(--dash-text)]"}>{author.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
-        </MessageAvatar>
-        <MessageContent className={`max-w-[min(100%,48rem)] rounded-xl border p-3 ${userMessage ? "border-[var(--dash-accent)] bg-[var(--dash-owner)]" : "border-[var(--dash-line)] bg-[var(--dash-panel)]"}`}>
-          <MessageHeader className="flex-wrap gap-x-2 gap-y-1 px-0 text-[var(--dash-muted)]">
-            <span className="font-medium text-[var(--dash-text)]">{author}</span>
-            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{kindLabel}</Badge>
-            {dialogueRoot && <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Agent discussion</Badge>}
-            <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>
-          </MessageHeader>
-          {dialogueRoot && <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{dialogueReplyCount}/{AGENT_DIALOGUE_MAX_REPLIES} agent replies · goal {AGENT_DIALOGUE_TARGET_REPLIES}–{AGENT_DIALOGUE_MAX_REPLIES}</Badge>
-            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{dialogueReplyCount >= AGENT_DIALOGUE_MAX_REPLIES ? "Reply cap reached" : dialogueWindowEnded ? "90-minute window ended" : `${AGENT_DIALOGUE_WINDOW_MINUTES}-minute window`}</Badge>
-          </div>}
-          <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={displayBody} /></div>
-          {message.kind !== "suggestion" && <Button type="button" variant="ghost" size="sm" className="w-fit px-0 text-[var(--dash-muted)] hover:bg-transparent hover:text-[var(--dash-text)]" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>Reply</Button>}
-        </MessageContent>
-      </Message>
-      {(children.get(message.id) || []).map((reply) => renderMessage(reply, depth + 1))}
-    </div>;
-  }
-
-  const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
-  const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
-  const selectClass = "w-full border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)]";
-
-  return <div className="space-y-5 sm:space-y-6">
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="max-w-2xl space-y-2">
-        <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Team check-in</Badge>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Message board</h1>
-        <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Agents share progress, ask each other questions, and leave a useful trail between runs.</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" disabled={!discussionParticipants.length || !projects.length} title={!discussionParticipants.length ? "Connect an MCP agent first" : !projects.length ? "Create a project first" : undefined} onClick={() => {
-          setDiscussionMode(true);
-          setReplyTo(null);
-          setPostKind("message");
-          setDiscussionAgentIds(discussionParticipants.slice(0, AGENT_DIALOGUE_MAX_PARTICIPANTS).map((agent) => agent.id));
-        }}>Start agent discussion</Button>
-        <Button type="button" variant="outline" size="sm" className="w-fit border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh board</Button>
-      </div>
-    </header>
-    {!discussionParticipants.length && <p className="text-sm text-[var(--dash-muted)]">Connect an MCP agent in Agents before starting a team discussion. Muse browser relays do not receive Stoic MCP messages.</p>}
-
-    <Card className={cardClass}>
-      <CardHeader className="gap-4 border-b border-[var(--dash-line)] lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-1">
-          <CardTitle className="text-lg">Project conversation</CardTitle>
-          <CardDescription className="max-w-2xl leading-5 text-[var(--dash-muted)]">Agent check-ins arrive when their next native schedule runs.</CardDescription>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{updatedAt ? `Updated ${timeAgo(updatedAt)}` : "No messages yet"}</Badge>
-          {projects.length > 0 && <Field className="w-full min-w-48 sm:w-auto">
-            <FieldLabel className="sr-only">Project</FieldLabel>
-            <Select value={projectId} onValueChange={(value) => { setProjectId(value || ""); setReplyTo(null); }}>
-              <SelectTrigger aria-label="Board project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
-              <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>}
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-5 pt-4">
-        {roots.length ? <ScrollArea className="h-[min(62vh,44rem)] min-h-72 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3 sm:p-4">
-          <MessageGroup className="gap-4 pr-3">
-            {roots.map((message) => renderMessage(message))}
-            <div ref={newestMessageRef} aria-hidden="true" className="h-px" />
-          </MessageGroup>
-        </ScrollArea> : <UiEmpty className="min-h-52 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
-          <EmptyHeader><EmptyTitle>No messages yet</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Post a project note, or ask an agent to leave a short check-in after its next run.</EmptyDescription></EmptyHeader>
-        </UiEmpty>}
-
-        {projects.length > 0 && <form className="space-y-4 rounded-xl border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4" onSubmit={(event) => post(event).catch(() => {})}>
-          {discussionMode && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]">
-            <AlertTitle>Start a threaded agent discussion</AlertTitle>
-            <AlertDescription className="text-[var(--dash-muted)]">Invite connected MCP agents, then give them one clear question. The target is 5–10 useful agent replies in {AGENT_DIALOGUE_WINDOW_MINUTES} minutes. Replies are best-effort: each host must check in, and Stoic cannot wake an idle agent. The thread remains on the board after its discussion window.</AlertDescription>
-          </Alert>}
-          {replyingTo && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <AlertTitle>Replying to {agentNames[replyingTo.author_key] || (replyingTo.author_key.startsWith("user:") ? "you" : "an agent")}</AlertTitle>
-                <AlertDescription className="line-clamp-2 break-words text-[var(--dash-muted)]">{replyingTo.body.slice(0, 90)}{replyingTo.body.length > 90 ? "…" : ""}</AlertDescription>
-              </div>
-              <Button type="button" variant="ghost" size="sm" className="w-fit text-[var(--dash-muted)]" onClick={() => setReplyTo(null)}>Cancel reply</Button>
-            </div>
-          </Alert>}
-          {!discussionMode && <div className="grid gap-4 sm:grid-cols-[minmax(12rem,0.38fr)_minmax(0,1fr)] sm:items-end">
-            <Field>
-              <FieldLabel htmlFor="board-kind" className="text-[var(--dash-text)]">Post type</FieldLabel>
-              <Select value={postKind} disabled={Boolean(replyTo)} onValueChange={(value) => setPostKind((value || "message") as "message" | "suggestion")}>
-                <SelectTrigger id="board-kind" className={selectClass}><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="message">Message</SelectItem><SelectItem value="suggestion">Suggestion · review first</SelectItem></SelectContent>
-              </Select>
-            </Field>
-            {postKind === "suggestion" && <Alert className="h-fit border-[var(--dash-line)] bg-[var(--dash-panel)] sm:col-span-2">
-              <AlertDescription className="text-[var(--dash-muted)]">This is an idea for the owner to review. It does not assign work or approve a decision.</AlertDescription>
-            </Alert>}
-          </div>}
-          {discussionMode && <div className="space-y-2">
-            <p className="text-sm font-medium text-[var(--dash-text)]">Invite agents · up to {AGENT_DIALOGUE_MAX_PARTICIPANTS}</p>
-            {discussionParticipants.length ? <div className="grid gap-2 sm:grid-cols-2">
-              {discussionParticipants.map((agent) => <label key={agent.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-panel)] p-3">
-                <Checkbox checked={discussionAgentIds.includes(agent.id)} disabled={!discussionAgentIds.includes(agent.id) && discussionAgentIds.length >= AGENT_DIALOGUE_MAX_PARTICIPANTS} onCheckedChange={(checked) => setDiscussionAgentIds((current) => checked === true ? current.length < AGENT_DIALOGUE_MAX_PARTICIPANTS ? [...new Set([...current, agent.id])] : current : current.filter((id) => id !== agent.id))} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-[var(--dash-text)]">{agent.name}</span>
-                  <span className="block text-xs text-[var(--dash-muted)]">{agent.harness_name || agentHarnessLabel(agent)} · {agent.last_check_at ? "inbox check succeeded" : "first inbox check pending"} · {agent.schedule_enabled ? `schedule declared every ${agent.schedule_cadence_minutes} minutes` : "interactive or owner-scheduled"}</span>
-                </span>
-              </label>)}
-            </div> : <p className="text-sm text-[var(--dash-muted)]">Connect an MCP agent to invite it. Muse browser relays do not receive Stoic MCP messages.</p>}
-          </div>}
-          <Field>
-            <FieldLabel htmlFor="board-body" className="text-[var(--dash-text)]">{discussionMode ? "Discussion question" : postKind === "suggestion" ? "Share an idea" : "Add a message"}</FieldLabel>
-            <Textarea id="board-body" className={controlClass} value={body} onChange={(event) => setBody(event.target.value)} maxLength={discussionMode ? 9000 : 12000} rows={discussionMode ? 4 : 3} placeholder={discussionMode ? "What should the agents reason through together?" : postKind === "suggestion" ? "Describe the idea, why it is useful, and the evidence behind it…" : "Reply, ask a question, or share a decision for the team…"} required />
-            <FieldDescription className="text-[var(--dash-muted)]">{body.length}/{discussionMode ? "9,000" : "12,000"} characters{discussionMode ? " · the discussion window ends after 90 minutes" : ""}</FieldDescription>
-          </Field>
-          <div className="flex justify-between gap-3">
-            {discussionMode ? <Button type="button" variant="ghost" className="text-[var(--dash-muted)]" onClick={() => { setDiscussionMode(false); setDiscussionAgentIds([]); setBody(""); }}>Cancel discussion</Button> : <span />}
-            <Button type="submit" disabled={busy || !body.trim() || (discussionMode && !discussionAgentIds.some((id) => discussionParticipants.some((agent) => agent.id === id)))}>{busy ? "Posting…" : discussionMode ? "Start discussion" : postKind === "suggestion" ? "Post suggestion for review" : "Post message"}</Button>
-          </div>
-        </form>}
-      </CardContent>
-    </Card>
-  </div>;
+function BoardView(props: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
+  return <BoardDiscussionView {...props} />;
 }
 
 function RoutingView({ projects, agents, bossAgentId, busy, command }: { projects: Project[]; agents: Agent[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {

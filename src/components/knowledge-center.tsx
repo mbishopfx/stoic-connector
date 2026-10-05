@@ -142,7 +142,14 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
   const [settingsDraft, setSettingsDraft] = useState<KnowledgeSettingsDraft | null>(null);
   const [stewardSaving, setStewardSaving] = useState(false);
   const [stewardRunning, setStewardRunning] = useState(false);
+  const [stewardOpen, setStewardOpen] = useState(false);
   const noteLoadRevision = useRef(0);
+  const currentOverview = overview?.project.id === projectId ? overview : null;
+  const stewardSettings = currentOverview ? settingsDraft || currentOverview.settings : null;
+
+  useEffect(() => {
+    if (stewardSettings?.enabled || error) setStewardOpen(true);
+  }, [error, stewardSettings?.enabled]);
 
   const refreshOverview = useCallback(async (preferredNoteId?: string, signal?: AbortSignal) => {
     if (!projectId) return null;
@@ -200,7 +207,6 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     return () => controller.abort();
   }, [loadNote, projectId]);
 
-  const currentOverview = overview?.project.id === projectId ? overview : null;
   const filteredGraph = useMemo(() => currentOverview
     ? filterKnowledgeGraph(currentOverview.graph.graph, { query, scope, kind, agentId, edgeTypes })
     : { nodes: [], edges: [], totalNodes: 0 }, [agentId, currentOverview, edgeTypes, kind, query, scope]);
@@ -361,7 +367,6 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     </EmptyContent>
   </Empty>;
 
-  const stewardSettings = currentOverview ? settingsDraft || currentOverview.settings : null;
   const latestRun = currentOverview?.refreshRuns[0];
   const pinnedSet = new Set(stewardSettings?.pinned_note_ids || []);
   const pinnableNotes = currentOverview ? [
@@ -369,7 +374,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     ...currentOverview.notes.filter((note) => !pinnedSet.has(note.id) && ["active", "proposed"].includes(note.status)).slice(0, 30),
   ] : [];
 
-  return <div className="grid gap-5 text-foreground">
+  return <div className="grid gap-4 text-foreground sm:gap-5">
     <header className="flex flex-col justify-between gap-4 border-b pb-5 md:flex-row md:items-end">
       <div className="min-w-0">
         <Badge variant="outline" className="mb-2">Project memory</Badge>
@@ -401,7 +406,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       <Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button>
     </Alert>}
 
-    <Accordion defaultValue={["steward"]} className="overflow-hidden rounded-xl border bg-card">
+    <Accordion value={stewardOpen ? ["steward"] : []} onValueChange={(value) => setStewardOpen(value.includes("steward"))} className="overflow-hidden rounded-xl border bg-card">
       <AccordionItem value="steward" className="border-0">
         <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-5">
           <span className="grid gap-1">
@@ -698,7 +703,7 @@ function KnowledgeNoteDetail({ note, graph, loading, onEdit }: {
     </CardHeader>
     <CardContent className="pt-5">
       <div className="min-h-32 text-sm leading-7 text-foreground"><AssistantRichText text={note.body} /></div>
-      <Accordion defaultValue={["source"]} className="mt-6 border-t">
+      <Accordion defaultValue={[]} className="mt-6 border-t">
         <AccordionItem value="source" className="border-0">
           <AccordionTrigger className="py-4">Source and relationships</AccordionTrigger>
           <AccordionContent>
