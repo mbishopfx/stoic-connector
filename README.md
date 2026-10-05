@@ -43,7 +43,7 @@ For a local production build, set `NEXT_PUBLIC_APP_URL` to an HTTPS Stoic origin
 - App: <https://stoic.bishoptech.dev>
 - Streamable HTTP MCP endpoint: <https://stoic.bishoptech.dev/api/mcp>
 - Supabase project: `stoic-connector` (`rbovpidqjtzsvbjcywlf`, `us-east-2`)
-- The search-first Contacts UX and shadcn dashboard refresh are on `main`; verify the current Vercel deployment before treating the new screens as live.
+- The search-first Contacts UX and shadcn dashboard refresh are deployed from `main` to `stoic.bishoptech.dev`; authenticated owner acceptance remains pending.
 - Supabase email sign-in is enabled and the Reset password template now uses a Stoic-branded subject and one-time link to `https://stoic.bishoptech.dev/auth/recovery`. The sender still uses Supabase's built-in email service; configure a verified custom SMTP provider before opening public signups to send from a Stoic address.
 - The Stripe integration uses test mode. New checkout is $5/month; the existing test subscription is retained. No live payments are configured.
 - Supabase OAuth is enabled with the `/oauth/consent` path. Dynamic client registration is currently off; the Stoic operator must register OAuth clients under Supabase Auth → OAuth Apps. Agent-scoped Stoic keys are the working default for pilot customers.
