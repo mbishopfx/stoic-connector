@@ -1556,7 +1556,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
     </Card>
 
     <Dialog open={selectedIdea !== null} onOpenChange={(open) => { if (!open) { setSelectedIdea(null); setSelectedWorkerId("__none__"); } }}>
-      {selectedIdea && <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] sm:max-w-2xl">
+      {selectedIdea && <DialogContent className="[--dash-bg:var(--background)] [--dash-panel:var(--card)] [--dash-line:var(--border)] [--dash-text:var(--foreground)] [--dash-muted:var(--muted-foreground)] [--dash-soft:var(--muted)] [--dash-accent:var(--primary)] max-h-[calc(100dvh-2rem)] overflow-y-auto border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] sm:max-w-2xl">
         <DialogHeader className="pr-8">
           <div className="flex flex-wrap items-center gap-2"><Badge variant={selectedIdea.status === "pending" ? "secondary" : "outline"} className="border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)]">{statusLabel(selectedIdea.status)}</Badge><span className="text-xs text-[var(--dash-muted)]">{projectNames[selectedIdea.project_id] || "Project"} · {timeAgo(selectedIdea.created_at)}</span></div>
           <DialogTitle className="text-xl leading-7"><AssistantRichInline text={selectedIdea.title} /></DialogTitle>
