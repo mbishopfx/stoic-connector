@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import type { ActivityAnalytics, McpTabProps } from "@/mcp-app/ui-contract";
+import { agentChatColor } from "@/lib/agent-chat-color";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -660,42 +661,37 @@ function authorName(message: BoardMessage, context: McpTabProps["context"]) {
 
 function MessageCard({
   message,
-  children,
-  depth,
   context,
   onReply,
 }: {
   message: BoardMessage;
-  children: React.ReactNode;
-  depth: number;
   context: McpTabProps["context"];
   onReply: (message: BoardMessage) => void;
 }) {
   const author = authorName(message, context);
+  const agentId = message.author_key.startsWith("agent:") ? message.author_key.slice("agent:".length) : null;
+  const agentIds = context.agents.filter((item) => item.status !== "revoked").map((item) => item.id);
+  const tint = agentId ? agentChatColor(agentId, agentIds) : null;
   return (
-    <div className={depth > 0 ? "ml-3 border-l-2 border-primary/15 pl-3 sm:ml-5 sm:pl-4" : ""}>
-      <Card size="sm" className="min-w-0">
-        <CardHeader className="flex-row items-center gap-3">
-          <Avatar aria-hidden="true" className="size-8"><AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{author.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><CardTitle className="truncate text-sm">{author}</CardTitle><Badge variant="outline">{message.kind.replaceAll("_", " ")}</Badge></div>
-            <time className="text-xs text-muted-foreground">{formatDate(message.created_at)}</time>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
-          <Button variant="ghost" size="sm" onClick={() => onReply(message)}><ArrowDownRight /> Reply</Button>
-        </CardContent>
-      </Card>
-      {children}
-    </div>
+    <Card size="sm" className="min-w-0" style={tint ? { borderColor: tint.border, backgroundColor: tint.background } : undefined}>
+      <CardHeader className="flex-row items-center gap-3">
+        <Avatar aria-hidden="true" className="size-8"><AvatarFallback className="border text-xs font-semibold" style={tint ? { backgroundColor: tint.avatar, borderColor: tint.border, color: tint.accent } : undefined}>{author.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">{tint && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: tint.accent }} />}<CardTitle className="truncate text-sm">{author}</CardTitle><Badge variant="outline">{message.kind.replaceAll("_", " ")}</Badge></div>
+          <time className="text-xs text-muted-foreground">{formatDate(message.created_at)}</time>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
+        <Button variant="ghost" size="sm" onClick={() => onReply(message)}><ArrowDownRight /> Reply</Button>
+      </CardContent>
+    </Card>
   );
 }
 
 export function BoardTab(props: McpTabProps) {
   const { context, projectId, runtime } = props;
   const [messages, setMessages] = useState<BoardMessage[]>([]);
-  const [groupChatRootId, setGroupChatRootId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [body, setBody] = useState("");
@@ -711,14 +707,12 @@ export function BoardTab(props: McpTabProps) {
     if (!projectId) {
       if (requestId !== requestRef.current) return;
       setMessages([]);
-      setGroupChatRootId(null);
       setLoading(false);
       return;
     }
     try {
-      const result = await runtime.callTool<{ groupChatRootId?: string | null; messages?: BoardMessage[] }>("read_project_board", { projectId, offset: 0 });
+      const result = await runtime.callTool<{ messages?: BoardMessage[] }>("read_project_board", { projectId, offset: 0 });
       if (requestId !== requestRef.current) return;
-      setGroupChatRootId(result.groupChatRootId || null);
       setMessages((result.messages || []).slice().sort((left, right) => left.created_at.localeCompare(right.created_at)));
     } catch (cause) {
       if (requestId !== requestRef.current) return;
@@ -729,38 +723,6 @@ export function BoardTab(props: McpTabProps) {
   }, [projectId, runtime]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load, reloadKey]);
-
-  const messageTree = useMemo(() => {
-    const ids = new Set(messages.map((message) => message.id));
-    const childrenByParent = new Map<string, BoardMessage[]>();
-    for (const message of messages) {
-      if (message.parent_id && ids.has(message.parent_id)) {
-        const children = childrenByParent.get(message.parent_id) || [];
-        children.push(message);
-        childrenByParent.set(message.parent_id, children);
-      }
-    }
-    return {
-      roots: messages.filter((message) => !message.parent_id || !ids.has(message.parent_id)),
-      childrenByParent,
-    };
-  }, [messages]);
-
-  const roomMessages = useMemo(() => {
-    if (!groupChatRootId) return [];
-    const byId = new Map(messages.map((message) => [message.id, message]));
-    return messages.filter((message) => {
-      const visited = new Set<string>();
-      let current: BoardMessage | undefined = message;
-      while (current && !visited.has(current.id)) {
-        if (current.id === groupChatRootId) return true;
-        visited.add(current.id);
-        current = current.parent_id ? byId.get(current.parent_id) : undefined;
-      }
-      return false;
-    }).sort((left, right) => left.created_at.localeCompare(right.created_at));
-  }, [groupChatRootId, messages]);
-  const otherRoots = messageTree.roots.filter((message) => message.id !== groupChatRootId);
 
   const retry = () => {
     void runtime.refreshContext().catch(() => undefined);
@@ -796,31 +758,24 @@ export function BoardTab(props: McpTabProps) {
     }
   };
 
-  const renderMessage = (message: BoardMessage, depth = 0): React.ReactNode => {
-    const replies = messageTree.childrenByParent.get(message.id) || [];
-    return (
-      <MessageCard key={message.id} message={message} depth={depth} context={context} onReply={onReply}>
-        {replies.length > 0 && <div className="mt-3 space-y-3">{replies.map((reply) => renderMessage(reply, depth + 1))}</div>}
-      </MessageCard>
-    );
-  };
+  const renderMessage = (message: BoardMessage) => <MessageCard key={message.id} message={message} context={context} onReply={onReply} />;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
       <PageHeading {...props} eyebrow="WORK" title="Group chat" description="Project updates, questions, and run reports live in one shared conversation." />
       {!projectId ? <EmptyProject title="Create a project first" description="The project board becomes available after you add a workspace project." /> : (
         <>
-          <Alert className="border-amber-500/25 bg-amber-500/5">
-            <AlertTriangle /><AlertTitle>Shared project context</AlertTitle>
-            <AlertDescription>Messages are visible to connected agents and are context, not approved decisions. Confirm authoritative decisions in the project brief.</AlertDescription>
-          </Alert>
-          <Card id="board-message-composer">
+          <Card id="board-message-composer" className="flex min-h-[36rem] flex-col overflow-hidden p-0">
             <CardHeader className="border-b">
               <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project group chat"}</CardTitle>
-              <CardDescription>General messages join this rolling chat. Use Reply only when a response belongs to one specific message.</CardDescription>
+              <CardDescription>One shared project conversation for connected agents. General messages join the room, and Reply anchors a response to one message. Confirm decisions in the project brief.</CardDescription>
             </CardHeader>
-            <CardContent className="pt-4">
-              <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              {error && <div className="px-4 pt-4"><LoadError message={error} onRetry={retry} /></div>}
+              <div className="min-h-[22rem] max-h-[65dvh] flex-1 space-y-3 overflow-y-auto p-4 sm:p-6" aria-label="Project conversation" aria-busy={loading}>
+                {loading ? <LoadingCards count={2} /> : messages.length ? messages.map(renderMessage) : <EmptyProject title="Start the project group chat" description="Your first update creates the shared conversation. Every project post will appear in this timeline." />}
+              </div>
+              <form className="space-y-3 border-t p-4" onSubmit={(event) => void submit(event)}>
                 {replyTo && (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
                     <p className="min-w-0 text-xs text-muted-foreground">Replying to <span className="font-medium text-foreground">{authorName(replyTo, context)}</span>: <span className="inline-block max-w-56 truncate align-bottom">{replyTo.body}</span></p>
@@ -844,20 +799,6 @@ export function BoardTab(props: McpTabProps) {
               </form>
             </CardContent>
           </Card>
-          {error && <LoadError message={error} onRetry={retry} />}
-          {loading ? <LoadingCards count={2} /> : (
-            <section className="space-y-3" aria-label="Project conversation">
-              <div className="flex items-center justify-between gap-3">
-                <div><h2 className="text-lg font-semibold tracking-tight">Rolling group chat</h2><p className="text-sm text-muted-foreground">{roomMessages.length} {roomMessages.length === 1 ? "message" : "messages"} in the latest page</p></div>
-                <Button variant="outline" size="sm" onClick={retry}><RefreshCw /> Refresh</Button>
-              </div>
-              {roomMessages.length ? <div className="space-y-3">{roomMessages.map((message) => <MessageCard key={message.id} message={message} depth={0} context={context} onReply={onReply}>{null}</MessageCard>)}</div> : <EmptyProject title="Start the project group chat" description="Your first update creates the shared room. Every unthreaded message after that stays in the same conversation." />}
-            </section>
-          )}
-          {!loading && otherRoots.length > 0 && <Collapsible className="rounded-xl border bg-card px-4 py-3">
-            <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium">Other project posts and focused discussions <span className="text-xs text-muted-foreground">{otherRoots.length}</span></CollapsibleTrigger>
-            <CollapsibleContent className="pt-3"><div className="space-y-3">{otherRoots.map((message) => renderMessage(message))}</div></CollapsibleContent>
-          </Collapsible>}
         </>
       )}
     </div>

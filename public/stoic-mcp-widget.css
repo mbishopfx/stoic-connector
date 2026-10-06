@@ -399,9 +399,6 @@
   .ml-2 {
     margin-left: calc(var(--spacing) * 2);
   }
-  .ml-3 {
-    margin-left: calc(var(--spacing) * 3);
-  }
   .ml-4 {
     margin-left: calc(var(--spacing) * 4);
   }
@@ -611,6 +608,9 @@
   .max-h-\[31rem\] {
     max-height: 31rem;
   }
+  .max-h-\[65dvh\] {
+    max-height: 65dvh;
+  }
   .max-h-\[calc\(100dvh-2rem\)\] {
     max-height: calc(100dvh - 2rem);
   }
@@ -661,6 +661,12 @@
   }
   .min-h-\[18rem\] {
     min-height: 18rem;
+  }
+  .min-h-\[22rem\] {
+    min-height: 22rem;
+  }
+  .min-h-\[36rem\] {
+    min-height: 36rem;
   }
   .min-h-full {
     min-height: 100%;
@@ -1232,10 +1238,6 @@
     border-left-style: var(--tw-border-style);
     border-left-width: 1px;
   }
-  .border-l-2 {
-    border-left-style: var(--tw-border-style);
-    border-left-width: 2px;
-  }
   .border-dashed {
     --tw-border-style: dashed;
     border-style: dashed;
@@ -1243,12 +1245,6 @@
   .border-none {
     --tw-border-style: none;
     border-style: none;
-  }
-  .border-amber-500\/25 {
-    border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 25%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-amber-500) 25%, transparent);
-    }
   }
   .border-background {
     border-color: var(--background);
@@ -1261,12 +1257,6 @@
   }
   .border-primary {
     border-color: var(--primary);
-  }
-  .border-primary\/15 {
-    border-color: var(--primary);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--primary) 15%, transparent);
-    }
   }
   .border-primary\/20 {
     border-color: var(--primary);
@@ -1294,12 +1284,6 @@
   }
   .bg-amber-500 {
     background-color: var(--color-amber-500);
-  }
-  .bg-amber-500\/5 {
-    background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 5%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-amber-500) 5%, transparent);
-    }
   }
   .bg-background {
     background-color: var(--background);
@@ -3857,9 +3841,6 @@
     .sm\:col-span-2 {
       grid-column: span 2 / span 2;
     }
-    .sm\:ml-5 {
-      margin-left: calc(var(--spacing) * 5);
-    }
     .sm\:block {
       display: block;
     }
@@ -3931,9 +3912,6 @@
     }
     .sm\:pr-4 {
       padding-right: calc(var(--spacing) * 4);
-    }
-    .sm\:pl-4 {
-      padding-left: calc(var(--spacing) * 4);
     }
     .sm\:text-3xl {
       font-size: var(--text-3xl);
