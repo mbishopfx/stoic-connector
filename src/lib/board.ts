@@ -19,7 +19,7 @@ export const boardPostInput = z.object({
 
 export async function listBoard(agent: AgentIdentity, projectId: string, offset = 0) {
   const db = adminDb();
-  const { data: project, error: projectError } = await db.from("projects").select("id,name")
+  const { data: project, error: projectError } = await db.from("projects").select("*")
     .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).maybeSingle();
   if (projectError) throw projectError;
   if (!project) throw new AppError("Project not found", 404);
@@ -29,7 +29,22 @@ export async function listBoard(agent: AgentIdentity, projectId: string, offset 
     .order("message_seq", { ascending: false })
     .range(offset, offset + 99);
   if (error) throw error;
-  return { project, messages: data || [], newestMessageId: data?.[0]?.id || null, nextOffset: data?.length === 100 ? offset + 100 : null };
+  const groupChatRootId = (project as typeof project & { group_chat_root_id?: string | null }).group_chat_root_id || null;
+  let messages = data || [];
+  if (groupChatRootId && !messages.some((message) => message.id === groupChatRootId)) {
+    const { data: root, error: rootError } = await db.from("board_messages")
+      .select("id,project_id,parent_id,author_key,kind,body,created_at")
+      .eq("workspace_id", agent.workspaceId).eq("project_id", projectId).eq("id", groupChatRootId).maybeSingle();
+    if (rootError) throw rootError;
+    if (root) messages = [...messages, root];
+  }
+  return {
+    project: { id: project.id, name: project.name },
+    groupChatRootId,
+    messages,
+    newestMessageId: data?.[0]?.id || null,
+    nextOffset: data?.length === 100 ? offset + 100 : null,
+  };
 }
 
 export async function acknowledgeBoardMessage(agent: AgentIdentity, projectId: string, messageId: string) {

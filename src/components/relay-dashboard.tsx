@@ -82,7 +82,7 @@ import {
 } from "@/components/ui/sidebar";
 
 type Agent = { id: string; name: string; platform: Platform; harness_name?: string | null; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
-type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
+type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; group_chat_root_id?: string | null; created_at: string };
 type Handoff = { id: string; project_id: string; assigned_agent_id: string | null; created_by_agent_id: string | null; title: string; goal: string; constraints: string; status: string; created_at: string; updated_at: string };
 type Approval = { id: string; handoff_id: string; action_summary: string; status: string; created_at: string };
 type Artifact = { id: string; project_id: string; handoff_id: string | null; name: string; mime_type: string; size_bytes: number; created_at: string };

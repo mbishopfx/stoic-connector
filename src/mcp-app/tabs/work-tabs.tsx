@@ -695,6 +695,7 @@ function MessageCard({
 export function BoardTab(props: McpTabProps) {
   const { context, projectId, runtime } = props;
   const [messages, setMessages] = useState<BoardMessage[]>([]);
+  const [groupChatRootId, setGroupChatRootId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [body, setBody] = useState("");
@@ -710,12 +711,14 @@ export function BoardTab(props: McpTabProps) {
     if (!projectId) {
       if (requestId !== requestRef.current) return;
       setMessages([]);
+      setGroupChatRootId(null);
       setLoading(false);
       return;
     }
     try {
-      const result = await runtime.callTool<{ messages?: BoardMessage[] }>("read_project_board", { projectId, offset: 0 });
+      const result = await runtime.callTool<{ groupChatRootId?: string | null; messages?: BoardMessage[] }>("read_project_board", { projectId, offset: 0 });
       if (requestId !== requestRef.current) return;
+      setGroupChatRootId(result.groupChatRootId || null);
       setMessages((result.messages || []).slice().sort((left, right) => left.created_at.localeCompare(right.created_at)));
     } catch (cause) {
       if (requestId !== requestRef.current) return;
@@ -742,6 +745,22 @@ export function BoardTab(props: McpTabProps) {
       childrenByParent,
     };
   }, [messages]);
+
+  const roomMessages = useMemo(() => {
+    if (!groupChatRootId) return [];
+    const byId = new Map(messages.map((message) => [message.id, message]));
+    return messages.filter((message) => {
+      const visited = new Set<string>();
+      let current: BoardMessage | undefined = message;
+      while (current && !visited.has(current.id)) {
+        if (current.id === groupChatRootId) return true;
+        visited.add(current.id);
+        current = current.parent_id ? byId.get(current.parent_id) : undefined;
+      }
+      return false;
+    }).sort((left, right) => left.created_at.localeCompare(right.created_at));
+  }, [groupChatRootId, messages]);
+  const otherRoots = messageTree.roots.filter((message) => message.id !== groupChatRootId);
 
   const retry = () => {
     void runtime.refreshContext().catch(() => undefined);
@@ -798,7 +817,7 @@ export function BoardTab(props: McpTabProps) {
           <Card id="board-message-composer">
             <CardHeader className="border-b">
               <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project group chat"}</CardTitle>
-              <CardDescription>Share a question, answer, or project update. Agents see it on their next scheduled check.</CardDescription>
+              <CardDescription>General messages join this rolling chat. Use Reply only when a response belongs to one specific message.</CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
               <form className="space-y-3" onSubmit={(event) => void submit(event)}>
@@ -819,7 +838,7 @@ export function BoardTab(props: McpTabProps) {
                   className="min-h-24 resize-y"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{body.length.toLocaleString()} / 12,000 characters</span>
+                  <span className="text-xs text-muted-foreground">{body.length.toLocaleString()} / 12,000 characters · visible to connected agents on their next check</span>
                   <Button type="submit" disabled={posting || !body.trim()}>{posting ? <RefreshCw className="animate-spin" /> : <Send />} Post message</Button>
                 </div>
               </form>
@@ -829,12 +848,16 @@ export function BoardTab(props: McpTabProps) {
           {loading ? <LoadingCards count={2} /> : (
             <section className="space-y-3" aria-label="Project conversation">
               <div className="flex items-center justify-between gap-3">
-                <div><h2 className="text-lg font-semibold tracking-tight">Recent conversation</h2><p className="text-sm text-muted-foreground">{messages.length} {messages.length === 1 ? "message" : "messages"} in the latest page</p></div>
+                <div><h2 className="text-lg font-semibold tracking-tight">Rolling group chat</h2><p className="text-sm text-muted-foreground">{roomMessages.length} {roomMessages.length === 1 ? "message" : "messages"} in the latest page</p></div>
                 <Button variant="outline" size="sm" onClick={retry}><RefreshCw /> Refresh</Button>
               </div>
-              {messageTree.roots.length ? <div className="space-y-3">{messageTree.roots.map((message) => renderMessage(message))}</div> : <EmptyProject title="No project conversation yet" description="A concise update here gives every connected agent the same context." />}
+              {roomMessages.length ? <div className="space-y-3">{roomMessages.map((message) => <MessageCard key={message.id} message={message} depth={0} context={context} onReply={onReply}>{null}</MessageCard>)}</div> : <EmptyProject title="Start the project group chat" description="Your first update creates the shared room. Every unthreaded message after that stays in the same conversation." />}
             </section>
           )}
+          {!loading && otherRoots.length > 0 && <Collapsible className="rounded-xl border bg-card px-4 py-3">
+            <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium">Other project posts and focused discussions <span className="text-xs text-muted-foreground">{otherRoots.length}</span></CollapsibleTrigger>
+            <CollapsibleContent className="pt-3"><div className="space-y-3">{otherRoots.map((message) => renderMessage(message))}</div></CollapsibleContent>
+          </Collapsible>}
         </>
       )}
     </div>

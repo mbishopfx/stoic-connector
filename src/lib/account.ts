@@ -185,6 +185,17 @@ export async function dashboardState(ownerId: string) {
     loadWorkspaceActivityAnalytics(workspace),
   ]);
   for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas]) if (result.error) throw result.error;
+  const groupChatRootIds = [...new Set(((projects.data || []) as Array<{ group_chat_root_id?: string | null }>)
+    .map((project) => project.group_chat_root_id)
+    .filter((id): id is string => Boolean(id)))];
+  let boardMessages = board.data || [];
+  if (groupChatRootIds.length) {
+    const { data: roots, error: rootsError } = await db.from("board_messages")
+      .select("id,project_id,parent_id,author_key,kind,body,created_at")
+      .eq("workspace_id", workspace.id).in("id", groupChatRootIds);
+    if (rootsError) throw rootsError;
+    boardMessages = [...new Map([...boardMessages, ...(roots || [])].map((message) => [message.id, message])).values()];
+  }
   const { data: usage, error: usageError } = await db.rpc("relay_workspace_usage", { p_workspace_id: workspace.id });
   if (usageError) throw usageError;
   return {
@@ -195,7 +206,7 @@ export async function dashboardState(ownerId: string) {
     approvals: approvals.data || [],
     artifacts: artifacts.data || [],
     events: events.data || [],
-    board: board.data || [],
+    board: boardMessages,
     activity: activity.data || [],
     ideas: ideas.data || [],
     activityAnalytics,
