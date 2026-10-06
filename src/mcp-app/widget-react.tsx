@@ -272,7 +272,7 @@ function AppRoot() {
   }, [appearance.accent, appearance.corners, appearance.density, dark]);
 
   return (
-    <div id="stoic-app" data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners} data-theme={resolvedTheme} className={`mcp-widget-shell flex w-full overflow-hidden border bg-background text-foreground ${dark ? "dark" : ""}`}>
+    <div id="stoic-app" data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners} data-theme={resolvedTheme} className={`mcp-widget-shell flex w-full overflow-hidden bg-background text-foreground ${dark ? "dark" : ""}`}>
       <aside className="mcp-rail flex w-[4.25rem] shrink-0 flex-col items-center border-r bg-background">
         <div className="grid h-14 w-full shrink-0 place-items-center border-b">
           <Avatar className="size-8 rounded-lg">
