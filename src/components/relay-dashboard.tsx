@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
-  Bars3Icon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftEllipsisIcon,
@@ -17,7 +17,6 @@ import {
   Squares2X2Icon,
   UserCircleIcon,
   UserGroupIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -48,15 +47,36 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Empty as UiEmpty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Message, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 type Agent = { id: string; name: string; platform: Platform; harness_name?: string | null; status: string; oauth_client_id: string | null; access_notes: string; schedule_enabled: boolean; schedule_cadence_minutes: number; last_check_at: string | null; created_at: string };
 type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
@@ -72,7 +92,15 @@ type Idea = { id: string; workspace_id: string; project_id: string; run_id: stri
 
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
-type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
+type ActivityMetrics = { mcpToolCalls: number; mcpToolErrors: number; agentMcpToolCalls: number; mcpToolCounts: Record<string, { calls: number; errors: number }>; taskEvents: number; agentTaskEvents: number; boardMessages: number; agentBoardMessages: number; auditActions: number; activeAgents: number };
+type ActivityDailyBucket = { date: string; recordedWindows: number; expectedWindows: number; complete: boolean; mcpToolCalls: number | null; agentTaskEvents: number | null; agentBoardMessages: number | null; auditActions: number | null };
+type ActivityAnalytics = {
+  available: boolean;
+  captureStartedAt: string | null;
+  latestWindow: { windowStart: string; windowEnd: string; metrics: ActivityMetrics | null; analysisStatus: "pending" | "running" | "complete" | "failed"; analysisSummary: string | null; analysisObservations: string[] } | null;
+  daily: ActivityDailyBucket[];
+};
+type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; activityAnalytics?: ActivityAnalytics; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
 type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "prompts" | "agents" | "projects" | "knowledge" | "files" | "billing";
 
 function shellQuote(value: string) {
@@ -120,6 +148,78 @@ function displayedAgentHealth(agent: Agent) {
   return { label: "Browser setup", tone: "neutral" as const };
 }
 
+function DashboardSidebarNavigation({
+  email,
+  workspaceName,
+  tab,
+  activeHandoffs,
+  pendingApprovals,
+  onSelect,
+  onSignOut,
+}: {
+  email: string;
+  workspaceName: string;
+  tab: Tab;
+  activeHandoffs: number;
+  pendingApprovals: number;
+  onSelect: (nextTab: Tab) => void;
+  onSignOut: () => void;
+}) {
+  const { setOpenMobile } = useSidebar();
+
+  return <Sidebar variant="inset" collapsible="icon" className="stoic-dashboard-sidebar" aria-label="Primary navigation">
+    <SidebarHeader className="stoic-sidebar-header">
+      <Link href="/" className="brand" aria-label="Stoic Connector home" title="Stoic Connector">
+        <span className="brand-mark"><StoicMark /></span>
+        <span className="brand-wordmark">Stoic <strong>Connector</strong></span>
+      </Link>
+      <div className="workspace-switch" role="group" aria-label={`Workspace: ${workspaceName}`} title={workspaceName}>
+        <span className="workspace-initial">{workspaceName.charAt(0).toUpperCase()}</span>
+        <div className="workspace-switch-copy"><strong>{workspaceName}</strong><small>Team workspace</small></div>
+      </div>
+    </SidebarHeader>
+    <SidebarSeparator />
+    <SidebarContent className="stoic-sidebar-content">
+      {navSections.map((section) => <SidebarGroup key={section.label}>
+        <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <nav aria-label={section.label}>
+            <SidebarMenu>
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const count = item.id === "handoffs" ? activeHandoffs : item.id === "overview" ? pendingApprovals : 0;
+                return <SidebarMenuItem key={item.id}>
+                  <SidebarMenuButton
+                    isActive={tab === item.id}
+                    aria-current={tab === item.id ? "page" : undefined}
+                    aria-label={item.label}
+                    tooltip={item.label}
+                    onClick={() => {
+                      onSelect(item.id);
+                      setOpenMobile(false);
+                    }}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                  {count > 0 && <SidebarMenuBadge className={item.id === "overview" ? "bg-amber-200 text-amber-950" : "bg-sidebar-accent"}>{count}</SidebarMenuBadge>}
+                </SidebarMenuItem>;
+              })}
+            </SidebarMenu>
+          </nav>
+        </SidebarGroupContent>
+      </SidebarGroup>)}
+    </SidebarContent>
+    <SidebarFooter className="stoic-sidebar-footer">
+      <div className="sidebar-help"><strong>Let the team work at its own pace.</strong><p>Agents pick up handoffs on their next successful schedule. Stoic cannot wake an offline agent.</p></div>
+      <button className="user-row" onClick={onSignOut} aria-label={`Sign out ${email}`} title={`Sign out ${email}`}>
+        <span className="user-avatar">{email.charAt(0).toUpperCase()}</span>
+        <span className="user-row-copy"><strong>{email}</strong><small>Sign out</small></span>
+      </button>
+    </SidebarFooter>
+  </Sidebar>;
+}
+
 export function StoicDashboard({ email }: { email: string }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
@@ -129,7 +229,6 @@ export function StoicDashboard({ email }: { email: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [secret, setSecret] = useState<{ agentId: string; value: string; type: "key" | "code" } | null>(null);
   const [intakeSeed, setIntakeSeed] = useState<{ projectId: string; prompt: string } | null>(null);
@@ -209,17 +308,30 @@ export function StoicDashboard({ email }: { email: string }) {
     setTab(guidance.tab);
   }
 
-  return <div className="dashboard-shell" data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
-    <aside className={`dashboard-sidebar ${menuOpen ? "open" : ""}`}>
-      <div className="sidebar-top"><Link href="/" className="brand" aria-label="Stoic Connector home" title="Stoic Connector"><span className="brand-mark"><StoicMark /></span><span className="brand-wordmark">Stoic <strong>Connector</strong></span></Link><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><XMarkIcon width={18} height={18} /></button></div>
-      <div className="workspace-switch" role="group" aria-label={`Workspace: ${workspace.name}`} title={workspace.name}><span className="workspace-initial">{workspace.name.charAt(0).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Team workspace</small></div></div>
-      <div className="sidebar-navigation">{navSections.map((section) => <section className="sidebar-nav-section" key={section.label}><p className="sidebar-label">{section.label}</p><nav aria-label={section.label}>{section.items.map((item) => { const Icon = item.icon; return <button key={item.id} className={tab === item.id ? "active" : ""} aria-label={item.label} title={item.label} aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setMenuOpen(false); if (item.id === "board" || item.id === "ideas") void reload().catch(() => {}); }}><Icon className="nav-item-icon" aria-hidden="true" /><span className="nav-item-label">{item.label}</span>{item.id === "handoffs" && activeHandoffs.length > 0 && <span className="nav-count">{activeHandoffs.length}</span>}{item.id === "overview" && pendingApprovals.length > 0 && <span className="nav-count amber">{pendingApprovals.length}</span>}</button>; })}</nav></section>)}</div>
-      <div className="sidebar-bottom"><div className="sidebar-help"><strong>Let the team work at its own pace.</strong><p>Agents pick up handoffs on their next successful schedule. Stoic cannot wake an offline agent.</p></div><button className="user-row" onClick={signOut} aria-label={`Sign out ${email}`} title={`Sign out ${email}`}><span className="user-avatar">{email.charAt(0).toUpperCase()}</span><span><strong>{email}</strong><small>Sign out</small></span></button></div>
-    </aside>
-    <div className="dashboard-main"><header className="dashboard-header"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Bars3Icon width={20} height={20} /></button><div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div><div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div></header>
+  return <SidebarProvider className="dashboard-shell" data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
+    <DashboardSidebarNavigation
+      email={email}
+      workspaceName={workspace.name}
+      tab={tab}
+      activeHandoffs={activeHandoffs.length}
+      pendingApprovals={pendingApprovals.length}
+      onSelect={(nextTab) => {
+        setTab(nextTab);
+        if (nextTab === "board" || nextTab === "ideas") void reload().catch(() => {});
+      }}
+      onSignOut={signOut}
+    />
+    <SidebarInset className="dashboard-main">
+      <header className="dashboard-header">
+        <div className="dashboard-header-start">
+          <SidebarTrigger className="dashboard-sidebar-trigger" aria-label="Toggle navigation" />
+          <div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div>
+        </div>
+        <div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div>
+      </header>
       <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
-        {tab === "ideas" && <IdeasView projects={projects} ideas={ideas} workspace={workspace} hasWorkers={agents.some((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse")} busy={busy} command={command} />}
+        {tab === "ideas" && <IdeasView projects={projects} agents={agents} ideas={ideas} workspace={workspace} busy={busy} command={command} />}
         {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
         {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
         {tab === "overview" && <div className="space-y-5">
@@ -233,6 +345,7 @@ export function StoicDashboard({ email }: { email: string }) {
             <Card size="sm"><CardHeader><CardDescription>Active handoffs</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{activeHandoffs.length}</p><p className="mt-1 text-xs text-muted-foreground">{state.usage?.handoffs || 0} created this month.</p></CardContent></Card>
             <Card size="sm"><CardHeader><CardDescription>Needs your review</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{pendingApprovals.length}</p><p className="mt-1 text-xs text-muted-foreground">Agents cannot approve requests on your behalf.</p></CardContent></Card>
           </section>
+          <ActivityAnalyticsOverview analytics={state.activityAnalytics} />
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader><CardTitle>Handoffs in motion</CardTitle><CardDescription>Work your team is handling now.</CardDescription><CardAction><Button variant="ghost" size="sm" onClick={() => setTab("handoffs")}>View all</Button></CardAction></CardHeader>
@@ -258,8 +371,144 @@ export function StoicDashboard({ email }: { email: string }) {
         {tab === "files" && <FilesView projects={projects} handoffs={handoffs} artifacts={artifacts} busy={busy} command={command} setNotice={setNotice} onManageProjects={() => setTab("projects")} />}
         {tab === "billing" && <BillingView workspace={workspace} monthlyPrice={state.monthlyPrice} usage={state.usage || { handoffs: 0, storageBytes: 0 }} busy={busy} command={command} />}
       </div>
+    </SidebarInset>
+  </SidebarProvider>;
+}
+
+const activityChartConfig = {
+  mcpToolCalls: { label: "MCP calls", color: "var(--chart-1)" },
+  agentTaskEvents: { label: "Agent task updates", color: "var(--chart-2)" },
+  agentBoardMessages: { label: "Agent messages", color: "var(--chart-4)" },
+  auditActions: { label: "Audit actions", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+
+function formatActivityDate(value: string) {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function formatActivityWindow(windowStart: string, windowEnd: string) {
+  const start = new Date(windowStart);
+  const end = new Date(windowEnd);
+  const date = start.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  const startTime = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  const endDate = end.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  const endTime = end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  return `${date}, ${startTime}–${endDate === date ? endTime : `${endDate}, ${endTime}`} UTC`;
+}
+
+function ActivityAnalyticsOverview({ analytics }: { analytics?: ActivityAnalytics }) {
+  if (!analytics) return <Card aria-label="Activity analytics loading"><CardHeader><Skeleton className="h-5 w-44" /><Skeleton className="h-4 w-72" /></CardHeader><CardContent><Skeleton className="h-64 w-full" /></CardContent></Card>;
+
+  if (!analytics.available) return <Card className="border-dashed">
+    <CardHeader><CardTitle>Agent activity</CardTitle><CardDescription>Six-hour activity and 30-day trends from observed Stoic workspace events.</CardDescription></CardHeader>
+    <CardContent className="space-y-2 text-sm text-muted-foreground">
+      <p>Activity analytics are not available yet. The analytics migration and its first scheduled rollup are required before this view can show data.</p>
+      <p>Historical MCP calls are not available; MCP coverage starts when instrumentation is deployed.</p>
+    </CardContent>
+  </Card>;
+
+  const latest = analytics.latestWindow;
+  const metrics = latest?.metrics || null;
+  const recordedWindows = analytics.daily.reduce((total, day) => total + day.recordedWindows, 0);
+  const expectedWindows = analytics.daily.reduce((total, day) => total + day.expectedWindows, 0);
+  const completeDays = analytics.daily.filter((day) => day.complete).length;
+  const toolRows = metrics ? Object.entries(metrics.mcpToolCounts)
+    .sort((left, right) => right[1].calls - left[1].calls)
+    .slice(0, 8) : [];
+  const analysisCopy = latest?.analysisStatus === "complete" && latest.analysisSummary
+    ? latest.analysisSummary
+    : latest?.analysisStatus === "failed"
+      ? "The managed Codex summary did not complete. The activity counts above remain available."
+      : latest?.analysisStatus === "running"
+        ? "The managed Codex summary is processing this six-hour window."
+        : "A managed Codex summary will appear after the next analysis run.";
+
+  const statCards = [
+    { label: "Agents active", value: metrics?.activeAgents, detail: "Distinct agents seen in Stoic events" },
+    { label: "Agent task updates", value: metrics?.agentTaskEvents, detail: `of ${metrics?.taskEvents ?? "—"} total task events` },
+    { label: "Agent messages", value: metrics?.agentBoardMessages, detail: `of ${metrics?.boardMessages ?? "—"} shared messages` },
+    { label: "Audit actions", value: metrics?.auditActions, detail: "Workspace audit records" },
+    { label: "MCP calls", value: metrics?.mcpToolCalls, detail: `${metrics?.mcpToolErrors ?? "—"} errors · ${metrics?.agentMcpToolCalls ?? "—"} from agents` },
+  ];
+
+  return <section className="space-y-4" aria-labelledby="activity-analytics-heading">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-1">
+        <Badge variant="secondary">Observed activity</Badge>
+        <h2 id="activity-analytics-heading" className="text-xl font-semibold tracking-tight">Agent activity</h2>
+        <p className="text-sm text-muted-foreground">Stoic task events, shared messages, audit actions, and MCP calls within this workspace.</p>
+      </div>
+      {latest && <Badge variant="outline" className="tabular-nums">{formatActivityWindow(latest.windowStart, latest.windowEnd)}</Badge>}
     </div>
-  </div>;
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {statCards.map((stat) => <Card size="sm" key={stat.label}>
+        <CardHeader><CardDescription>{stat.label}</CardDescription></CardHeader>
+        <CardContent><p className="text-3xl font-semibold tabular-nums">{stat.value == null ? "—" : stat.value.toLocaleString()}</p><p className="mt-1 text-xs text-muted-foreground">{stat.detail}</p></CardContent>
+      </Card>)}
+    </div>
+
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
+      <Card className="min-w-0">
+        <CardHeader>
+          <CardTitle>Activity over 30 days</CardTitle>
+          <CardDescription>Daily totals appear only when all four six-hour UTC windows were recorded. Blank dates have missing or partial coverage.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ChartContainer config={activityChartConfig} className="h-[280px] w-full">
+            <AreaChart data={analytics.daily} accessibilityLayer margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="activity-mcp-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.28} /><stop offset="95%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.02} /></linearGradient>
+                <linearGradient id="activity-task-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.2} /><stop offset="95%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.02} /></linearGradient>
+                <linearGradient id="activity-message-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.02} /></linearGradient>
+                <linearGradient id="activity-audit-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-auditActions)" stopOpacity={0.16} /><stop offset="95%" stopColor="var(--color-auditActions)" stopOpacity={0.02} /></linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} tickFormatter={formatActivityDate} />
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} width={34} allowDecimals={false} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(label) => typeof label === "string" ? formatActivityDate(label) : label} />} />
+              <Area dataKey="mcpToolCalls" type="monotone" stroke="var(--color-mcpToolCalls)" fill="url(#activity-mcp-fill)" strokeWidth={2} connectNulls={false} />
+              <Area dataKey="agentTaskEvents" type="monotone" stroke="var(--color-agentTaskEvents)" fill="url(#activity-task-fill)" strokeWidth={2} connectNulls={false} />
+              <Area dataKey="agentBoardMessages" type="monotone" stroke="var(--color-agentBoardMessages)" fill="url(#activity-message-fill)" strokeWidth={2} connectNulls={false} />
+              <Area dataKey="auditActions" type="monotone" stroke="var(--color-auditActions)" fill="url(#activity-audit-fill)" strokeWidth={2} connectNulls={false} />
+            </AreaChart>
+          </ChartContainer>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {Object.entries(activityChartConfig).map(([key, config]) => <span key={key} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-[2px]" style={{ backgroundColor: config.color }} />{config.label}</span>)}
+            </div>
+            <span>{completeDays}/30 complete days · {recordedWindows}/{expectedWindows} windows recorded</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid content-start gap-4">
+        <Card>
+          <CardHeader><CardTitle>Codex collaboration summary</CardTitle><CardDescription>Bounded analysis of redacted Stoic-shared activity.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            {metrics ? <p className="text-sm leading-6">{analysisCopy}</p> : <p className="text-sm text-muted-foreground">The latest completed six-hour window has not been rolled up yet.</p>}
+            {latest?.analysisStatus === "complete" && latest.analysisObservations.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{latest.analysisObservations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>}
+            <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">Deterministic counts come from Stoic records. Analysis cannot read unrelated Codex Desktop or third-party agent histories.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>MCP tools</CardTitle><CardDescription>Most called tools in the same six-hour window.</CardDescription></CardHeader>
+          <CardContent>
+            {!metrics ? <p className="text-sm text-muted-foreground">Waiting for the first completed activity rollup.</p> : toolRows.length === 0 ? <p className="text-sm text-muted-foreground">No MCP calls were recorded in this window.</p> : <Table>
+              <TableHeader><TableRow><TableHead>Tool</TableHead><TableHead className="text-right">Calls</TableHead><TableHead className="text-right">Errors</TableHead></TableRow></TableHeader>
+              <TableBody>{toolRows.map(([name, counts]) => <TableRow key={name}><TableCell className="max-w-40 truncate font-mono text-xs">{name}</TableCell><TableCell className="text-right tabular-nums">{counts.calls}</TableCell><TableCell className="text-right tabular-nums">{counts.errors}</TableCell></TableRow>)}</TableBody>
+            </Table>}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+    <p className="text-xs leading-5 text-muted-foreground">
+      {analytics.captureStartedAt
+        ? `MCP tool capture began ${new Date(analytics.captureStartedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC. Earlier calls are not represented.`
+        : "MCP tool capture start is not available yet. Earlier calls are not represented."}
+    </p>
+  </section>;
 }
 
 function BridgeGuide({ guidance, onNavigate }: { guidance: DashboardGuidance; onNavigate: (tab: DashboardGuideTab, agentId?: string) => void }) {
@@ -1308,10 +1557,12 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
   </div>;
 }
 
-function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { projects: Project[]; ideas: Idea[]; workspace: Workspace; hasWorkers: boolean; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
+function IdeasView({ projects, agents, ideas, workspace, busy, command }: { projects: Project[]; agents: Agent[]; ideas: Idea[]; workspace: Workspace; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
   const [projectId, setProjectId] = useState("all");
   const [status, setStatus] = useState<Idea["status"] | "all">("pending");
   const [timezone, setTimezone] = useState(workspace.ideas_timezone || "UTC");
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState("__none__");
   const [olderIdeas, setOlderIdeas] = useState<Idea[]>([]);
   const [ideaOverrides, setIdeaOverrides] = useState<Map<string, Idea>>(() => new Map());
   const [nextOffset, setNextOffset] = useState<number | null>(ideas.length === 200 ? 200 : null);
@@ -1319,6 +1570,9 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
   const [historyError, setHistoryError] = useState("");
   const initializedTimezone = useRef(false);
   const projectNames = Object.fromEntries(projects.map((project) => [project.id, project.name]));
+  const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse");
+  const selectedWorker = workers.find((agent) => agent.id === selectedWorkerId);
+  const hasWorkers = workers.length > 0;
   const loadedIdeas = useMemo(() => {
     const merged = new Map<string, Idea>();
     for (const idea of olderIdeas) merged.set(idea.id, idea);
@@ -1351,10 +1605,13 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
     }
   }, [historyLoading, nextOffset]);
 
-  async function reviewIdea(ideaId: string, action: "accept_idea" | "archive_idea") {
-    const result = await command(action, { ideaId });
-    const updated = action === "accept_idea" ? (result as { idea?: Idea })?.idea : result as Idea;
-    if (updated?.id) setIdeaOverrides((current) => new Map(current).set(ideaId, updated));
+  async function reviewIdea(idea: Idea, action: "assign_idea" | "archive_idea") {
+    const payload = action === "assign_idea" ? { ideaId: idea.id, agentId: selectedWorkerId } : { ideaId: idea.id };
+    const result = await command(action, payload);
+    const updated = action === "assign_idea" ? (result as { idea?: Idea })?.idea : result as Idea;
+    if (updated?.id) setIdeaOverrides((current) => new Map(current).set(idea.id, updated));
+    setSelectedIdea(null);
+    setSelectedWorkerId("__none__");
   }
 
   useEffect(() => {
@@ -1372,19 +1629,20 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
   const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
   const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
   const selectClass = "w-full border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)]";
+  const statusLabel = (value: Idea["status"]) => value === "pending" ? "Needs review" : value === "accepted" ? "Handoff created" : "Denied";
 
   return <div className="space-y-5 sm:space-y-6">
     <header className="max-w-3xl space-y-2">
-      <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">A quiet daily review</Badge>
+      <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Owner review</Badge>
       <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Ideas</h1>
-      <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Stoic prepares three source-grounded ideas once a day after 8 AM in your workspace time zone. Nothing becomes work until you accept it.</p>
+      <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">Review each source-grounded suggestion, open its details, then assign it to a connected worker or deny it.</p>
     </header>
 
     <Card className={cardClass}>
       <CardHeader className="gap-4 border-b border-[var(--dash-line)] lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
           <CardTitle className="text-lg">For your review</CardTitle>
-          <CardDescription className="text-[var(--dash-muted)]">{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"} in this view</CardDescription>
+          <CardDescription className="text-[var(--dash-muted)]">{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"} in this view · select a row to review its evidence and next step</CardDescription>
         </div>
         <Field className="w-full max-w-xs">
           <FieldLabel className="text-[var(--dash-text)]">Project</FieldLabel>
@@ -1397,58 +1655,77 @@ function IdeasView({ projects, ideas, workspace, hasWorkers, busy, command }: { 
       <CardContent className="space-y-4 pt-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filter ideas by status">
           {(["pending", "accepted", "archived", "all"] as const).map((item) => <Button type="button" variant={status === item ? "secondary" : "outline"} size="sm" className={status === item ? "bg-[var(--dash-soft)] text-[var(--dash-text)]" : "border-[var(--dash-line)] text-[var(--dash-muted)]"} key={item} aria-pressed={status === item} onClick={() => setStatus(item)}>
-            {item === "all" ? "All" : item[0].toUpperCase() + item.slice(1)}{item !== "all" && <Badge variant="outline" className="ml-1 border-[var(--dash-line)] px-1.5 text-[var(--dash-muted)]">{loadedIdeas.filter((idea) => idea.status === item).length}</Badge>}
+            {item === "all" ? "All" : statusLabel(item)}{item !== "all" && <Badge variant="outline" className="ml-1 border-[var(--dash-line)] px-1.5 text-[var(--dash-muted)]">{loadedIdeas.filter((idea) => idea.status === item).length}</Badge>}
           </Button>)}
         </div>
-        {visibleIdeas.length ? <div className="grid gap-4 lg:grid-cols-2">
-          {visibleIdeas.map((idea) => <Card key={idea.id} className={`${cardClass} overflow-visible`}>
-            <CardHeader className="gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Badge variant={idea.status === "pending" ? "secondary" : "outline"} className="border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)]">{idea.status === "pending" ? "For owner review" : idea.status}</Badge>
-                <time dateTime={idea.created_at} className="text-xs text-[var(--dash-muted)]">{timeAgo(idea.created_at)}</time>
-              </div>
-              <CardTitle className="text-base leading-6"><AssistantRichInline text={idea.title} /></CardTitle>
-              <CardDescription className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.summary} /></CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3">
-                  <h4 className="mb-1 text-xs font-semibold text-[var(--dash-text)]">Why now</h4>
-                  <div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.why_now} /></div>
-                </section>
-                <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-3">
-                  <h4 className="mb-1 text-xs font-semibold text-[var(--dash-text)]">First step</h4>
-                  <div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={idea.next_step} /></div>
-                </section>
-              </div>
-              <Accordion className="border-t border-[var(--dash-line)]" defaultValue={[]}>
-                <AccordionItem value={`evidence-${idea.id}`} className="border-[var(--dash-line)]">
-                  <AccordionTrigger className="text-[var(--dash-text)]">Evidence <Badge variant="outline" className="ml-2 border-[var(--dash-line)] text-[var(--dash-muted)]">{idea.evidence_ids.length}</Badge></AccordionTrigger>
-                  <AccordionContent>
-                    {idea.evidence_ids.length ? <ul className="grid gap-2 text-sm text-[var(--dash-muted)]">{idea.evidence_ids.map((source) => <li key={source} className="break-all rounded-md bg-[var(--dash-soft)] px-3 py-2">{source}</li>)}</ul> : <p className="text-sm text-[var(--dash-muted)]">No evidence references were attached.</p>}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </CardContent>
-            <CardFooter className="flex flex-col items-start gap-3 border-[var(--dash-line)] !bg-[var(--dash-bg)] sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-[var(--dash-muted)]">{projectNames[idea.project_id] || "Project"} · generated from shared context</p>
-              {idea.status === "pending" ? <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !hasWorkers || workspace.delegation_level === "observe"} title={!hasWorkers ? "Connect a worker before accepting an idea" : workspace.delegation_level === "observe" ? "Change the delegation level before creating handoffs" : undefined} onClick={() => reviewIdea(idea.id, "accept_idea").catch(() => {})}>Accept as team handoff</Button>
-                <Button type="button" variant="ghost" size="sm" className="text-[var(--dash-muted)]" disabled={busy} onClick={() => reviewIdea(idea.id, "archive_idea").catch(() => {})}>Archive</Button>
-              </div> : <Badge variant="outline" className="max-w-full border-[var(--dash-line)] text-[var(--dash-muted)]">{idea.accepted_handoff_id ? `Handoff created · ${idea.accepted_handoff_id.slice(0, 8)}` : "Archived"}</Badge>}
-              {idea.status === "pending" && (!hasWorkers || workspace.delegation_level === "observe") && <div className="basis-full space-y-2">
-                {!hasWorkers && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Connect a worker before Stoic can queue an accepted idea.</AlertDescription></Alert>}
-                {workspace.delegation_level === "observe" && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Your team is in Observe mode. Change the delegation level before creating handoffs.</AlertDescription></Alert>}
-              </div>}
-            </CardFooter>
-          </Card>)}
+        {visibleIdeas.length ? <div className="overflow-hidden rounded-xl border border-[var(--dash-line)]">
+          <Table>
+            <TableHeader className="bg-[var(--dash-bg)]">
+              <TableRow className="border-[var(--dash-line)] hover:bg-transparent">
+                <TableHead className="text-[var(--dash-muted)]">Idea</TableHead>
+                <TableHead className="text-[var(--dash-muted)]">Project</TableHead>
+                <TableHead className="text-[var(--dash-muted)]">Status</TableHead>
+                <TableHead className="text-[var(--dash-muted)]">Added</TableHead>
+                <TableHead className="text-right text-[var(--dash-muted)]">Review</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleIdeas.map((idea) => <TableRow key={idea.id} className="cursor-pointer border-[var(--dash-line)]" onClick={() => { setSelectedIdea(idea); setSelectedWorkerId("__none__"); }}>
+                <TableCell className="max-w-[28rem] whitespace-normal">
+                  <button type="button" aria-haspopup="dialog" className="text-left font-medium text-[var(--dash-text)] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--dash-accent)]" onClick={(event) => { event.stopPropagation(); setSelectedIdea(idea); setSelectedWorkerId("__none__"); }}>
+                    <AssistantRichInline text={idea.title} />
+                  </button>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--dash-muted)]">{idea.summary}</p>
+                </TableCell>
+                <TableCell className="text-[var(--dash-muted)]">{projectNames[idea.project_id] || "Project"}</TableCell>
+                <TableCell><Badge variant={idea.status === "pending" ? "secondary" : "outline"} className="border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)]">{statusLabel(idea.status)}</Badge></TableCell>
+                <TableCell><time dateTime={idea.created_at} className="text-xs text-[var(--dash-muted)]">{timeAgo(idea.created_at)}</time></TableCell>
+                <TableCell className="text-right"><span className="text-xs font-medium text-[var(--dash-accent)]">{idea.status === "pending" ? "Open review" : "View details"}</span></TableCell>
+              </TableRow>)}
+            </TableBody>
+          </Table>
         </div> : <UiEmpty className="min-h-56 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
-          <EmptyHeader><EmptyTitle>{status === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Stoic keeps each day's suggestions as their own records. Older ideas remain here until you accept or archive them.</EmptyDescription></EmptyHeader>
+          <EmptyHeader><EmptyTitle>{status === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Stoic keeps each day's suggestions as their own records. Older ideas stay in the history after assignment or denial.</EmptyDescription></EmptyHeader>
         </UiEmpty>}
         {historyError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load older ideas</AlertTitle><AlertDescription>{historyError}</AlertDescription></Alert>}
         {nextOffset !== null && <Button type="button" variant="outline" size="sm" className="w-full border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => loadOlderIdeas().catch(() => {})} disabled={historyLoading}>{historyLoading ? "Loading older ideas…" : "Load older ideas"}</Button>}
       </CardContent>
     </Card>
+
+    <Dialog open={selectedIdea !== null} onOpenChange={(open) => { if (!open) { setSelectedIdea(null); setSelectedWorkerId("__none__"); } }}>
+      {selectedIdea && <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] sm:max-w-2xl">
+        <DialogHeader className="pr-8">
+          <div className="flex flex-wrap items-center gap-2"><Badge variant={selectedIdea.status === "pending" ? "secondary" : "outline"} className="border-[var(--dash-line)] bg-[var(--dash-soft)] text-[var(--dash-text)]">{statusLabel(selectedIdea.status)}</Badge><span className="text-xs text-[var(--dash-muted)]">{projectNames[selectedIdea.project_id] || "Project"} · {timeAgo(selectedIdea.created_at)}</span></div>
+          <DialogTitle className="text-xl leading-7"><AssistantRichInline text={selectedIdea.title} /></DialogTitle>
+          <DialogDescription className="leading-6 text-[var(--dash-muted)]"><AssistantRichText text={selectedIdea.summary} /></DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4"><h3 className="mb-1 text-sm font-semibold">Why now</h3><div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={selectedIdea.why_now} /></div></section>
+          <section className="rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4"><h3 className="mb-1 text-sm font-semibold">First step</h3><div className="text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={selectedIdea.next_step} /></div></section>
+          <section className="space-y-2"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">Source evidence</h3><Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">{selectedIdea.evidence_ids.length}</Badge></div>{selectedIdea.evidence_ids.length ? <ul className="grid gap-2 text-xs text-[var(--dash-muted)] sm:grid-cols-2">{selectedIdea.evidence_ids.map((source) => <li key={source} className="break-all rounded-md border border-[var(--dash-line)] bg-[var(--dash-bg)] px-3 py-2">{source}</li>)}</ul> : <p className="text-sm text-[var(--dash-muted)]">No evidence references were attached.</p>}</section>
+          {selectedIdea.status === "pending" && <section className="space-y-3 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-bg)] p-4">
+            <div><h3 className="text-sm font-semibold">Assign this idea</h3><p className="mt-1 text-xs leading-5 text-[var(--dash-muted)]">Choose a connected worker for {projectNames[selectedIdea.project_id] || "this project"}. Assignment creates a handoff for that worker.</p></div>
+            <Field>
+              <FieldLabel htmlFor="idea-worker" className="text-[var(--dash-text)]">Connected worker</FieldLabel>
+              <Select value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !hasWorkers || workspace.delegation_level === "observe"}>
+                <SelectTrigger id="idea-worker" aria-label="Choose a connected worker" className={selectClass}><SelectValue placeholder="Choose a worker" /></SelectTrigger>
+                <SelectContent><SelectItem value="__none__" disabled>Choose a worker</SelectItem>{workers.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            {!hasWorkers && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Connect an eligible MCP worker before assigning this idea.</AlertDescription></Alert>}
+            {workspace.delegation_level === "observe" && <Alert className="border-[var(--dash-line)] bg-[var(--dash-panel)]"><AlertDescription className="text-[var(--dash-muted)]">Your workspace is in Observe mode. Change the delegation level before creating a handoff.</AlertDescription></Alert>}
+          </section>}
+          {selectedIdea.status === "accepted" && <p className="text-xs text-[var(--dash-muted)]">Handoff {selectedIdea.accepted_handoff_id ? `#${selectedIdea.accepted_handoff_id.slice(0, 8)}` : "created"} from this idea.</p>}
+          {selectedIdea.status === "archived" && <p className="text-xs text-[var(--dash-muted)]">This idea was denied and kept in your history.</p>}
+        </div>
+        <DialogFooter className="border-t border-[var(--dash-line)] pt-4 sm:justify-between">
+          {selectedIdea.status === "pending" ? <>
+            <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => reviewIdea(selectedIdea, "archive_idea").catch(() => {})}>Deny idea</Button>
+            <Button type="button" disabled={busy || !selectedWorker || workspace.delegation_level === "observe"} onClick={() => reviewIdea(selectedIdea, "assign_idea").catch(() => {})}>{busy ? "Assigning…" : selectedWorker ? `Assign to ${selectedWorker.name}` : "Choose a worker"}</Button>
+          </> : <Button type="button" variant="outline" onClick={() => setSelectedIdea(null)}>Close</Button>}
+        </DialogFooter>
+      </DialogContent>}
+    </Dialog>
 
     <Card className={cardClass}>
       <CardHeader>

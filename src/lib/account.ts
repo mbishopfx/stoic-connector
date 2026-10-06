@@ -6,6 +6,131 @@ import { isGrokBotHarness } from "@/lib/agent-harness";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+const ACTIVITY_CHART_DAYS = 30;
+
+type WorkspaceActivityRollup = {
+  window_start: string;
+  window_end: string;
+  mcp_tool_calls: number | string;
+  mcp_tool_errors: number | string;
+  mcp_agent_tool_calls: number | string;
+  mcp_tool_counts: Record<string, { calls: number; errors: number }>;
+  task_events: number | string;
+  agent_task_events: number | string;
+  board_messages: number | string;
+  agent_board_messages: number | string;
+  audit_actions: number | string;
+  active_agents: number | string;
+  analysis_status: "pending" | "running" | "complete" | "failed";
+  analysis_summary: string | null;
+  analysis_observations: string[];
+};
+
+function activityCount(value: number | string) {
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+function activityMetrics(row: WorkspaceActivityRollup) {
+  return {
+    mcpToolCalls: activityCount(row.mcp_tool_calls),
+    mcpToolErrors: activityCount(row.mcp_tool_errors),
+    agentMcpToolCalls: activityCount(row.mcp_agent_tool_calls),
+    mcpToolCounts: row.mcp_tool_counts || {},
+    taskEvents: activityCount(row.task_events),
+    agentTaskEvents: activityCount(row.agent_task_events),
+    boardMessages: activityCount(row.board_messages),
+    agentBoardMessages: activityCount(row.agent_board_messages),
+    auditActions: activityCount(row.audit_actions),
+    activeAgents: activityCount(row.active_agents),
+  };
+}
+
+async function loadWorkspaceActivityAnalytics(workspace: { id: string; mcp_activity_capture_started_at?: string | null }, now = new Date()) {
+  const currentUtcDayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const latestClosedWindowEnd = Math.floor(now.getTime() / SIX_HOURS_MS) * SIX_HOURS_MS;
+  const chartStart = new Date(currentUtcDayStart - (ACTIVITY_CHART_DAYS - 1) * 24 * 60 * 60 * 1000);
+  const { data, error } = await adminDb().from("workspace_activity_rollups")
+    .select("window_start,window_end,mcp_tool_calls,mcp_tool_errors,mcp_agent_tool_calls,mcp_tool_counts,task_events,agent_task_events,board_messages,agent_board_messages,audit_actions,active_agents,analysis_status,analysis_summary,analysis_observations")
+    .eq("workspace_id", workspace.id)
+    .gte("window_start", chartStart.toISOString())
+    .lt("window_start", new Date(latestClosedWindowEnd).toISOString())
+    .order("window_start", { ascending: true })
+    .limit(ACTIVITY_CHART_DAYS * 4 + 4);
+
+  if (error) {
+    if (["42P01", "PGRST205"].includes(error.code)) {
+      return { available: false as const, captureStartedAt: null, latestWindow: null, daily: [] };
+    }
+    throw error;
+  }
+
+  const rollups = (data || []) as WorkspaceActivityRollup[];
+  const byWindowStart = new Map(rollups.map((row) => [Date.parse(row.window_start), row]));
+  const latestWindowStart = latestClosedWindowEnd - SIX_HOURS_MS;
+  const latestRow = byWindowStart.get(latestWindowStart);
+  const captureStartedAt = workspace.mcp_activity_capture_started_at || null;
+  const captureStartMs = captureStartedAt ? Date.parse(captureStartedAt) : null;
+  const daily = Array.from({ length: ACTIVITY_CHART_DAYS }, (_, index) => {
+    const dayStart = chartStart.getTime() + index * 24 * 60 * 60 * 1000;
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    const expectedWindowStarts: number[] = [];
+    if (captureStartMs !== null && Number.isFinite(captureStartMs)) {
+      for (let windowStart = dayStart; windowStart + SIX_HOURS_MS <= Math.min(dayEnd, latestClosedWindowEnd); windowStart += SIX_HOURS_MS) {
+        if (windowStart >= Math.floor(captureStartMs / SIX_HOURS_MS) * SIX_HOURS_MS) expectedWindowStarts.push(windowStart);
+      }
+    }
+    const recordedWindowStarts = expectedWindowStarts.filter((windowStart) => byWindowStart.has(windowStart));
+    const complete = captureStartMs !== null
+      && captureStartMs <= dayStart
+      && dayEnd <= latestClosedWindowEnd
+      && expectedWindowStarts.length === 4
+      && recordedWindowStarts.length === expectedWindowStarts.length;
+    const rows = recordedWindowStarts.map((windowStart) => byWindowStart.get(windowStart)).filter((row): row is WorkspaceActivityRollup => Boolean(row));
+    const totals = rows.reduce((sum, row) => {
+      const metrics = activityMetrics(row);
+      sum.mcpToolCalls += metrics.mcpToolCalls;
+      sum.agentTaskEvents += metrics.agentTaskEvents;
+      sum.agentBoardMessages += metrics.agentBoardMessages;
+      sum.auditActions += metrics.auditActions;
+      return sum;
+    }, { mcpToolCalls: 0, agentTaskEvents: 0, agentBoardMessages: 0, auditActions: 0 });
+    return {
+      date: new Date(dayStart).toISOString().slice(0, 10),
+      recordedWindows: recordedWindowStarts.length,
+      expectedWindows: expectedWindowStarts.length,
+      complete,
+      mcpToolCalls: complete ? totals.mcpToolCalls : null,
+      agentTaskEvents: complete ? totals.agentTaskEvents : null,
+      agentBoardMessages: complete ? totals.agentBoardMessages : null,
+      auditActions: complete ? totals.auditActions : null,
+    };
+  });
+
+  return {
+    available: true as const,
+    captureStartedAt,
+    latestWindow: {
+      windowStart: new Date(latestWindowStart).toISOString(),
+      windowEnd: new Date(latestClosedWindowEnd).toISOString(),
+      metrics: latestRow ? activityMetrics(latestRow) : null,
+      analysisStatus: latestRow?.analysis_status || "pending",
+      analysisSummary: latestRow?.analysis_summary || null,
+      analysisObservations: latestRow?.analysis_observations || [],
+    },
+    daily,
+  };
+}
+
+export async function teamActivityAnalytics(workspaceId: string) {
+  const { data: workspace, error } = await adminDb().from("workspaces").select("*").eq("id", workspaceId).maybeSingle();
+  if (error) throw error;
+  if (!workspace) throw new AppError("Workspace not found", 404);
+  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to view agent activity.", 402);
+  return loadWorkspaceActivityAnalytics(workspace);
+}
+
 export async function workspaceForOwner(ownerId: string) {
   const { data, error } = await adminDb().from("workspaces").select("*").eq("owner_id", ownerId).maybeSingle();
   if (error) throw error;
@@ -42,7 +167,7 @@ export async function dashboardState(ownerId: string) {
     if (error) throw error;
     return { workspace, agents: agents || [] };
   }
-  const [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas] = await Promise.all([
+  const [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas, activityAnalytics] = await Promise.all([
     db.from("agents").select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("projects").select("*").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     db.from("handoffs").select("*").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100),
@@ -52,6 +177,7 @@ export async function dashboardState(ownerId: string) {
     db.from("board_messages").select("id,project_id,parent_id,author_key,kind,body,created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
     db.from("audit_events").select("id,actor_key,details,created_at").eq("workspace_id", workspace.id).eq("action", "inbox.checked").order("created_at", { ascending: false }).limit(100),
     db.from("ideas").select("id,workspace_id,project_id,run_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,accepted_at,archived_at,created_at,updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(200),
+    loadWorkspaceActivityAnalytics(workspace),
   ]);
   for (const result of [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas]) if (result.error) throw result.error;
   const { data: usage, error: usageError } = await db.rpc("relay_workspace_usage", { p_workspace_id: workspace.id });
@@ -67,6 +193,7 @@ export async function dashboardState(ownerId: string) {
     board: board.data || [],
     activity: activity.data || [],
     ideas: ideas.data || [],
+    activityAnalytics,
     usage: { handoffs: Number(usage.handoffs), storageBytes: Number(usage.storageBytes) },
   };
 }

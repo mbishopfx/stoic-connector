@@ -266,21 +266,29 @@ export async function getWorkspaceIdeas(workspaceId: string, offset = 0) {
 
 export async function listTeamIdeas(agent: AgentIdentity) {
   const { data, error } = await adminDb().from("ideas")
-    .select("id,project_id,title,summary,why_now,next_step,evidence_ids,status,created_at")
-    .eq("workspace_id", agent.workspaceId).in("status", ["pending", "accepted"])
+    .select("id,project_id,title,summary,why_now,next_step,evidence_ids,status,accepted_handoff_id,archived_at,created_at")
+    .eq("workspace_id", agent.workspaceId).in("status", ["pending", "accepted", "archived"])
     .order("created_at", { ascending: false }).limit(30);
   if (error) throw error;
   return data || [];
 }
 
-export async function acceptIdea(ownerId: string, ideaId: string) {
+export async function assignIdea(ownerId: string, ideaId: string, agentId: string) {
   const workspace = await requireActiveWorkspace(ownerId);
-  const { data, error } = await adminDb().rpc("stoic_accept_idea", {
+  const { data, error } = await adminDb().rpc("stoic_assign_idea", {
     p_workspace_id: workspace.id,
     p_owner_id: ownerId,
     p_idea_id: ideaId,
+    p_agent_id: agentId,
   });
-  if (error) throw new AppError(error.message.replaceAll("_", " "), error.message.includes("no_workers_available") ? 409 : error.message.includes("subscription_required") ? 402 : error.message.includes("forbidden") ? 403 : 400);
+  if (error) {
+    const status = error.message.includes("subscription_required") ? 402
+      : error.message.includes("forbidden") ? 403
+        : error.message.includes("not_found") ? 404
+          : error.message.includes("worker_not_eligible") || error.message.includes("idea_not_pending") ? 409
+            : 400;
+    throw new AppError(error.message.replaceAll("_", " "), status);
+  }
   return data;
 }
 

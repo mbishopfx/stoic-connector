@@ -7,7 +7,7 @@ import { createHandoff, handoffAction, decideApproval } from "@/lib/coordination
 import { reserveArtifact, completeArtifact, artifactDownload, deleteArtifact } from "@/lib/artifacts";
 import { createCheckout, createBillingPortal } from "@/lib/billing";
 import { boardPostInput, postBoardMessage } from "@/lib/board";
-import { acceptIdea, archiveIdea, setIdeasTimezone } from "@/lib/ideas";
+import { archiveIdea, assignIdea, setIdeasTimezone } from "@/lib/ideas";
 import { contactInputSchema, contactLinkInputSchema, createContact, linkContact, updateContact } from "@/lib/contacts";
 
 export const runtime = "nodejs";
@@ -98,8 +98,9 @@ export async function POST(request: Request) {
         data = await decideApproval(user.id, parsed.approvalId, parsed.decision);
         break;
       }
-      case "accept_idea": {
-        data = await acceptIdea(user.id, uuid.parse(body.ideaId));
+      case "assign_idea": {
+        const parsed = z.object({ ideaId: uuid, agentId: uuid }).parse(body);
+        data = await assignIdea(user.id, parsed.ideaId, parsed.agentId);
         break;
       }
       case "archive_idea": {

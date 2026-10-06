@@ -21,11 +21,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_CONTACT_FILTERS, type ContactSearchFilters } from "@/lib/contact-filters";
 import { promptLibrary, renderStoicPrompt, type StoicPromptId } from "@/lib/prompt-library";
@@ -66,7 +68,9 @@ type Idea = {
   why_now: string;
   next_step: string;
   evidence_ids: string[];
-  status: "pending" | "accepted" | string;
+  status: "pending" | "accepted" | "archived" | string;
+  accepted_handoff_id?: string | null;
+  archived_at?: string | null;
   created_at: string;
 };
 
@@ -536,133 +540,147 @@ export function ContactsTab({ context, projectId, runtime }: McpTabProps) {
 export function IdeasTab({ context, runtime }: McpTabProps) {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [projectFilter, setProjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"pending" | "accepted" | "archived" | "all">("pending");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [draft, setDraft] = useState("");
-  const [copyingIdea, setCopyingIdea] = useState<string | null>(null);
-  const requestSequence = useRef(0);
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState("__none__");
+  const [actionError, setActionError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const loadIdeas = useCallback(async () => {
-    const requestId = ++requestSequence.current;
     setLoading(true);
     setError("");
     try {
       const result = await runtime.callTool<Idea[]>("list_team_ideas", {});
-      if (requestId === requestSequence.current) setIdeas(Array.isArray(result) ? result : []);
+      setIdeas(Array.isArray(result) ? result : []);
     } catch (caught) {
-      const message = errorMessage(caught, "Could not load team ideas.");
-      if (requestId === requestSequence.current) setError(message);
+      setError(errorMessage(caught, "Could not load team ideas."));
     } finally {
-      if (requestId === requestSequence.current) setLoading(false);
+      setLoading(false);
     }
   }, [runtime]);
 
-  useEffect(() => {
-    let active = true;
-    const requestId = ++requestSequence.current;
-    runtime.callTool<Idea[]>("list_team_ideas", {})
-      .then((result) => {
-        if (active && requestId === requestSequence.current) setIdeas(Array.isArray(result) ? result : []);
-      })
-      .catch((caught: unknown) => {
-        if (active && requestId === requestSequence.current) setError(errorMessage(caught, "Could not load team ideas."));
-      })
-      .finally(() => {
-        if (active && requestId === requestSequence.current) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [runtime]);
+  useEffect(() => { void loadIdeas(); }, [loadIdeas]);
 
   const projectNames = useMemo(() => new Map(context.projects.map((project) => [project.id, project.name])), [context.projects]);
-  const visibleIdeas = useMemo(() => ideas.filter((idea) => projectFilter === "all" || idea.project_id === projectFilter), [ideas, projectFilter]);
+  const workers = useMemo(() => context.agents.filter((agent) => agent.status === "connected" && agent.id !== context.bossAgentId && agent.platform !== "muse"), [context.agents, context.bossAgentId]);
+  const visibleIdeas = useMemo(() => ideas
+    .filter((idea) => projectFilter === "all" || idea.project_id === projectFilter)
+    .filter((idea) => statusFilter === "all" || idea.status === statusFilter)
+    .sort((left, right) => right.created_at.localeCompare(left.created_at)), [ideas, projectFilter, statusFilter]);
+  const statusLabel = (status: string) => status === "pending" ? "Needs review" : status === "accepted" ? "Handoff created" : "Denied";
 
-  async function prepareHandoff(idea: Idea) {
-    const prompt = [
-      `An agent suggested: ${idea.title}`,
-      idea.summary,
-      idea.why_now ? `Why now: ${idea.why_now}` : "",
-      idea.next_step ? `Suggested next step: ${idea.next_step}` : "",
-      "Review this suggestion and help me draft a clear handoff. Do not create or assign work until I confirm it.",
-    ].filter(Boolean).join("\n\n");
-    setDraft(prompt);
-    if (idea.project_id) runtime.selectProject(idea.project_id);
-    setCopyingIdea(idea.id);
+  function openIdea(idea: Idea) {
+    setSelectedIdea(idea);
+    setSelectedWorkerId("__none__");
+    setActionError("");
+  }
+
+  async function reviewIdea(idea: Idea, action: "assign" | "deny") {
+    if (busy) return;
+    setBusy(true);
+    setActionError("");
     try {
-      await navigator.clipboard.writeText(prompt);
-      runtime.notify("Suggestion copied. Review it in Stoic chat; it has not created or assigned work.", "success");
-    } catch {
-      runtime.notify("Draft is ready below. Copy it into Stoic chat and review it before creating a handoff.");
+      if (action === "assign") {
+        await runtime.callTool("assign_team_idea", { ideaId: idea.id, agentId: selectedWorkerId });
+      } else {
+        await runtime.callTool("deny_team_idea", { ideaId: idea.id });
+      }
+      setIdeas((current) => current.map((item) => item.id === idea.id ? { ...item, status: action === "assign" ? "accepted" : "archived" } : item));
+      setSelectedIdea(null);
+      setSelectedWorkerId("__none__");
+      runtime.notify(action === "assign" ? "Idea assigned and handoff created." : "Idea denied and kept in the review history.", "success");
+    } catch (caught) {
+      const message = errorMessage(caught, action === "assign" ? "Could not assign this idea." : "Could not deny this idea.");
+      setActionError(message);
+      runtime.notify(message, "error");
     } finally {
-      setCopyingIdea(null);
+      setBusy(false);
     }
   }
 
   return (
     <main className="grid min-w-0 gap-6">
-      <PageHeading eyebrow="Shared review" title="Ideas" description="Suggestions from your agents stay visible until you decide what to do. Review them against the shared project context before turning one into a handoff." icon={<Sparkles className="size-5" />} />
-      <Card>
-        <CardHeader className="sm:grid-cols-[1fr_auto]">
+      <PageHeading eyebrow="Owner review" title="Ideas" description="Review each agent suggestion, open its evidence and next step, then assign it to a connected worker or deny it." icon={<Sparkles className="size-5" />} />
+      <Card className="min-w-0">
+        <CardHeader className="gap-4 border-b sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="space-y-1">
-            <CardTitle>Team suggestions</CardTitle>
-            <CardDescription>Showing up to the latest 30 pending and accepted suggestions. Ideas are not assignments.</CardDescription>
+            <CardTitle>For your review</CardTitle>
+            <CardDescription>{visibleIdeas.length} {visibleIdeas.length === 1 ? "idea" : "ideas"} in this view · select a row to review its evidence and next step</CardDescription>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadIdeas()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</Button>
+          <div className="flex min-w-0 flex-col gap-2 sm:w-56">
+            <Label htmlFor="ideas-project-filter" className="text-xs text-muted-foreground">Project</Label>
+            <Select value={projectFilter} onValueChange={(value) => setProjectFilter(value || "all")}>
+              <SelectTrigger id="ideas-project-filter" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All projects</SelectItem>{context.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-4">
-          <FilterSelect id="ideas-project-filter" label="Project" value={projectFilter} onChange={setProjectFilter} options={[{ value: "all", label: "All projects" }, ...context.projects.map((project) => ({ value: project.id, label: project.name }))]} />
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter ideas by status">
+            {(["pending", "accepted", "archived", "all"] as const).map((status) => <Button key={status} type="button" size="sm" variant={statusFilter === status ? "secondary" : "outline"} aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}>
+              {status === "all" ? "All" : statusLabel(status)}
+              {status !== "all" && <Badge variant="outline" className="ml-1 px-1.5">{ideas.filter((idea) => idea.status === status).length}</Badge>}
+            </Button>)}
+            <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => void loadIdeas()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</Button>
+          </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-          {loading && ideas.length === 0 && <p className="text-sm text-muted-foreground">Loading suggestions…</p>}
-          {!loading && !error && visibleIdeas.length === 0 && (
-            <Empty className="min-h-48 border">
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><Sparkles /></EmptyMedia>
-                <EmptyTitle>No suggestions to review</EmptyTitle>
-                <EmptyDescription>{projectFilter === "all" ? "New agent suggestions will appear here for your review." : "There are no suggestions for this project in the latest results."}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-          {visibleIdeas.map((idea) => (
-            <Card key={idea.id} size="sm">
-              <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
-                <div className="min-w-0 space-y-1">
-                  <CardTitle>{idea.title}</CardTitle>
-                  <CardDescription>{projectNames.get(idea.project_id) || "Project"} · Suggested {dateLabel(idea.created_at)}</CardDescription>
-                </div>
-                <Badge variant={idea.status === "accepted" ? "secondary" : "outline"}>{idea.status === "accepted" ? "Accepted" : "Pending review"}</Badge>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <p className="whitespace-pre-wrap text-sm leading-6">{idea.summary}</p>
-                {(idea.why_now || idea.next_step) && <Separator />}
-                {idea.why_now && <div className="grid gap-1"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why now</p><p className="whitespace-pre-wrap text-sm leading-6">{idea.why_now}</p></div>}
-                {idea.next_step && <div className="grid gap-1"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Possible next step</p><p className="whitespace-pre-wrap text-sm leading-6">{idea.next_step}</p></div>}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">This MCP view is read-only for suggestions. Only an owner can accept or archive one.</p>
-                  <Button type="button" variant="outline" size="sm" disabled={copyingIdea === idea.id} onClick={() => void prepareHandoff(idea)}><Copy />{copyingIdea === idea.id ? "Preparing…" : "Prepare handoff draft"}</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          {draft && (
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="text-sm">Handoff draft</CardTitle>
-                <CardDescription>Copy into Stoic chat to review. No assignment has been created.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                <Textarea readOnly value={draft} className="min-h-36 resize-y text-sm leading-5" />
-                <Button type="button" variant="outline" size="sm" className="w-fit" onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(draft);
-                    runtime.notify("Draft copied. Review it before confirming a handoff.", "success");
-                  } catch {
-                    runtime.notify("Clipboard access is unavailable. Select the draft text and copy it manually.", "error");
-                  }
-                }}><Copy />Copy draft</Button>
-              </CardContent>
-            </Card>
-          )}
+          {loading && ideas.length === 0 && <p className="text-sm text-muted-foreground" role="status">Loading suggestions…</p>}
+          {!loading && !error && visibleIdeas.length === 0 && <Empty className="min-h-48 border border-dashed bg-muted/30">
+            <EmptyHeader><EmptyMedia variant="icon"><Sparkles /></EmptyMedia><EmptyTitle>{statusFilter === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription>{projectFilter === "all" ? "New agent suggestions will appear here for your review." : "There are no suggestions for this project in the selected view."}</EmptyDescription></EmptyHeader>
+          </Empty>}
+          {visibleIdeas.length > 0 && <div className="overflow-x-auto rounded-xl border">
+            <Table>
+              <TableHeader><TableRow><TableHead>Idea</TableHead><TableHead>Project</TableHead><TableHead>Status</TableHead><TableHead>Added</TableHead><TableHead className="text-right">Review</TableHead></TableRow></TableHeader>
+              <TableBody>{visibleIdeas.map((idea) => <TableRow key={idea.id} className="cursor-pointer" onClick={() => openIdea(idea)}>
+                <TableCell className="max-w-[28rem] whitespace-normal">
+                  <button type="button" aria-haspopup="dialog" className="text-left font-medium hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" onClick={(event) => { event.stopPropagation(); openIdea(idea); }}>{idea.title}</button>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{idea.summary}</p>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{projectNames.get(idea.project_id) || "Project"}</TableCell>
+                <TableCell><Badge variant={idea.status === "pending" ? "secondary" : "outline"}>{statusLabel(idea.status)}</Badge></TableCell>
+                <TableCell><time dateTime={idea.created_at} className="text-xs text-muted-foreground">{dateLabel(idea.created_at)}</time></TableCell>
+                <TableCell className="text-right"><span className="text-xs font-medium text-primary">{idea.status === "pending" ? "Open review" : "View details"}</span></TableCell>
+              </TableRow>)}</TableBody>
+            </Table>
+          </div>}
         </CardContent>
       </Card>
+
+      <Dialog open={selectedIdea !== null} onOpenChange={(open) => { if (!open && !busy) { setSelectedIdea(null); setSelectedWorkerId("__none__"); setActionError(""); } }}>
+        {selectedIdea && <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="pr-8">
+            <div className="flex flex-wrap items-center gap-2"><Badge variant={selectedIdea.status === "pending" ? "secondary" : "outline"}>{statusLabel(selectedIdea.status)}</Badge><span className="text-xs text-muted-foreground">{projectNames.get(selectedIdea.project_id) || "Project"} · {dateLabel(selectedIdea.created_at)}</span></div>
+            <DialogTitle className="text-xl leading-7">{selectedIdea.title}</DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap leading-6">{selectedIdea.summary}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <section className="rounded-lg border bg-muted/30 p-4"><h3 className="mb-1 text-sm font-semibold">Why now</h3><p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selectedIdea.why_now || "No timing details were attached."}</p></section>
+            <section className="rounded-lg border bg-muted/30 p-4"><h3 className="mb-1 text-sm font-semibold">First step</h3><p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selectedIdea.next_step || "No next step was attached."}</p></section>
+            <section className="space-y-2"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">Source evidence</h3><Badge variant="outline">{selectedIdea.evidence_ids.length}</Badge></div>{selectedIdea.evidence_ids.length ? <ul className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">{selectedIdea.evidence_ids.map((source) => <li key={source} className="break-all rounded-md border bg-muted/30 px-3 py-2">{source}</li>)}</ul> : <p className="text-sm text-muted-foreground">No evidence references were attached.</p>}</section>
+            {selectedIdea.status === "pending" && context.self.role === "boss" && <section className="space-y-3 rounded-lg border bg-muted/30 p-4">
+              <div><h3 className="text-sm font-semibold">Assign this idea</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Choose a connected worker. Assignment creates a handoff for that worker.</p></div>
+              <div className="grid gap-2"><Label htmlFor="idea-worker">Connected worker</Label><Select value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !workers.length || context.workspace.delegationLevel === "observe"}>
+                <SelectTrigger id="idea-worker" aria-label="Choose a connected worker" className="w-full"><SelectValue placeholder="Choose a worker" /></SelectTrigger>
+                <SelectContent><SelectItem value="__none__" disabled>Choose a worker</SelectItem>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.name}</SelectItem>)}</SelectContent>
+              </Select></div>
+              {!workers.length && <p className="text-xs text-muted-foreground">Connect an eligible MCP worker before assigning this idea.</p>}
+              {context.workspace.delegationLevel === "observe" && <p className="text-xs text-muted-foreground">This workspace is in Observe mode. Change delegation policy before creating a handoff.</p>}
+            </section>}
+            {selectedIdea.status === "pending" && context.self.role !== "boss" && <p className="rounded-lg border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">Only the designated boss can assign or deny an idea. You can still review its source evidence and suggested next step.</p>}
+            {selectedIdea.status === "accepted" && <p className="text-xs text-muted-foreground">Handoff {selectedIdea.accepted_handoff_id ? `#${selectedIdea.accepted_handoff_id.slice(0, 8)}` : "created"} from this idea.</p>}
+            {selectedIdea.status === "archived" && <p className="text-xs text-muted-foreground">This idea was denied and kept in the review history.</p>}
+            {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
+          </div>
+          <DialogFooter className="border-t pt-4 sm:justify-between">
+            {selectedIdea.status === "pending" && context.self.role === "boss" ? <>
+              <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void reviewIdea(selectedIdea, "deny")}>{busy ? "Saving…" : "Deny idea"}</Button>
+              <Button type="button" disabled={busy || !workers.some((worker) => worker.id === selectedWorkerId) || context.workspace.delegationLevel === "observe"} onClick={() => void reviewIdea(selectedIdea, "assign")}>{busy ? "Assigning…" : workers.find((worker) => worker.id === selectedWorkerId) ? `Assign to ${workers.find((worker) => worker.id === selectedWorkerId)?.name}` : "Choose a worker"}</Button>
+            </> : <Button type="button" variant="outline" onClick={() => setSelectedIdea(null)}>Close</Button>}
+          </DialogFooter>
+        </DialogContent>}
+      </Dialog>
     </main>
   );
 }

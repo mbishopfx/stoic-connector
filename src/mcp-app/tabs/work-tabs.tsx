@@ -15,7 +15,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
-import type { McpTabProps } from "@/mcp-app/ui-contract";
+import type { ActivityAnalytics, McpTabProps } from "@/mcp-app/ui-contract";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ActivityAnalyticsPanel } from "./activity-analytics";
 
 type Handoff = {
   id: string;
@@ -223,6 +224,7 @@ export function OverviewTab(props: McpTabProps) {
   const { context, projectId, runtime } = props;
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
+  const [analytics, setAnalytics] = useState<ActivityAnalytics>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -233,15 +235,17 @@ export function OverviewTab(props: McpTabProps) {
     setLoading(true);
     setError("");
     try {
-      const [handoffResult, checkResult] = await Promise.all([
+      const [handoffResult, checkResult, analyticsResult] = await Promise.all([
         projectId
           ? runtime.callTool<{ handoffs?: Handoff[] }>("list_project_handoffs", { projectId, offset: 0 })
           : Promise.resolve({ handoffs: [] as Handoff[] }),
         runtime.callTool<{ checks?: CheckRecord[] }>("get_team_check_history"),
+        runtime.callTool<ActivityAnalytics>("get_team_activity_analytics"),
       ]);
       if (requestId !== requestRef.current) return;
       setHandoffs(handoffResult.handoffs || []);
       setChecks(checkResult.checks || []);
+      setAnalytics(analyticsResult);
     } catch (cause) {
       if (requestId !== requestRef.current) return;
       setError(cause instanceof Error ? cause.message : "Stoic could not load workspace activity.");
@@ -273,6 +277,8 @@ export function OverviewTab(props: McpTabProps) {
             <MetricCard icon={Activity} value={active} label="Active handoffs" detail="Shared work in progress" />
             <MetricCard icon={CircleCheck} value={submitted} label="Needs your review" detail="Agent results waiting for the boss" />
           </section>
+
+          <ActivityAnalyticsPanel analytics={analytics} loading={loading} />
 
           <section className="grid min-w-0 gap-4 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="min-w-0">
