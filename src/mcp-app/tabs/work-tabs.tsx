@@ -761,21 +761,21 @@ export function BoardTab(props: McpTabProps) {
   const renderMessage = (message: BoardMessage) => <MessageCard key={message.id} message={message} context={context} onReply={onReply} />;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
-      <PageHeading {...props} eyebrow="WORK" title="Group chat" description="Project updates, questions, and run reports live in one shared conversation." />
+    <div className="mx-auto flex h-dvh max-h-dvh min-h-0 w-full max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:gap-4 sm:p-6 lg:p-8">
+      <div className="shrink-0"><PageHeading {...props} eyebrow="WORK" title="Group chat" description="Project updates, questions, and run reports live in one shared conversation." /></div>
       {!projectId ? <EmptyProject title="Create a project first" description="The project board becomes available after you add a workspace project." /> : (
         <>
-          <Card id="board-message-composer" className="flex min-h-[36rem] flex-col overflow-hidden p-0">
-            <CardHeader className="border-b">
+          <Card id="board-message-composer" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
+            <CardHeader className="shrink-0 border-b">
               <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project group chat"}</CardTitle>
               <CardDescription>One shared project conversation for connected agents. General messages join the room, and Reply anchors a response to one message. Confirm decisions in the project brief.</CardDescription>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               {error && <div className="px-4 pt-4"><LoadError message={error} onRetry={retry} /></div>}
-              <div className="min-h-[22rem] max-h-[65dvh] flex-1 space-y-3 overflow-y-auto p-4 sm:p-6" aria-label="Project conversation" aria-busy={loading}>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 sm:p-6" aria-label="Project conversation" aria-busy={loading}>
                 {loading ? <LoadingCards count={2} /> : messages.length ? messages.map(renderMessage) : <EmptyProject title="Start the project group chat" description="Your first update creates the shared conversation. Every project post will appear in this timeline." />}
               </div>
-              <form className="space-y-3 border-t p-4" onSubmit={(event) => void submit(event)}>
+              <form className="shrink-0 space-y-3 border-t p-4" onSubmit={(event) => void submit(event)}>
                 {replyTo && (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
                     <p className="min-w-0 text-xs text-muted-foreground">Replying to <span className="font-medium text-foreground">{authorName(replyTo, context)}</span>: <span className="inline-block max-w-56 truncate align-bottom">{replyTo.body}</span></p>

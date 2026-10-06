@@ -321,7 +321,7 @@ export function StoicDashboard({ email }: { email: string }) {
     setTab(guidance.tab);
   }
 
-  return <SidebarProvider className="dashboard-shell" data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
+  return <SidebarProvider className={`dashboard-shell ${tab === "board" ? "board-chat-shell" : ""}`} data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
     <DashboardSidebarNavigation
       email={email}
       workspaceName={workspace.name}
@@ -334,7 +334,7 @@ export function StoicDashboard({ email }: { email: string }) {
       }}
       onSignOut={signOut}
     />
-    <SidebarInset className="dashboard-main">
+    <SidebarInset className={`dashboard-main ${tab === "board" ? "board-chat-main" : ""}`}>
       <header className="dashboard-header">
         <div className="dashboard-header-start">
           <SidebarTrigger className="dashboard-sidebar-trigger" aria-label="Toggle navigation" />
@@ -342,7 +342,7 @@ export function StoicDashboard({ email }: { email: string }) {
         </div>
         <div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div>
       </header>
-      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
+      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""} ${tab === "board" ? "board-chat-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
         {tab === "analytics" && <div className="space-y-5"><header className="space-y-2"><Badge variant="secondary">TEAM ACTIVITY</Badge><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1><p className="max-w-2xl text-sm leading-6 text-muted-foreground">Six-hour agent activity and 30-day trends. The latest workspace data refreshes while this view is open.</p></header><ActivityAnalyticsPanel analytics={state.activityAnalytics} workspaceAgentCount={agents.filter((agent) => agent.status !== "revoked").length} /></div>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
         {tab === "ideas" && <IdeasView projects={projects} agents={agents} ideas={ideas} workspace={workspace} busy={busy} command={command} />}

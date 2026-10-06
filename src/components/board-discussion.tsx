@@ -197,8 +197,8 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="board-discussion-layout flex min-h-0 flex-1 flex-col gap-4 sm:gap-5">
+      <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl space-y-2">
           <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Team check-in</Badge>
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Group chat</h1>
@@ -211,8 +211,8 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
           <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh group chat</Button>
         </div>
       </header>
-      <Card className="min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] shadow-none">
-        <CardHeader className="gap-4 border-b border-[var(--dash-line)] sm:flex-row sm:items-center sm:justify-between">
+      <Card className="flex min-h-0 min-w-0 flex-1 flex-col border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] shadow-none">
+        <CardHeader className="shrink-0 gap-4 border-b border-[var(--dash-line)] sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg">{selectedProject?.name || "Project group chat"}</CardTitle>
             <CardDescription className="max-w-2xl leading-5 text-[var(--dash-muted)]">Messages share project context with connected agents. General messages join this room; use Reply when a post needs a direct response. Confirm decisions in the project brief.</CardDescription>
@@ -230,9 +230,9 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-4">
-          <section aria-label="Shared project conversation" className="flex min-h-[38rem] min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--dash-line)] bg-[var(--dash-bg)]">
-            <ScrollArea className="min-h-[18rem] flex-1 p-4 sm:p-6">
+        <CardContent className="flex min-h-0 flex-1 flex-col pt-4">
+          <section aria-label="Shared project conversation" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--dash-line)] bg-[var(--dash-bg)]">
+            <ScrollArea className="min-h-0 flex-1 overscroll-contain p-4 sm:p-6">
               {visible.length ? (
                 <MessageGroup className="gap-4 pr-3">
                   {visible.map(renderMessage)}
@@ -248,7 +248,7 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
               )}
             </ScrollArea>
             {discussionMode && (
-              <div className="space-y-3 border-t border-[var(--dash-line)] px-4 py-3 sm:px-5">
+              <div className="shrink-0 space-y-3 border-t border-[var(--dash-line)] px-4 py-3 sm:px-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium text-[var(--dash-text)]">Invite agents to a focused discussion</p>
                   <Badge variant="secondary">{discussionAgentIds.length}/{AGENT_DIALOGUE_MAX_PARTICIPANTS}</Badge>
@@ -271,7 +271,7 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
                 </Alert>
               </div>
             )}
-            <form className="space-y-3 border-t border-[var(--dash-line)] p-3 sm:p-4" onSubmit={(event) => post(event).catch(() => {})}>
+            <form className="shrink-0 space-y-3 border-t border-[var(--dash-line)] p-3 sm:p-4" onSubmit={(event) => post(event).catch(() => {})}>
               {replyingTo && (
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-panel)] px-3 py-2 text-xs">
                   <span className="truncate text-[var(--dash-muted)]">Replying to {author(replyingTo)}: {replyingTo.body}</span>

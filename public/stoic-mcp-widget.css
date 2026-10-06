@@ -578,6 +578,9 @@
   .h-auto {
     height: auto;
   }
+  .h-dvh {
+    height: 100dvh;
+  }
   .h-fit {
     height: fit-content;
   }
@@ -608,9 +611,6 @@
   .max-h-\[31rem\] {
     max-height: 31rem;
   }
-  .max-h-\[65dvh\] {
-    max-height: 65dvh;
-  }
   .max-h-\[calc\(100dvh-2rem\)\] {
     max-height: calc(100dvh - 2rem);
   }
@@ -619,6 +619,9 @@
   }
   .max-h-\[min\(calc\(--spacing\(72\)---spacing\(9\)\)\,calc\(var\(--available-height\)---spacing\(9\)\)\)\] {
     max-height: min(calc(calc(var(--spacing) * 72) - calc(var(--spacing) * 9)), calc(var(--available-height) - calc(var(--spacing) * 9)));
+  }
+  .max-h-dvh {
+    max-height: 100dvh;
   }
   .min-h-0 {
     min-height: 0px;
@@ -661,12 +664,6 @@
   }
   .min-h-\[18rem\] {
     min-height: 18rem;
-  }
-  .min-h-\[22rem\] {
-    min-height: 22rem;
-  }
-  .min-h-\[36rem\] {
-    min-height: 36rem;
   }
   .min-h-full {
     min-height: 100%;
@@ -3897,6 +3894,9 @@
     }
     .sm\:justify-end {
       justify-content: flex-end;
+    }
+    .sm\:gap-4 {
+      gap: calc(var(--spacing) * 4);
     }
     .sm\:gap-6 {
       gap: calc(var(--spacing) * 6);
