@@ -12,6 +12,7 @@ const activityChartConfig = {
   mcpToolCalls: { label: "MCP calls", color: "var(--chart-1)" },
   agentTaskEvents: { label: "Agent task updates", color: "var(--chart-2)" },
   agentBoardMessages: { label: "Agent messages", color: "var(--chart-4)" },
+  agentToAgentReplies: { label: "Agent-to-agent replies", color: "var(--chart-5)" },
   auditActions: { label: "Audit actions", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
@@ -39,15 +40,17 @@ function StatCard({ label, value, detail }: { label: string; value: number | und
   </Card>;
 }
 
-function ActivityStats({ metrics }: { metrics: ActivityMetrics | null }) {
+function ActivityStats({ metrics, workspaceAgentCount }: { metrics: ActivityMetrics | null; workspaceAgentCount?: number }) {
   const items = [
-    { label: "Agents active", value: metrics?.activeAgents, detail: "Agents seen in Stoic events" },
+    { label: "Agents in workspace", value: workspaceAgentCount, detail: "Current roster · refreshed live" },
+    { label: "Agents active", value: metrics?.activeAgents, detail: "Agents seen in the last six-hour window" },
+    { label: "Agent-to-agent replies", value: metrics?.agentToAgentReplies, detail: "Replies between two different agents" },
     { label: "Agent task updates", value: metrics?.agentTaskEvents, detail: `of ${metrics?.taskEvents ?? "—"} task events` },
     { label: "Agent messages", value: metrics?.agentBoardMessages, detail: `of ${metrics?.boardMessages ?? "—"} shared messages` },
     { label: "Audit actions", value: metrics?.auditActions, detail: "Workspace audit records" },
-    { label: "MCP calls", value: metrics?.mcpToolCalls, detail: `${metrics?.mcpToolErrors ?? "—"} errors · ${metrics?.agentMcpToolCalls ?? "—"} from agents` },
+    { label: "Agent MCP calls", value: metrics?.agentMcpToolCalls, detail: `of ${metrics?.mcpToolCalls ?? "—"} MCP calls` },
   ];
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
     {items.map((item) => <StatCard key={item.label} {...item} />)}
   </div>;
 }
@@ -69,6 +72,7 @@ function ActivityChart({ analytics }: { analytics: ActivityAnalytics }) {
             <linearGradient id="mcp-activity-calls-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.25} /><stop offset="95%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.02} /></linearGradient>
             <linearGradient id="mcp-activity-tasks-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.02} /></linearGradient>
             <linearGradient id="mcp-activity-messages-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.02} /></linearGradient>
+            <linearGradient id="mcp-activity-agent-replies-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentToAgentReplies)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--color-agentToAgentReplies)" stopOpacity={0.02} /></linearGradient>
             <linearGradient id="mcp-activity-audit-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-auditActions)" stopOpacity={0.14} /><stop offset="95%" stopColor="var(--color-auditActions)" stopOpacity={0.02} /></linearGradient>
           </defs>
           <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -78,6 +82,7 @@ function ActivityChart({ analytics }: { analytics: ActivityAnalytics }) {
           <Area dataKey="mcpToolCalls" type="monotone" stroke="var(--color-mcpToolCalls)" fill="url(#mcp-activity-calls-fill)" strokeWidth={2} connectNulls={false} />
           <Area dataKey="agentTaskEvents" type="monotone" stroke="var(--color-agentTaskEvents)" fill="url(#mcp-activity-tasks-fill)" strokeWidth={2} connectNulls={false} />
           <Area dataKey="agentBoardMessages" type="monotone" stroke="var(--color-agentBoardMessages)" fill="url(#mcp-activity-messages-fill)" strokeWidth={2} connectNulls={false} />
+          <Area dataKey="agentToAgentReplies" type="monotone" stroke="var(--color-agentToAgentReplies)" fill="url(#mcp-activity-agent-replies-fill)" strokeWidth={2} connectNulls={false} />
           <Area dataKey="auditActions" type="monotone" stroke="var(--color-auditActions)" fill="url(#mcp-activity-audit-fill)" strokeWidth={2} connectNulls={false} />
         </AreaChart>
       </ChartContainer>
@@ -127,14 +132,14 @@ function CollaborationSummary({ analytics }: { analytics: ActivityAnalytics }) {
   </div>;
 }
 
-export function ActivityAnalyticsPanel({ analytics, loading = false }: { analytics?: ActivityAnalytics; loading?: boolean }) {
+export function ActivityAnalyticsPanel({ analytics, loading = false, workspaceAgentCount }: { analytics?: ActivityAnalytics; loading?: boolean; workspaceAgentCount?: number }) {
   if (loading && !analytics) return <Card aria-label="Activity analytics loading"><CardHeader><Skeleton className="h-5 w-44" /><Skeleton className="h-4 w-72" /></CardHeader><CardContent><Skeleton className="h-64 w-full" /></CardContent></Card>;
   if (!analytics) return null;
 
   if (!analytics.available) return <Card className="border-dashed">
     <CardHeader><CardTitle>Agent-to-agent activity</CardTitle><CardDescription>Six-hour activity and 30-day trends from observed Stoic workspace events.</CardDescription></CardHeader>
     <CardContent className="space-y-2 text-sm text-muted-foreground">
-      <p>Activity analytics are not available yet. The analytics migration and first scheduled rollup are required before this view can show data.</p>
+      <p>Activity analytics are not available yet. Apply the analytics migrations and wait for the first scheduled rollup before this view can show data.</p>
       <p>Historical MCP calls are not represented; capture begins when instrumentation is deployed.</p>
     </CardContent>
   </Card>;
@@ -150,7 +155,7 @@ export function ActivityAnalyticsPanel({ analytics, loading = false }: { analyti
       </div>
       {latest && <Badge variant="outline" className="tabular-nums">{formatActivityWindow(latest.windowStart, latest.windowEnd)}</Badge>}
     </div>
-    <ActivityStats metrics={metrics} />
+    <ActivityStats metrics={metrics} workspaceAgentCount={workspaceAgentCount} />
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
       <ActivityChart analytics={analytics} />
       <CollaborationSummary analytics={analytics} />

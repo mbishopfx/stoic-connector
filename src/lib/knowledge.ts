@@ -13,6 +13,7 @@ export const KNOWLEDGE_KINDS = [
   "question",
   "note",
   "steward_audit",
+  "agent_diary",
 ] as const;
 
 export const KNOWLEDGE_STATUSES = ["active", "proposed", "stale", "superseded", "archived", "conflicted"] as const;

@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_CONTACT_FILTERS, type ContactSearchFilters } from "@/lib/contact-filters";
-import { promptLibrary, renderStoicPrompt, type StoicPromptId } from "@/lib/prompt-library";
+import { promptLibrary, promptTones, renderStoicPrompt, type StoicPromptId, type StoicPromptTone } from "@/lib/prompt-library";
 import type { McpTabProps } from "../ui-contract";
 
 const DASHBOARD_URL = "https://stoic.bishoptech.dev/dashboard";
@@ -561,7 +561,7 @@ export function IdeasTab({ context, runtime }: McpTabProps) {
     }
   }, [runtime]);
 
-  useEffect(() => { void loadIdeas(); }, [loadIdeas]);
+  useEffect(() => { void Promise.resolve().then(() => loadIdeas()); }, [loadIdeas]);
 
   const projectNames = useMemo(() => new Map(context.projects.map((project) => [project.id, project.name])), [context.projects]);
   const workers = useMemo(() => context.agents.filter((agent) => agent.status === "connected" && agent.id !== context.bossAgentId && agent.platform !== "muse"), [context.agents, context.bossAgentId]);
@@ -689,12 +689,13 @@ export function PromptsTab({ runtime }: McpTabProps) {
   const [openPrompt, setOpenPrompt] = useState<StoicPromptId | null>(null);
   const [copyError, setCopyError] = useState<StoicPromptId | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState<StoicPromptId | null>(null);
+  const [tone, setTone] = useState<StoicPromptTone>("balanced");
 
   async function copyPrompt(id: StoicPromptId) {
     setCopiedPrompt(null);
     setCopyError(null);
     try {
-      await navigator.clipboard.writeText(renderStoicPrompt(id, MCP_ENDPOINT));
+      await navigator.clipboard.writeText(renderStoicPrompt(id, MCP_ENDPOINT, tone));
       setCopiedPrompt(id);
       runtime.notify("Prompt copied. Confirm the other agent’s Stoic connection before using it.", "success");
     } catch {
@@ -716,9 +717,10 @@ export function PromptsTab({ runtime }: McpTabProps) {
           <Button type="button" variant="outline" onClick={() => void runtime.openLink(DASHBOARD_URL)}><ExternalLink />Open owner setup</Button>
         </CardContent>
       </Card>
+      <Card size="sm"><CardHeader className="sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">Choose a voice</CardTitle><CardDescription>These styles change phrasing only. They never change whether an authorized task is completed or its access and approval rules.</CardDescription></div><div className="grid w-full gap-2 sm:max-w-xs"><label htmlFor="mcp-prompt-tone" className="text-sm font-medium">Voice style</label><Select value={tone} onValueChange={(value) => { if (value) setTone(value as StoicPromptTone); }}><SelectTrigger id="mcp-prompt-tone" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{promptTones.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div></CardHeader></Card>
       <section className="grid gap-4 xl:grid-cols-2" aria-label="Available prompts">
         {promptLibrary.map((item) => {
-          const text = renderStoicPrompt(item.id, MCP_ENDPOINT);
+          const text = renderStoicPrompt(item.id, MCP_ENDPOINT, tone);
           const expanded = openPrompt === item.id;
           return (
             <Card key={item.id}>

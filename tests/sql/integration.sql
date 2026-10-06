@@ -141,6 +141,7 @@ declare
   repeated_team_handoff jsonb;
   attach_handoff jsonb;
   competing_handoff jsonb;
+  activity_window_start timestamptz;
   attached_count integer;
   i integer;
 begin
@@ -225,6 +226,13 @@ begin
   if m.id <> m2.id or (select count(*) from public.board_messages where project_id = p1) <> 1 then raise exception 'board retry created duplicate'; end if;
   m2 := public.stoic_post_board_message(w1,p1,boss,null,'message','Please cite the source',m.id,'board-reply-key');
   if m2.parent_id <> m.id then raise exception 'board reply missing parent'; end if;
+  activity_window_start := date_bin(interval '6 hours', now(), timestamptz '2000-01-01 00:00:00+00');
+  insert into public.workspace_activity_rollups(workspace_id, window_start, window_end)
+    values (w1, activity_window_start, activity_window_start + interval '6 hours')
+    on conflict (workspace_id, window_start) do update set window_end = excluded.window_end;
+  if (select agent_to_agent_replies from public.workspace_activity_rollups where workspace_id = w1 and window_start = activity_window_start) <> 1 then
+    raise exception 'agent-to-agent reply count did not include cross-agent board replies';
+  end if;
   if not exists (select 1 from public.stoic_unread_board_projects(w1,worker) where project_id = p1)
     then raise exception 'worker inbox did not flag boss reply'; end if;
   if not exists (select 1 from public.stoic_unread_board_projects(w1,worker) where project_id = p1)

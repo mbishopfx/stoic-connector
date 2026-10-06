@@ -20,6 +20,7 @@ type WorkspaceActivityRollup = {
   agent_task_events: number | string;
   board_messages: number | string;
   agent_board_messages: number | string;
+  agent_to_agent_replies: number | string;
   audit_actions: number | string;
   active_agents: number | string;
   analysis_status: "pending" | "running" | "complete" | "failed";
@@ -42,6 +43,7 @@ function activityMetrics(row: WorkspaceActivityRollup) {
     agentTaskEvents: activityCount(row.agent_task_events),
     boardMessages: activityCount(row.board_messages),
     agentBoardMessages: activityCount(row.agent_board_messages),
+    agentToAgentReplies: activityCount(row.agent_to_agent_replies),
     auditActions: activityCount(row.audit_actions),
     activeAgents: activityCount(row.active_agents),
   };
@@ -52,7 +54,7 @@ async function loadWorkspaceActivityAnalytics(workspace: { id: string; mcp_activ
   const latestClosedWindowEnd = Math.floor(now.getTime() / SIX_HOURS_MS) * SIX_HOURS_MS;
   const chartStart = new Date(currentUtcDayStart - (ACTIVITY_CHART_DAYS - 1) * 24 * 60 * 60 * 1000);
   const { data, error } = await adminDb().from("workspace_activity_rollups")
-    .select("window_start,window_end,mcp_tool_calls,mcp_tool_errors,mcp_agent_tool_calls,mcp_tool_counts,task_events,agent_task_events,board_messages,agent_board_messages,audit_actions,active_agents,analysis_status,analysis_summary,analysis_observations")
+    .select("window_start,window_end,mcp_tool_calls,mcp_tool_errors,mcp_agent_tool_calls,mcp_tool_counts,task_events,agent_task_events,board_messages,agent_board_messages,agent_to_agent_replies,audit_actions,active_agents,analysis_status,analysis_summary,analysis_observations")
     .eq("workspace_id", workspace.id)
     .gte("window_start", chartStart.toISOString())
     .lt("window_start", new Date(latestClosedWindowEnd).toISOString())
@@ -60,7 +62,8 @@ async function loadWorkspaceActivityAnalytics(workspace: { id: string; mcp_activ
     .limit(ACTIVITY_CHART_DAYS * 4 + 4);
 
   if (error) {
-    if (["42P01", "PGRST205"].includes(error.code)) {
+    if (["42P01", "PGRST205"].includes(error.code)
+      || (["42703", "PGRST204"].includes(error.code) && error.message.includes("agent_to_agent_replies"))) {
       return { available: false as const, captureStartedAt: null, latestWindow: null, daily: [] };
     }
     throw error;
@@ -93,9 +96,10 @@ async function loadWorkspaceActivityAnalytics(workspace: { id: string; mcp_activ
       sum.mcpToolCalls += metrics.mcpToolCalls;
       sum.agentTaskEvents += metrics.agentTaskEvents;
       sum.agentBoardMessages += metrics.agentBoardMessages;
+      sum.agentToAgentReplies += metrics.agentToAgentReplies;
       sum.auditActions += metrics.auditActions;
       return sum;
-    }, { mcpToolCalls: 0, agentTaskEvents: 0, agentBoardMessages: 0, auditActions: 0 });
+    }, { mcpToolCalls: 0, agentTaskEvents: 0, agentBoardMessages: 0, agentToAgentReplies: 0, auditActions: 0 });
     return {
       date: new Date(dayStart).toISOString().slice(0, 10),
       recordedWindows: recordedWindowStarts.length,
@@ -104,6 +108,7 @@ async function loadWorkspaceActivityAnalytics(workspace: { id: string; mcp_activ
       mcpToolCalls: complete ? totals.mcpToolCalls : null,
       agentTaskEvents: complete ? totals.agentTaskEvents : null,
       agentBoardMessages: complete ? totals.agentBoardMessages : null,
+      agentToAgentReplies: complete ? totals.agentToAgentReplies : null,
       auditActions: complete ? totals.auditActions : null,
     };
   });

@@ -3884,6 +3884,9 @@
     .sm\:max-w-md {
       max-width: var(--container-md);
     }
+    .sm\:max-w-xs {
+      max-width: var(--container-xs);
+    }
     .sm\:flex-none {
       flex: none;
     }
@@ -4023,9 +4026,6 @@
     .xl\:grid-cols-4 {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
-    .xl\:grid-cols-5 {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-    }
     .xl\:grid-cols-\[1\.05fr_0\.95fr\] {
       grid-template-columns: 1.05fr 0.95fr;
     }
@@ -4034,6 +4034,11 @@
     }
     .xl\:grid-cols-\[minmax\(0\,1\.55fr\)_minmax\(18rem\,0\.85fr\)\] {
       grid-template-columns: minmax(0,1.55fr) minmax(18rem,0.85fr);
+    }
+  }
+  @media (width >= 96rem) {
+    .\32 xl\:grid-cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
   @container field-group (width >= 28rem) {

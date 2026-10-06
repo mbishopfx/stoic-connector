@@ -224,7 +224,6 @@ export function OverviewTab(props: McpTabProps) {
   const { context, projectId, runtime } = props;
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
-  const [analytics, setAnalytics] = useState<ActivityAnalytics>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -235,17 +234,15 @@ export function OverviewTab(props: McpTabProps) {
     setLoading(true);
     setError("");
     try {
-      const [handoffResult, checkResult, analyticsResult] = await Promise.all([
+      const [handoffResult, checkResult] = await Promise.all([
         projectId
           ? runtime.callTool<{ handoffs?: Handoff[] }>("list_project_handoffs", { projectId, offset: 0 })
           : Promise.resolve({ handoffs: [] as Handoff[] }),
         runtime.callTool<{ checks?: CheckRecord[] }>("get_team_check_history"),
-        runtime.callTool<ActivityAnalytics>("get_team_activity_analytics"),
       ]);
       if (requestId !== requestRef.current) return;
       setHandoffs(handoffResult.handoffs || []);
       setChecks(checkResult.checks || []);
-      setAnalytics(analyticsResult);
     } catch (cause) {
       if (requestId !== requestRef.current) return;
       setError(cause instanceof Error ? cause.message : "Stoic could not load workspace activity.");
@@ -277,8 +274,6 @@ export function OverviewTab(props: McpTabProps) {
             <MetricCard icon={Activity} value={active} label="Active handoffs" detail="Shared work in progress" />
             <MetricCard icon={CircleCheck} value={submitted} label="Needs your review" detail="Agent results waiting for the boss" />
           </section>
-
-          <ActivityAnalyticsPanel analytics={analytics} loading={loading} />
 
           <section className="grid min-w-0 gap-4 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="min-w-0">
@@ -332,6 +327,73 @@ export function OverviewTab(props: McpTabProps) {
             <AlertDescription>Agents receive handoffs on their next successful scheduled check. Stoic does not wake an offline agent.</AlertDescription>
           </Alert>
         </>
+      )}
+    </div>
+  );
+}
+
+export function AnalyticsTab({ context, runtime }: McpTabProps) {
+  const [analytics, setAnalytics] = useState<ActivityAnalytics>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const requestRef = useRef(0);
+  const hasAnalyticsRef = useRef(false);
+
+  const load = useCallback(async (quiet = false) => {
+    const requestId = ++requestRef.current;
+    if (!quiet || !hasAnalyticsRef.current) setLoading(true);
+    if (!quiet) setError("");
+    try {
+      const result = await runtime.callTool<ActivityAnalytics>("get_team_activity_analytics");
+      if (requestId !== requestRef.current) return;
+      hasAnalyticsRef.current = true;
+      setAnalytics(result);
+      setError("");
+    } catch (cause) {
+      if (requestId !== requestRef.current) return;
+      if (!hasAnalyticsRef.current) setError(cause instanceof Error ? cause.message : "Stoic could not load activity analytics.");
+    } finally {
+      if (requestId === requestRef.current) setLoading(false);
+    }
+  }, [runtime]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => load());
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 30_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      requestRef.current += 1;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [load]);
+
+  const retry = () => {
+    void runtime.refreshContext({ quiet: true, refreshInbox: false }).catch(() => undefined);
+    void load();
+  };
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold tracking-[0.14em] text-primary uppercase">TEAM ACTIVITY</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">Six-hour agent activity and 30-day trends. The latest workspace data refreshes while this view is open.</p>
+        </div>
+        <Button variant="outline" onClick={retry}><RefreshCw />Refresh</Button>
+      </header>
+      {error && !analytics ? <LoadError message={error} onRetry={retry} /> : (
+        <ActivityAnalyticsPanel
+          analytics={analytics}
+          loading={loading}
+          workspaceAgentCount={context.agents.filter((agent) => agent.status !== "revoked").length}
+        />
       )}
     </div>
   );
@@ -726,7 +788,7 @@ export function BoardTab(props: McpTabProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
-      <PageHeading {...props} eyebrow="WORK" title="Message board" description="Project updates, questions, and run reports live in one shared conversation." />
+      <PageHeading {...props} eyebrow="WORK" title="Group chat" description="Project updates, questions, and run reports live in one shared conversation." />
       {!projectId ? <EmptyProject title="Create a project first" description="The project board becomes available after you add a workspace project." /> : (
         <>
           <Alert className="border-amber-500/25 bg-amber-500/5">
@@ -735,8 +797,8 @@ export function BoardTab(props: McpTabProps) {
           </Alert>
           <Card id="board-message-composer">
             <CardHeader className="border-b">
-              <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project conversation"}</CardTitle>
-              <CardDescription>Share a question, answer, or project update with the team.</CardDescription>
+              <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project group chat"}</CardTitle>
+              <CardDescription>Share a question, answer, or project update. Agents see it on their next scheduled check.</CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
               <form className="space-y-3" onSubmit={(event) => void submit(event)}>

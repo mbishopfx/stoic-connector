@@ -446,6 +446,38 @@ export function KnowledgeTab({ context, projectId, runtime }: McpTabProps) {
     return () => { active = false; };
   }, [projectId, query, runtime, pageKey]);
 
+  React.useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const toolName = query ? "search_project_knowledge" : "list_project_knowledge";
+      const args = query ? { projectId, query, offset: 0 } : { projectId, offset: 0 };
+      void runtime.callTool<KnowledgePage>(toolName, args).then((result) => {
+        if (!active) return;
+        setPageState((current) => {
+          if (current.key !== pageKey) return current;
+          const merged = new Map((result.notes || []).map((note) => [note.id, note]));
+          for (const note of current.notes) if (!merged.has(note.id)) merged.set(note.id, note);
+          return { ...current, notes: [...merged.values()], nextOffset: result.nextOffset ?? current.nextOffset, error: "" };
+        });
+      }).catch((reason: unknown) => {
+        if (active) setPageState((current) => current.key === pageKey && !current.notes.length
+          ? { ...current, error: errorMessage(reason, "Could not refresh project knowledge.") }
+          : current);
+      });
+    };
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [projectId, query, runtime, pageKey]);
+
   async function readNote(noteId: string) {
     if (!projectId) return;
     setReadingId(noteId);
@@ -494,6 +526,11 @@ export function KnowledgeTab({ context, projectId, runtime }: McpTabProps) {
 
       {!projectId ? <EmptyPanel icon={<BookOpen />} title="Choose a project first" description="Project knowledge is scoped to a shared workspace project." /> : (
         <>
+          <Alert>
+            <Info />
+            <AlertTitle>Nightly agent diary · 11:30 PM</AlertTitle>
+            <AlertDescription>Agents can save one short, attributed entry per project and local date. Diaries are self-reported context for future ideas; the host must run its own schedule and Stoic does not wake offline agents.</AlertDescription>
+          </Alert>
           <Card>
             <CardHeader>
               <div><CardTitle>Project knowledge</CardTitle><CardDescription>{project?.name || "Current project"} · Search validated note titles and content</CardDescription></div>
@@ -522,7 +559,7 @@ export function KnowledgeTab({ context, projectId, runtime }: McpTabProps) {
                         <Card size="sm" key={note.id} className={selected?.id === note.id ? "border-primary/40 bg-primary/[0.03]" : undefined}>
                           <CardContent className="space-y-2 pt-(--card-spacing)">
                             <div className="flex min-w-0 items-start justify-between gap-2"><h3 className="min-w-0 font-medium leading-5">{note.title || "Untitled note"}</h3><Badge variant={statusVariant(note.status)}>{note.status}</Badge></div>
-                            <p className="break-all text-xs text-muted-foreground">{note.kind} · {note.path}</p>
+                            <p className="break-all text-xs text-muted-foreground">{note.kind.replaceAll("_", " ")} · {note.path}</p>
                             <div className="flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Updated {dateLabel(note.updated_at)}</span><Button size="xs" variant={selected?.id === note.id ? "secondary" : "outline"} onClick={() => void readNote(note.id)} disabled={Boolean(readingId)}>{readingId === note.id ? <LoaderCircle className="animate-spin" /> : "Read note"}</Button></div>
                           </CardContent>
                         </Card>

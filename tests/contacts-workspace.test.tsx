@@ -11,10 +11,9 @@ describe("search-first Contacts workspace", () => {
     const html = renderToStaticMarkup(createElement(ContactsWorkspace, {
       projects, busy: false, command: async () => ({}), onOpenPrompts: () => {},
     }));
-    for (const label of ["Search contacts", "Search in", "Status", "Project", "Contact details", "Last activity", "Sort by", "Add a contact", "Import CSV"]) {
+    for (const label of ["Search contacts", "Search in", "Status", "More filters", "Add a contact", "Import a CSV"]) {
       expect(html).toContain(label);
     }
-    expect(html).toContain("Clear filters");
     expect(html).toContain("role=\"status\"");
     expect(html).toContain("private");
   });

@@ -64,6 +64,7 @@ type ActivityRollup = {
   agent_task_events: number | string;
   board_messages: number | string;
   agent_board_messages: number | string;
+  agent_to_agent_replies: number | string;
   audit_actions: number | string;
   active_agents: number | string;
 };
@@ -162,6 +163,7 @@ async function analyzeActivityRollup(rollup: ActivityRollup) {
           agentTaskEvents: safeCount(rollup.agent_task_events),
           sharedMessages: safeCount(rollup.board_messages),
           agentMessages: safeCount(rollup.agent_board_messages),
+          agentToAgentReplies: safeCount(rollup.agent_to_agent_replies),
           auditActions: safeCount(rollup.audit_actions),
           activeAgents: safeCount(rollup.active_agents),
         },

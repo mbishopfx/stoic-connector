@@ -35,4 +35,19 @@ describe("daily idea context priority", () => {
       "note:middle",
     ]);
   });
+
+  it("includes recent diary context without letting diary rows crowd out current activity", () => {
+    const briefs = [{ id: "brief:p1:v1", projectId: "p1", type: "project_brief", text: "Current brief" }];
+    const activity = [
+      { id: "diary:new", projectId: "p1", type: "agent_diary", at: "2026-10-02T11:30:00Z" },
+      { id: "diary:old", projectId: "p1", type: "agent_diary", at: "2026-10-01T11:30:00Z" },
+      { id: "event:newest", projectId: "p1", type: "progress", at: "2026-10-02T10:00:00Z" },
+      { id: "message:recent", projectId: "p1", type: "message", at: "2026-10-01T13:00:00Z" },
+      { id: "event:older", projectId: "p1", type: "progress", at: "2026-09-30T09:00:00Z" },
+    ];
+
+    const selected = prioritizeIdeaEvidence(briefs, activity, 4);
+
+    expect(selected.map((item) => item.id)).toEqual(["brief:p1:v1", "diary:new", "event:newest", "message:recent"]);
+  });
 });

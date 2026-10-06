@@ -27,6 +27,7 @@ export type ActivityMetrics = {
   agentTaskEvents: number;
   boardMessages: number;
   agentBoardMessages: number;
+  agentToAgentReplies: number;
   auditActions: number;
   activeAgents: number;
 };
@@ -50,6 +51,7 @@ export type ActivityAnalytics = {
     mcpToolCalls: number | null;
     agentTaskEvents: number | null;
     agentBoardMessages: number | null;
+    agentToAgentReplies: number | null;
     auditActions: number | null;
   }[];
 };
@@ -68,7 +70,7 @@ export type McpRuntime = {
   callTool<T = unknown>(name: string, args?: Record<string, unknown>): Promise<T>;
   openLink(url: string): Promise<void>;
   notify(message: string, tone?: "success" | "error"): void;
-  refreshContext(): Promise<void>;
+  refreshContext(options?: { quiet?: boolean; refreshInbox?: boolean }): Promise<void>;
   selectProject(projectId: string): void;
 };
 
@@ -79,6 +81,7 @@ export type McpTabProps = {
 };
 
 export type NavTab =
+  | "analytics"
   | "assistant"
   | "ideas"
   | "overview"
@@ -89,20 +92,22 @@ export type NavTab =
   | "agents"
   | "prompts"
   | "knowledge"
+  | "install"
   | "files"
   | "billing";
 
 export const navSections: { label: string; items: { id: NavTab; label: string }[] }[] = [
-  { label: "START", items: [{ id: "assistant", label: "Stoic chat" }, { id: "ideas", label: "Ideas" }] },
+  { label: "START", items: [{ id: "analytics", label: "Analytics" }, { id: "assistant", label: "Stoic chat" }, { id: "ideas", label: "Ideas" }] },
   { label: "WORK", items: [
     { id: "overview", label: "Overview" },
     { id: "handoffs", label: "Handoffs" },
-    { id: "board", label: "Message board" },
+    { id: "board", label: "Group chat" },
     { id: "contacts", label: "Contacts" },
     { id: "projects", label: "Projects" },
   ] },
   { label: "TEAM", items: [
     { id: "agents", label: "Agents" },
+    { id: "install", label: "Installation" },
     { id: "prompts", label: "Prompt library" },
     { id: "knowledge", label: "Knowledge" },
     { id: "files", label: "Artifacts" },

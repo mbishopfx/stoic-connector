@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   BookOpenIcon,
+  ChartBarIcon,
   ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   ClipboardDocumentListIcon,
@@ -17,6 +17,7 @@ import {
   Squares2X2Icon,
   UserCircleIcon,
   UserGroupIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,6 +40,9 @@ import { KnowledgeCenter } from "@/components/knowledge-center";
 import { PromptLibraryView } from "@/components/prompt-library";
 import { ContactsWorkspace } from "@/components/contacts-workspace";
 import { BoardDiscussionView } from "@/components/board-discussion";
+import { AgentInstallation } from "@/components/agent-installation";
+import { ActivityAnalyticsPanel } from "@/mcp-app/tabs/activity-analytics";
+import type { ActivityAnalytics } from "@/mcp-app/ui-contract";
 import { useTheme } from "next-themes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -47,7 +51,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Empty as UiEmpty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -92,16 +95,8 @@ type Idea = { id: string; workspace_id: string; project_id: string; run_id: stri
 
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
-type ActivityMetrics = { mcpToolCalls: number; mcpToolErrors: number; agentMcpToolCalls: number; mcpToolCounts: Record<string, { calls: number; errors: number }>; taskEvents: number; agentTaskEvents: number; boardMessages: number; agentBoardMessages: number; auditActions: number; activeAgents: number };
-type ActivityDailyBucket = { date: string; recordedWindows: number; expectedWindows: number; complete: boolean; mcpToolCalls: number | null; agentTaskEvents: number | null; agentBoardMessages: number | null; auditActions: number | null };
-type ActivityAnalytics = {
-  available: boolean;
-  captureStartedAt: string | null;
-  latestWindow: { windowStart: string; windowEnd: string; metrics: ActivityMetrics | null; analysisStatus: "pending" | "running" | "complete" | "failed"; analysisSummary: string | null; analysisObservations: string[] } | null;
-  daily: ActivityDailyBucket[];
-};
 type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; activityAnalytics?: ActivityAnalytics; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
-type Tab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "prompts" | "agents" | "projects" | "knowledge" | "files" | "billing";
+type Tab = "analytics" | "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "prompts" | "agents" | "install" | "projects" | "knowledge" | "files" | "billing";
 
 function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -109,18 +104,20 @@ function shellQuote(value: string) {
 
 const navSections: { label: string; items: { id: Tab; label: string; icon: typeof Squares2X2Icon }[] }[] = [
   { label: "START", items: [
+    { id: "analytics", label: "Analytics", icon: ChartBarIcon },
     { id: "assistant", label: "Stoic chat", icon: ChatBubbleOvalLeftEllipsisIcon },
     { id: "ideas", label: "Ideas", icon: LightBulbIcon },
   ] },
   { label: "WORK", items: [
     { id: "overview", label: "Overview", icon: Squares2X2Icon },
     { id: "handoffs", label: "Handoffs", icon: ClipboardDocumentListIcon },
-    { id: "board", label: "Message board", icon: ChatBubbleLeftRightIcon },
+    { id: "board", label: "Group chat", icon: ChatBubbleLeftRightIcon },
     { id: "contacts", label: "Contacts", icon: UserCircleIcon },
     { id: "projects", label: "Projects", icon: FolderIcon },
   ] },
   { label: "TEAM", items: [
     { id: "agents", label: "Agents", icon: UserGroupIcon },
+    { id: "install", label: "Installation", icon: WrenchScrewdriverIcon },
     { id: "prompts", label: "Prompt library", icon: QueueListIcon },
     { id: "knowledge", label: "Knowledge", icon: BookOpenIcon },
     { id: "files", label: "Artifacts", icon: PaperClipIcon },
@@ -225,7 +222,7 @@ export function StoicDashboard({ email }: { email: string }) {
   const { resolvedTheme } = useTheme();
   const { appearance, setAppearance } = useDashboardAppearance();
   const [state, setState] = useState<DashboardState | null>(null);
-  const [tab, setTab] = useState<Tab>("assistant");
+  const [tab, setTab] = useState<Tab>("analytics");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -245,12 +242,12 @@ export function StoicDashboard({ email }: { email: string }) {
     return response.json();
   }).then(setState).catch((cause) => setError(cause.message)); }, []);
   useEffect(() => {
-    if (tab !== "agents" && tab !== "overview" && tab !== "assistant") return;
+    if (tab !== "agents" && tab !== "overview" && tab !== "assistant" && tab !== "analytics") return;
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void reload().catch(() => {});
     };
     if (tab !== "assistant") refreshWhenVisible();
-    const refreshInterval = tab === "agents" ? 30_000 : 5 * 60_000;
+    const refreshInterval = tab === "agents" || tab === "analytics" ? 30_000 : 5 * 60_000;
     const timer = window.setInterval(refreshWhenVisible, refreshInterval);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", refreshWhenVisible);
@@ -275,6 +272,22 @@ export function StoicDashboard({ email }: { email: string }) {
       throw cause;
     } finally { setBusy(false); }
   }
+
+  const timezoneInitialization = useRef<string | null>(null);
+  useEffect(() => {
+    const workspace = state?.workspace;
+    if (!workspace || workspace.ideas_timezone || timezoneInitialization.current === workspace.id) return;
+    timezoneInitialization.current = workspace.id;
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    void fetch("/api/commands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_ideas_timezone", timezone }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Could not save the workspace time zone");
+      await reload();
+    }).catch(() => undefined);
+  }, [reload, state?.workspace]);
 
   async function signOut() {
     const client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
@@ -330,10 +343,12 @@ export function StoicDashboard({ email }: { email: string }) {
         <div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div>
       </header>
       <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
+        {tab === "analytics" && <div className="space-y-5"><header className="space-y-2"><Badge variant="secondary">TEAM ACTIVITY</Badge><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1><p className="max-w-2xl text-sm leading-6 text-muted-foreground">Six-hour agent activity and 30-day trends. The latest workspace data refreshes while this view is open.</p></header><ActivityAnalyticsPanel analytics={state.activityAnalytics} workspaceAgentCount={agents.filter((agent) => agent.status !== "revoked").length} /></div>}
         {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
         {tab === "ideas" && <IdeasView projects={projects} agents={agents} ideas={ideas} workspace={workspace} busy={busy} command={command} />}
         {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
         {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
+        {tab === "install" && <AgentInstallation onManageAgents={() => setTab("agents")} />}
         {tab === "overview" && <div className="space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-1"><Badge variant="secondary">Workspace overview</Badge><h1 className="text-2xl font-semibold tracking-tight">Good to see you.</h1><p className="text-sm text-muted-foreground">See what is moving and where your team could use a hand.</p></div>
@@ -345,7 +360,6 @@ export function StoicDashboard({ email }: { email: string }) {
             <Card size="sm"><CardHeader><CardDescription>Active handoffs</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{activeHandoffs.length}</p><p className="mt-1 text-xs text-muted-foreground">{state.usage?.handoffs || 0} created this month.</p></CardContent></Card>
             <Card size="sm"><CardHeader><CardDescription>Needs your review</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{pendingApprovals.length}</p><p className="mt-1 text-xs text-muted-foreground">Agents cannot approve requests on your behalf.</p></CardContent></Card>
           </section>
-          <ActivityAnalyticsOverview analytics={state.activityAnalytics} />
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader><CardTitle>Handoffs in motion</CardTitle><CardDescription>Work your team is handling now.</CardDescription><CardAction><Button variant="ghost" size="sm" onClick={() => setTab("handoffs")}>View all</Button></CardAction></CardHeader>
@@ -375,141 +389,6 @@ export function StoicDashboard({ email }: { email: string }) {
   </SidebarProvider>;
 }
 
-const activityChartConfig = {
-  mcpToolCalls: { label: "MCP calls", color: "var(--chart-1)" },
-  agentTaskEvents: { label: "Agent task updates", color: "var(--chart-2)" },
-  agentBoardMessages: { label: "Agent messages", color: "var(--chart-4)" },
-  auditActions: { label: "Audit actions", color: "var(--chart-3)" },
-} satisfies ChartConfig;
-
-function formatActivityDate(value: string) {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-function formatActivityWindow(windowStart: string, windowEnd: string) {
-  const start = new Date(windowStart);
-  const end = new Date(windowEnd);
-  const date = start.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-  const startTime = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
-  const endDate = end.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-  const endTime = end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
-  return `${date}, ${startTime}–${endDate === date ? endTime : `${endDate}, ${endTime}`} UTC`;
-}
-
-function ActivityAnalyticsOverview({ analytics }: { analytics?: ActivityAnalytics }) {
-  if (!analytics) return <Card aria-label="Activity analytics loading"><CardHeader><Skeleton className="h-5 w-44" /><Skeleton className="h-4 w-72" /></CardHeader><CardContent><Skeleton className="h-64 w-full" /></CardContent></Card>;
-
-  if (!analytics.available) return <Card className="border-dashed">
-    <CardHeader><CardTitle>Agent activity</CardTitle><CardDescription>Six-hour activity and 30-day trends from observed Stoic workspace events.</CardDescription></CardHeader>
-    <CardContent className="space-y-2 text-sm text-muted-foreground">
-      <p>Activity analytics are not available yet. The analytics migration and its first scheduled rollup are required before this view can show data.</p>
-      <p>Historical MCP calls are not available; MCP coverage starts when instrumentation is deployed.</p>
-    </CardContent>
-  </Card>;
-
-  const latest = analytics.latestWindow;
-  const metrics = latest?.metrics || null;
-  const recordedWindows = analytics.daily.reduce((total, day) => total + day.recordedWindows, 0);
-  const expectedWindows = analytics.daily.reduce((total, day) => total + day.expectedWindows, 0);
-  const completeDays = analytics.daily.filter((day) => day.complete).length;
-  const toolRows = metrics ? Object.entries(metrics.mcpToolCounts)
-    .sort((left, right) => right[1].calls - left[1].calls)
-    .slice(0, 8) : [];
-  const analysisCopy = latest?.analysisStatus === "complete" && latest.analysisSummary
-    ? latest.analysisSummary
-    : latest?.analysisStatus === "failed"
-      ? "The managed Codex summary did not complete. The activity counts above remain available."
-      : latest?.analysisStatus === "running"
-        ? "The managed Codex summary is processing this six-hour window."
-        : "A managed Codex summary will appear after the next analysis run.";
-
-  const statCards = [
-    { label: "Agents active", value: metrics?.activeAgents, detail: "Distinct agents seen in Stoic events" },
-    { label: "Agent task updates", value: metrics?.agentTaskEvents, detail: `of ${metrics?.taskEvents ?? "—"} total task events` },
-    { label: "Agent messages", value: metrics?.agentBoardMessages, detail: `of ${metrics?.boardMessages ?? "—"} shared messages` },
-    { label: "Audit actions", value: metrics?.auditActions, detail: "Workspace audit records" },
-    { label: "MCP calls", value: metrics?.mcpToolCalls, detail: `${metrics?.mcpToolErrors ?? "—"} errors · ${metrics?.agentMcpToolCalls ?? "—"} from agents` },
-  ];
-
-  return <section className="space-y-4" aria-labelledby="activity-analytics-heading">
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="space-y-1">
-        <Badge variant="secondary">Observed activity</Badge>
-        <h2 id="activity-analytics-heading" className="text-xl font-semibold tracking-tight">Agent activity</h2>
-        <p className="text-sm text-muted-foreground">Stoic task events, shared messages, audit actions, and MCP calls within this workspace.</p>
-      </div>
-      {latest && <Badge variant="outline" className="tabular-nums">{formatActivityWindow(latest.windowStart, latest.windowEnd)}</Badge>}
-    </div>
-
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {statCards.map((stat) => <Card size="sm" key={stat.label}>
-        <CardHeader><CardDescription>{stat.label}</CardDescription></CardHeader>
-        <CardContent><p className="text-3xl font-semibold tabular-nums">{stat.value == null ? "—" : stat.value.toLocaleString()}</p><p className="mt-1 text-xs text-muted-foreground">{stat.detail}</p></CardContent>
-      </Card>)}
-    </div>
-
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Activity over 30 days</CardTitle>
-          <CardDescription>Daily totals appear only when all four six-hour UTC windows were recorded. Blank dates have missing or partial coverage.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <ChartContainer config={activityChartConfig} className="h-[280px] w-full">
-            <AreaChart data={analytics.daily} accessibilityLayer margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="activity-mcp-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.28} /><stop offset="95%" stopColor="var(--color-mcpToolCalls)" stopOpacity={0.02} /></linearGradient>
-                <linearGradient id="activity-task-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.2} /><stop offset="95%" stopColor="var(--color-agentTaskEvents)" stopOpacity={0.02} /></linearGradient>
-                <linearGradient id="activity-message-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--color-agentBoardMessages)" stopOpacity={0.02} /></linearGradient>
-                <linearGradient id="activity-audit-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-auditActions)" stopOpacity={0.16} /><stop offset="95%" stopColor="var(--color-auditActions)" stopOpacity={0.02} /></linearGradient>
-              </defs>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} tickFormatter={formatActivityDate} />
-              <YAxis tickLine={false} axisLine={false} tickMargin={8} width={34} allowDecimals={false} />
-              <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(label) => typeof label === "string" ? formatActivityDate(label) : label} />} />
-              <Area dataKey="mcpToolCalls" type="monotone" stroke="var(--color-mcpToolCalls)" fill="url(#activity-mcp-fill)" strokeWidth={2} connectNulls={false} />
-              <Area dataKey="agentTaskEvents" type="monotone" stroke="var(--color-agentTaskEvents)" fill="url(#activity-task-fill)" strokeWidth={2} connectNulls={false} />
-              <Area dataKey="agentBoardMessages" type="monotone" stroke="var(--color-agentBoardMessages)" fill="url(#activity-message-fill)" strokeWidth={2} connectNulls={false} />
-              <Area dataKey="auditActions" type="monotone" stroke="var(--color-auditActions)" fill="url(#activity-audit-fill)" strokeWidth={2} connectNulls={false} />
-            </AreaChart>
-          </ChartContainer>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {Object.entries(activityChartConfig).map(([key, config]) => <span key={key} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-[2px]" style={{ backgroundColor: config.color }} />{config.label}</span>)}
-            </div>
-            <span>{completeDays}/30 complete days · {recordedWindows}/{expectedWindows} windows recorded</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid content-start gap-4">
-        <Card>
-          <CardHeader><CardTitle>Codex collaboration summary</CardTitle><CardDescription>Bounded analysis of redacted Stoic-shared activity.</CardDescription></CardHeader>
-          <CardContent className="space-y-3">
-            {metrics ? <p className="text-sm leading-6">{analysisCopy}</p> : <p className="text-sm text-muted-foreground">The latest completed six-hour window has not been rolled up yet.</p>}
-            {latest?.analysisStatus === "complete" && latest.analysisObservations.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{latest.analysisObservations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>}
-            <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">Deterministic counts come from Stoic records. Analysis cannot read unrelated Codex Desktop or third-party agent histories.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>MCP tools</CardTitle><CardDescription>Most called tools in the same six-hour window.</CardDescription></CardHeader>
-          <CardContent>
-            {!metrics ? <p className="text-sm text-muted-foreground">Waiting for the first completed activity rollup.</p> : toolRows.length === 0 ? <p className="text-sm text-muted-foreground">No MCP calls were recorded in this window.</p> : <Table>
-              <TableHeader><TableRow><TableHead>Tool</TableHead><TableHead className="text-right">Calls</TableHead><TableHead className="text-right">Errors</TableHead></TableRow></TableHeader>
-              <TableBody>{toolRows.map(([name, counts]) => <TableRow key={name}><TableCell className="max-w-40 truncate font-mono text-xs">{name}</TableCell><TableCell className="text-right tabular-nums">{counts.calls}</TableCell><TableCell className="text-right tabular-nums">{counts.errors}</TableCell></TableRow>)}</TableBody>
-            </Table>}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-    <p className="text-xs leading-5 text-muted-foreground">
-      {analytics.captureStartedAt
-        ? `MCP tool capture began ${new Date(analytics.captureStartedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC. Earlier calls are not represented.`
-        : "MCP tool capture start is not available yet. Earlier calls are not represented."}
-    </p>
-  </section>;
-}
 
 function BridgeGuide({ guidance, onNavigate }: { guidance: DashboardGuidance; onNavigate: (tab: DashboardGuideTab, agentId?: string) => void }) {
   const progress = Math.round((guidance.completedSteps / Math.max(1, guidance.steps.length)) * 100);
@@ -552,10 +431,6 @@ function WorkspaceSetup({ email, busy, onCreate, error }: { email: string; busy:
   const [name, setName] = useState("");
   return <main className="setup-page"><div className="setup-card"><Link href="/" className="brand"><span className="brand-mark"><StoicMark /></span><span>Stoic <strong>Connector</strong></span></Link><div className="setup-progress"><span className="active" /><span /><span /></div><span className="eyebrow muted">STEP 1 OF 3 · YOUR SPACE</span><h1>Give your team a home.</h1><p>Your agents will share projects, handoffs and files here. You can change the name later.</p><form onSubmit={(event) => { event.preventDefault(); onCreate(name).catch(() => {}); }}><label htmlFor="workspace-name">Workspace name</label><input id="workspace-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Matthew’s agent team" minLength={2} maxLength={80} required /><button className="button" disabled={busy}>Create workspace</button></form>{error && <p className="form-error">{error}</p>}<small>Signed in as {email}</small></div></main>;
 }
-
-function Metric({ value, label, detail }: { value: number; label: string; detail: string }) { return <div className="metric-card"><strong>{value}</strong><span>{label}</span><small>{detail}</small></div>; }
-function Status({ status }: { status: string }) { return <span className={`status status-${status}`}>{status.replaceAll("_", " ")}</span>; }
-function Empty({ title, text }: { title: string; text: string }) { return <div className="empty-state"><strong>{title}</strong><p>{text}</p></div>; }
 
 function historyUrl(filters: HandoffHistoryFilters, cursor?: string | null) {
   const params = new URLSearchParams();
@@ -1560,7 +1435,8 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
 function IdeasView({ projects, agents, ideas, workspace, busy, command }: { projects: Project[]; agents: Agent[]; ideas: Idea[]; workspace: Workspace; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
   const [projectId, setProjectId] = useState("all");
   const [status, setStatus] = useState<Idea["status"] | "all">("pending");
-  const [timezone, setTimezone] = useState(workspace.ideas_timezone || "UTC");
+  const [timezoneOverride, setTimezoneOverride] = useState<string | null>(null);
+  const timezone = timezoneOverride ?? workspace.ideas_timezone ?? "UTC";
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [selectedWorkerId, setSelectedWorkerId] = useState("__none__");
   const [olderIdeas, setOlderIdeas] = useState<Idea[]>([]);
@@ -1568,7 +1444,6 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
   const [nextOffset, setNextOffset] = useState<number | null>(ideas.length === 200 ? 200 : null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
-  const initializedTimezone = useRef(false);
   const projectNames = Object.fromEntries(projects.map((project) => [project.id, project.name]));
   const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== workspace.boss_agent_id && agent.platform !== "muse");
   const selectedWorker = workers.find((agent) => agent.id === selectedWorkerId);
@@ -1613,18 +1488,6 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
     setSelectedIdea(null);
     setSelectedWorkerId("__none__");
   }
-
-  useEffect(() => {
-    if (workspace.ideas_timezone || initializedTimezone.current) return;
-    const frame = window.requestAnimationFrame(() => {
-      if (initializedTimezone.current) return;
-      initializedTimezone.current = true;
-      const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      setTimezone(localTimezone);
-      command("set_ideas_timezone", { timezone: localTimezone }).catch(() => {});
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [workspace.ideas_timezone, command]);
 
   const cardClass = "min-w-0 border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] ring-[var(--dash-line)] shadow-none";
   const controlClass = "border-[var(--dash-line)] bg-[var(--dash-panel)] text-[var(--dash-text)] placeholder:text-[var(--dash-muted)] focus-visible:ring-[var(--dash-accent)]";
@@ -1685,7 +1548,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
             </TableBody>
           </Table>
         </div> : <UiEmpty className="min-h-56 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]">
-          <EmptyHeader><EmptyTitle>{status === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Stoic keeps each day's suggestions as their own records. Older ideas stay in the history after assignment or denial.</EmptyDescription></EmptyHeader>
+          <EmptyHeader><EmptyTitle>{status === "pending" ? "No ideas need review" : "Nothing in this view"}</EmptyTitle><EmptyDescription className="max-w-lg text-[var(--dash-muted)]">Stoic keeps each day&apos;s suggestions as their own records. Older ideas stay in the history after assignment or denial.</EmptyDescription></EmptyHeader>
         </UiEmpty>}
         {historyError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load older ideas</AlertTitle><AlertDescription>{historyError}</AlertDescription></Alert>}
         {nextOffset !== null && <Button type="button" variant="outline" size="sm" className="w-full border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => loadOlderIdeas().catch(() => {})} disabled={historyLoading}>{historyLoading ? "Loading older ideas…" : "Load older ideas"}</Button>}
@@ -1737,9 +1600,9 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
         <Field>
           <FieldLabel htmlFor="ideas-timezone" className="text-[var(--dash-text)]">Workspace time zone</FieldLabel>
           <FieldDescription className="text-[var(--dash-muted)]">Use an IANA time zone, such as America/Chicago.</FieldDescription>
-          <Input id="ideas-timezone" className={controlClass} value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Chicago" maxLength={100} />
+          <Input id="ideas-timezone" className={controlClass} value={timezone} onChange={(event) => setTimezoneOverride(event.target.value)} placeholder="America/Chicago" maxLength={100} />
         </Field>
-        <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).catch(() => {})}>Save time zone</Button>
+        <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).then(() => setTimezoneOverride(null)).catch(() => {})}>Save time zone</Button>
       </CardContent>
     </Card>
   </div>;

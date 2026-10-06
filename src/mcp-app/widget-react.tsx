@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  BookOpen, Bot, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
-  MessageSquare, MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users,
+  BookOpen, Bot, ChartNoAxesCombined, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
+  MessageSquare, MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users, Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
@@ -17,13 +17,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantTab } from "./tabs/assistant-tab";
 import { ContactsTab, IdeasTab, PromptsTab, BillingTab } from "./tabs/other-tabs";
 import { AgentsTab, FilesTab, KnowledgeTab, ProjectsTab } from "./tabs/team-tabs";
-import { BoardTab, HandoffsTab, OverviewTab } from "./tabs/work-tabs";
+import { BoardTab, HandoffsTab, OverviewTab, AnalyticsTab } from "./tabs/work-tabs";
+import { AgentInstallation } from "@/components/agent-installation";
 import { navSections, type McpRuntime, type NavTab, type TeamContext } from "./ui-contract";
 
 const app = new App({ name: "Stoic Connector", version: "0.2.0" });
 let connectPromise: Promise<void> | null = null;
 
 const tabIcons: Record<NavTab, LucideIcon> = {
+  analytics: ChartNoAxesCombined,
   assistant: MessageSquareText,
   ideas: Lightbulb,
   overview: LayoutDashboard,
@@ -34,6 +36,7 @@ const tabIcons: Record<NavTab, LucideIcon> = {
   agents: Bot,
   prompts: BookOpen,
   knowledge: BookOpen,
+  install: Wrench,
   files: Paperclip,
   billing: CreditCard,
 };
@@ -110,7 +113,7 @@ function AppearanceSelect({
 function AppRoot() {
   const [context, setContext] = useState<TeamContext | null>(null);
   const [projectId, setProjectId] = useState("");
-  const [tab, setTab] = useState<NavTab>("assistant");
+  const [tab, setTab] = useState<NavTab>("analytics");
   const [connection, setConnection] = useState<"connecting" | "connected" | "error">("connecting");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<Notice>(null);
@@ -125,6 +128,7 @@ function AppRoot() {
   const [deviceTheme, setDeviceTheme] = useState<"light" | "dark">(() => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
   const resolvedTheme = themeMode === "system" ? hostTheme || deviceTheme : themeMode;
+  const hasContext = context !== null;
   const currentTab = navItems.find((item) => item.id === tab);
 
   const notify = useCallback((text: string, tone: "success" | "error" = "error") => {
@@ -132,23 +136,25 @@ function AppRoot() {
     window.setTimeout(() => setNotice((current) => current?.text === text ? null : current), 6500);
   }, []);
 
-  const refreshContext = useCallback(async () => {
-    setLoading(true);
+  const refreshContext = useCallback(async (options: { quiet?: boolean; refreshInbox?: boolean } = {}) => {
+    const quiet = options.quiet === true;
+    const refreshInbox = options.refreshInbox !== false;
+    if (!quiet) setLoading(true);
     try {
-      const [nextContext, inbox] = await Promise.all([
-        callTool<TeamContext>("get_team_context"),
-        callTool<{ handoffs?: unknown[] }>("check_inbox", { offset: 0 }),
-      ]);
+      const nextContext = await callTool<TeamContext>("get_team_context");
+      const inbox = refreshInbox ? await callTool<{ handoffs?: unknown[] }>("check_inbox", { offset: 0 }) : null;
       setContext(nextContext);
       setProjectId((current) => nextContext.projects.some((project) => project.id === current) ? current : nextContext.projects[0]?.id || "");
-      setInboxCount(inbox.handoffs?.length || 0);
-      setConnection("connected");
-      setNotice(null);
+      if (inbox) setInboxCount(inbox.handoffs?.length || 0);
+      if (!quiet) {
+        setConnection("connected");
+        setNotice(null);
+      }
     } catch (error) {
-      setConnection("error");
+      if (!quiet) setConnection("error");
       throw error;
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -186,6 +192,21 @@ function AppRoot() {
   }, [notify, refreshContext]);
 
   useEffect(() => {
+    if (!hasContext) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshContext({ quiet: true, refreshInbox: false }).catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [hasContext, refreshContext]);
+
+  useEffect(() => {
     try { localStorage.setItem("stoic-appearance", JSON.stringify(appearance)); } catch { /* Keep settings for this session. */ }
   }, [appearance]);
 
@@ -218,6 +239,7 @@ function AppRoot() {
     const props = { context, projectId, runtime };
     switch (tab) {
       case "assistant": view = null; break;
+      case "analytics": view = <AnalyticsTab {...props} />; break;
       case "ideas": view = <IdeasTab {...props} />; break;
       case "overview": view = <OverviewTab {...props} />; break;
       case "handoffs": view = <HandoffsTab {...props} />; break;
@@ -227,6 +249,7 @@ function AppRoot() {
       case "agents": view = <AgentsTab {...props} />; break;
       case "prompts": view = <PromptsTab {...props} />; break;
       case "knowledge": view = <KnowledgeTab {...props} />; break;
+      case "install": view = <AgentInstallation endpoint="https://stoic.bishoptech.dev/api/mcp" onManageAgents={() => setTab("agents")} />; break;
       case "files": view = <FilesTab {...props} />; break;
       case "billing": view = <BillingTab {...props} />; break;
     }

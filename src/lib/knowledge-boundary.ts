@@ -46,6 +46,32 @@ export const ownerKnowledgeNoteInput = z.object({
   body: z.string().trim().min(1).max(24_000),
 });
 
+const diaryLine = z.string().trim().min(1).max(1000);
+
+export const agentDiaryInput = z.object({
+  projectId: z.uuid(),
+  importantThreads: z.array(z.object({
+    messageId: z.uuid(),
+    summary: z.string().trim().min(1).max(500),
+  }).strict()).max(8).default([]),
+  workDone: z.array(diaryLine).max(8).default([]),
+  feelings: z.string().trim().max(500).default(""),
+  expectations: z.string().trim().max(1000).default(""),
+  predictions: z.array(z.string().trim().min(1).max(500)).max(5).default([]),
+  blockers: z.array(z.string().trim().min(1).max(500)).max(5).default([]),
+  handoffIds: z.array(z.uuid()).max(8).default([]),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.importantThreads.map((item) => item.messageId)).size !== value.importantThreads.length) {
+    context.addIssue({ code: "custom", path: ["importantThreads"], message: "Each important thread must use a distinct project message." });
+  }
+  if (new Set(value.handoffIds).size !== value.handoffIds.length) {
+    context.addIssue({ code: "custom", path: ["handoffIds"], message: "Handoff references must be unique." });
+  }
+  if (!value.importantThreads.length && !value.workDone.length && !value.feelings && !value.expectations && !value.predictions.length && !value.blockers.length) {
+    context.addIssue({ code: "custom", message: "Add at least one useful reflection field." });
+  }
+});
+
 export type KnowledgeSettingsInput = z.infer<typeof knowledgeSettingsInput>;
 
 function escapeIlikePattern(value: string) {

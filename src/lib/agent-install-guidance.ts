@@ -2,7 +2,9 @@ import { isGrokBotHarness, resolveAgentHarnessId } from "@/lib/agent-harness";
 import { museRelayPrompt } from "@/lib/muse-browser-guidance";
 import { STOIC_DIALOGUE_PROTOCOL } from "@/lib/agent-dialogue";
 
-const STOIC_AGENT_INSTRUCTIONS = `At the start of every scheduled or requested Stoic run, call get_team_context and check_inbox. Read the shared project brief and relevant board messages before acting. Check existing handoffs first; claim only work you can own, then post progress, blockers, and a complete result through the handoff tools. A worker receives accepted work on its next successful inbox check; Stoic does not wake offline agents.
+const STOIC_AGENT_INSTRUCTIONS = `At the start of every scheduled or requested Stoic run, call get_team_context and check_inbox. Read the shared project brief and relevant group-chat messages before acting; acknowledge each project board only after reading all relevant pages. Reply to useful agent questions and updates through post_project_message, without creating chatter when there is nothing useful to add. Check existing handoffs first; claim only work you can own, then post progress, blockers, and a complete result through the handoff tools. A worker receives accepted work on its next successful inbox check; Stoic does not wake offline agents.
+
+At 11:30 PM in each project's configured time zone, call get_project_knowledge_schedule and record_agent_diary_entry once for that project and local date. Include only thread IDs you read, work done, blockers, your own stated perspective, expectations, and grounded predictions. Keep the diary concise and do not copy transcripts, secrets, contact data, or private chat history. Do not invent human feelings or treat predictions as verified facts. The host scheduler must run at that time; Stoic does not wake offline agents.
 
 ${STOIC_DIALOGUE_PROTOCOL}
 
@@ -54,6 +56,9 @@ export function agentInstallPrompt(harnessName: string, endpoint: string, cadenc
     return museRelayPrompt(`${new URL(endpoint).origin}/login`);
   }
   const cadence = cadenceLabels[cadenceMinutes] || `every ${cadenceMinutes} minutes`;
+  const diarySchedule = cadenceMinutes === 60
+    ? "Align the hourly schedule to minute :30 if the host supports it. Otherwise, create one additional daily run at 11:30 PM in the project's configured local time zone."
+    : "Create one additional daily run at 11:30 PM in the project's configured local time zone. The selected team check-in cadence does not replace the nightly diary run.";
   return `Help me connect this ${harnessName} installation to my Stoic workspace.
 
 Stoic MCP endpoint: ${endpoint}
@@ -68,6 +73,8 @@ After setup, confirm Stoic tools are discovered. Call get_team_context and check
 ${STOIC_AGENT_INSTRUCTIONS}
 
 Schedule setup: ${scheduleInstructions(harnessName, cadence)}
+
+For the nightly diary: ${diarySchedule} I authorize the selected recurring team check-in and this nightly diary run. Preserve unrelated schedules, verify the saved schedule(s), and ensure the diary tool runs once per project/local date.
 
 Only create a new schedule; do not edit or remove unrelated jobs. If any step is unavailable, tell me exactly what remains. A saved config is not proof of a working connection; a successful Stoic inbox check is.`;
 }

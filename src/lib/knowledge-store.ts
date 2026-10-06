@@ -16,8 +16,10 @@ import { AppError, adminDb } from "@/lib/supabase";
 import type { AgentIdentity } from "@/lib/identity";
 import { canReadScopedHandoff } from "@/lib/handoff-access";
 import { redactSensitiveText } from "@/lib/model-input";
+import { localKnowledgeClock } from "@/lib/knowledge-schedule";
 import {
   KNOWLEDGE_SOURCE_SCOPES,
+  agentDiaryInput,
   knowledgeSearchPattern,
   ownerKnowledgeNoteInput,
   knowledgeSettingsInput,
@@ -403,18 +405,155 @@ async function ownerProject(ownerId: string, projectId: string) {
 }
 
 async function settingsForWorkspace(workspaceId: string, projectId: string): Promise<KnowledgeSettings> {
-  const { data, error } = await adminDb().from("knowledge_settings")
-    .select("*").eq("workspace_id", workspaceId).eq("project_id", projectId).maybeSingle();
-  if (error) throw error;
+  const db = adminDb();
+  const [settingsResult, workspaceResult] = await Promise.all([
+    db.from("knowledge_settings").select("*").eq("workspace_id", workspaceId).eq("project_id", projectId).maybeSingle(),
+    db.from("workspaces").select("ideas_timezone").eq("id", workspaceId).maybeSingle(),
+  ]);
+  if (settingsResult.error) throw settingsResult.error;
+  if (workspaceResult.error) throw workspaceResult.error;
+  const { data } = settingsResult;
   return data ? settingsFromRow(data as Record<string, unknown>, workspaceId, projectId) : {
     workspace_id: workspaceId,
     project_id: projectId,
     ...DEFAULT_SETTINGS,
+    timezone: typeof workspaceResult.data?.ideas_timezone === "string" && workspaceResult.data.ideas_timezone
+      ? workspaceResult.data.ideas_timezone
+      : DEFAULT_SETTINGS.timezone,
     source_scopes: [...DEFAULT_SETTINGS.source_scopes],
     schedule_slots: [...DEFAULT_SETTINGS.schedule_slots],
     pinned_note_ids: [],
     persisted: false,
   };
+}
+
+export async function getProjectKnowledgeSchedule(agent: AgentIdentity, projectId: string) {
+  const project = await projectForWorkspace(agent.workspaceId, projectId);
+  const settings = await settingsForWorkspace(agent.workspaceId, projectId);
+  return {
+    project: { id: project.id, name: project.name },
+    timezone: settings.timezone,
+    diaryTime: "23:30",
+    guidance: "Schedule the diary on the agent host for 23:30 in this project time zone. Stoic does not wake offline agents.",
+  };
+}
+
+const diaryEmailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const diaryPhonePattern = /(?<!\w)(?:\+?\d[\d().\s-]{7,}\d)(?!\w)/g;
+
+function diaryText(value: string, maximum: number) {
+  return redactSensitiveText(value)
+    .replace(diaryEmailPattern, "[email omitted]")
+    .replace(diaryPhonePattern, "[phone omitted]")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maximum);
+}
+
+function diarySection(title: string, lines: readonly string[]) {
+  if (!lines.length) return "";
+  return `## ${title}\n${lines.map((line) => `- ${line}`).join("\n")}`;
+}
+
+export async function recordAgentDiaryEntry(agent: AgentIdentity, rawInput: unknown) {
+  const input = agentDiaryInput.parse(rawInput);
+  const project = await projectForWorkspace(agent.workspaceId, input.projectId);
+  const settings = await settingsForWorkspace(agent.workspaceId, input.projectId);
+  const { localDate } = localKnowledgeClock(new Date(), settings.timezone);
+  const db = adminDb();
+  const messageIds = input.importantThreads.map((item) => item.messageId);
+  const handoffIds = input.handoffIds;
+  const [messagesResult, handoffsResult, agentResult, existingResult] = await Promise.all([
+    messageIds.length
+      ? db.from("board_messages").select("id").eq("workspace_id", agent.workspaceId).eq("project_id", project.id).in("id", messageIds)
+      : Promise.resolve({ data: [], error: null }),
+    handoffIds.length
+      ? db.from("handoffs").select("id,title,status,assigned_agent_id,updated_at").eq("workspace_id", agent.workspaceId).eq("project_id", project.id).in("id", handoffIds)
+      : Promise.resolve({ data: [], error: null }),
+    db.from("agents").select("name").eq("workspace_id", agent.workspaceId).eq("id", agent.agentId).eq("status", "connected").maybeSingle(),
+    db.from("knowledge_notes").select("id,kind,source_agent,note_created_at")
+      .eq("workspace_id", agent.workspaceId).eq("project_id", project.id)
+      .eq("id", `agent-diary:${agent.agentId}:${localDate}`).maybeSingle(),
+  ]);
+  const queryError = messagesResult.error || handoffsResult.error || agentResult.error || existingResult.error;
+  if (queryError) throw queryError;
+  if ((messagesResult.data || []).length !== messageIds.length) throw new AppError("One or more thread references are not in this project", 404);
+  if ((handoffsResult.data || []).length !== handoffIds.length) throw new AppError("One or more handoff references are not in this project", 404);
+  for (const handoff of handoffsResult.data || []) {
+    if (!await canReadScopedHandoff(agent, handoff)) throw new AppError("One or more handoff references are outside this agent's access", 404);
+  }
+  if (!agentResult.data) throw new AppError("The connected agent is no longer active", 403);
+  if (existingResult.data && (existingResult.data.kind !== "agent_diary" || existingResult.data.source_agent !== agent.agentId)) {
+    throw new AppError("This daily diary key belongs to another source", 409);
+  }
+
+  const now = new Date().toISOString();
+  const threadLines = input.importantThreads.map((item) => {
+    return `${diaryText(item.summary, 500)} (message:${item.messageId})`;
+  });
+  const handoffLines = (handoffsResult.data || []).map((handoff) => `${diaryText(handoff.title, 160)} (handoff:${handoff.id})`);
+  const sections = [
+    `# Agent diary · ${diaryText(agentResult.data.name, 80)}\n\n**Project date:** ${localDate}\n**Time zone:** ${settings.timezone}\n\nThis entry is a self-reported agent reflection. Feelings and predictions are not verified facts.`,
+    diarySection("Important group-chat threads", threadLines),
+    diarySection("Work completed", input.workDone.map((line) => diaryText(line, 1000))),
+    input.feelings ? `## Current feelings / stated perspective\n${diaryText(input.feelings, 500)}` : "",
+    input.expectations ? `## Expectations\n${diaryText(input.expectations, 1000)}` : "",
+    diarySection("Predictions", input.predictions.map((line) => diaryText(line, 500))),
+    diarySection("Blockers", input.blockers.map((line) => diaryText(line, 500))),
+    diarySection("Referenced handoffs", handoffLines),
+  ].filter(Boolean);
+  const note: KnowledgeNote = {
+    contract_version: KNOWLEDGE_CONTRACT_VERSION,
+    id: `agent-diary:${agent.agentId}:${localDate}`,
+    project_id: project.id,
+    kind: "agent_diary",
+    title: `${diaryText(agentResult.data.name, 80)} · daily diary · ${localDate}`,
+    status: "active",
+    created_at: (existingResult.data?.note_created_at as string | undefined) || now,
+    updated_at: now,
+    confidence: "uncertain",
+    source_agent: agent.agentId,
+    supersedes: [],
+    related: [],
+    evidence: [...messageIds.map((id) => `message:${id}`), ...handoffIds.map((id) => `handoff:${id}`)],
+    body: sections.join("\n\n"),
+  };
+  const markdown = serializeKnowledgeNote(note);
+  const row = {
+    workspace_id: agent.workspaceId,
+    project_id: project.id,
+    id: note.id,
+    path: `agent-diaries/${agent.agentId}/${localDate}.md`,
+    kind: note.kind,
+    title: note.title,
+    status: note.status,
+    confidence: note.confidence,
+    note_created_at: note.created_at,
+    note_updated_at: note.updated_at,
+    source_agent: agent.agentId,
+    source_user: null,
+    source_handoff: null,
+    supersedes: note.supersedes,
+    related: note.related,
+    evidence: note.evidence,
+    metadata: Object.fromEntries(Object.entries(note).filter(([key]) => key !== "body")),
+    body: note.body,
+    markdown,
+    updated_by_user_id: null,
+  };
+  const { data, error } = await db.from("knowledge_notes")
+    .upsert(row, { onConflict: "workspace_id,project_id,id" }).select(NOTE_SELECT).single();
+  if (error) throw error;
+  const { error: auditError } = await db.from("audit_events").insert({
+    workspace_id: agent.workspaceId,
+    actor_key: `agent:${agent.agentId}`,
+    action: "knowledge.agent_diary_upserted",
+    object_id: project.id,
+    details: { noteId: note.id, localDate, projectId: project.id, referencedThreads: messageIds.length, referencedHandoffs: handoffIds.length },
+  });
+  if (auditError) throw auditError;
+  return { project, timezone: settings.timezone, localDate, note: summarizeStoredNote(data as KnowledgeNoteRow) };
 }
 
 export async function getOwnerKnowledgeSettings(ownerId: string, projectId: string) {
@@ -463,6 +602,7 @@ export async function upsertOwnerKnowledgeNote(ownerId: string, projectId: strin
   const parsed = parseKnowledgeNote(markdown, path);
   if (!parsed.ok) throw new AppError(`Knowledge note rejected: ${parsed.errors.map((error) => error.code).join(", ")}`, 400);
   if (parsed.note.project_id !== projectId) throw new AppError("Knowledge note belongs to another project", 400);
+  if (parsed.note.kind === "agent_diary") throw new AppError("Agent diary entries can only be written by their authenticated source agent", 403);
   const metadata = Object.fromEntries(Object.entries(parsed.note).filter(([key]) => key !== "body"));
   const row = {
     workspace_id: workspace.id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { knowledgeSearchPattern, knowledgeSettingsInput, ownerKnowledgeNoteInput } from "../src/lib/knowledge-boundary";
+import { agentDiaryInput, knowledgeSearchPattern, knowledgeSettingsInput, ownerKnowledgeNoteInput } from "../src/lib/knowledge-boundary";
 
 const projectId = "00000000-0000-4000-8000-000000000001";
 
@@ -39,5 +39,21 @@ describe("knowledge persistence boundary", () => {
     expect(ownerKnowledgeNoteInput.safeParse(note).success).toBe(true);
     expect(ownerKnowledgeNoteInput.safeParse({ ...note, kind: "brief" }).success).toBe(false);
     expect(ownerKnowledgeNoteInput.safeParse({ ...note, body: "x".repeat(24_001) }).success).toBe(false);
+  });
+
+  it("accepts bounded source-attributed diary fields and rejects empty or duplicate references", () => {
+    const diary = {
+      projectId,
+      importantThreads: [{ messageId: "00000000-0000-4000-8000-000000000002", summary: "Agent discussion about release checks" }],
+      workDone: ["Reviewed the first setup flow"],
+      feelings: "I am uncertain about the rollout timing",
+      expectations: "The owner may want a smaller first milestone",
+      predictions: ["The setup prompt should reduce repeated questions"],
+      blockers: [],
+      handoffIds: [],
+    };
+    expect(agentDiaryInput.safeParse(diary).success).toBe(true);
+    expect(agentDiaryInput.safeParse({ projectId }).success).toBe(false);
+    expect(agentDiaryInput.safeParse({ ...diary, importantThreads: [diary.importantThreads[0], diary.importantThreads[0]] }).success).toBe(false);
   });
 });

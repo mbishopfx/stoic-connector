@@ -48,9 +48,10 @@ type Draft = {
   confidence: KnowledgeNoteSummary["confidence"];
   body: string;
 };
-type Panel = "notes" | "graph";
+type Panel = "notes" | "diary" | "graph";
 
 const kindOptions: Draft["kind"][] = ["decision", "note", "question", "agent_profile", "handoff", "artifact"];
+const filterKindOptions: KnowledgeKind[] = [...kindOptions, "agent_diary"];
 const statusOptions: KnowledgeNoteSummary["status"][] = ["proposed", "active", "conflicted", "stale", "superseded", "archived"];
 const confidenceOptions: KnowledgeNoteSummary["confidence"][] = ["uncertain", "likely", "verified"];
 const edgeOptions: KnowledgeGraphEdgeType[] = ["related", "supersedes", "wikilink"];
@@ -142,14 +143,12 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
   const [settingsDraft, setSettingsDraft] = useState<KnowledgeSettingsDraft | null>(null);
   const [stewardSaving, setStewardSaving] = useState(false);
   const [stewardRunning, setStewardRunning] = useState(false);
-  const [stewardOpen, setStewardOpen] = useState(false);
+  const [stewardOpen, setStewardOpen] = useState<boolean | null>(null);
   const noteLoadRevision = useRef(0);
   const currentOverview = overview?.project.id === projectId ? overview : null;
   const stewardSettings = currentOverview ? settingsDraft || currentOverview.settings : null;
 
-  useEffect(() => {
-    if (stewardSettings?.enabled || error) setStewardOpen(true);
-  }, [error, stewardSettings?.enabled]);
+  const stewardPanelOpen = stewardOpen ?? Boolean(stewardSettings?.enabled || error);
 
   const refreshOverview = useCallback(async (preferredNoteId?: string, signal?: AbortSignal) => {
     if (!projectId) return null;
@@ -206,6 +205,24 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     void loadProject();
     return () => controller.abort();
   }, [loadNote, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshOverview(selectedNoteId).then((next) => {
+        if (selectedNoteId && next?.notes.some((note) => note.id === selectedNoteId)) void loadNote(selectedNoteId);
+      }).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadNote, projectId, refreshOverview, selectedNoteId]);
 
   const filteredGraph = useMemo(() => currentOverview
     ? filterKnowledgeGraph(currentOverview.graph.graph, { query, scope, kind, agentId, edgeTypes })
@@ -368,6 +385,8 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
   </Empty>;
 
   const latestRun = currentOverview?.refreshRuns[0];
+  const agentDiaries = (currentOverview?.notes || []).filter((note) => note.kind === "agent_diary");
+  const diaryTimezone = stewardSettings?.timezone || "UTC";
   const pinnedSet = new Set(stewardSettings?.pinned_note_ids || []);
   const pinnableNotes = currentOverview ? [
     ...currentOverview.notes.filter((note) => pinnedSet.has(note.id)),
@@ -397,6 +416,16 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       <p className="m-0 leading-6 text-muted-foreground">{stewardSettings?.enabled ? `The Knowledge Steward checks this project ${stewardSettings.schedule_slots.length} times per day in ${stewardSettings.timezone}. Runs create proposed notes for your review and do not wake agents.` : "Notes are available to connected agents through Stoic. Scheduled model calls begin only after you enable the Knowledge Steward."}</p>
     </div>
 
+    <Card size="sm">
+      <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">Agent diary</Badge><CardTitle className="text-base">Nightly check-in · 11:30 PM</CardTitle></div>
+          <CardDescription>Entries use {diaryTimezone}. Add the hourly group-chat prompt to an agent with a native schedule; Stoic cannot wake an offline host. The daily Ideas run reads these self-reported notes as context.</CardDescription>
+        </div>
+        <Badge variant="outline">{agentDiaries.length} {agentDiaries.length === 1 ? "entry" : "entries"}</Badge>
+      </CardHeader>
+    </Card>
+
     {error && <Alert variant="destructive" className="grid-cols-[1fr_auto] items-start">
       <div><AlertTitle>Could not complete that action</AlertTitle><AlertDescription className="break-words">{error}</AlertDescription></div>
       <Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button>
@@ -406,7 +435,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       <Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button>
     </Alert>}
 
-    <Accordion value={stewardOpen ? ["steward"] : []} onValueChange={(value) => setStewardOpen(value.includes("steward"))} className="overflow-hidden rounded-xl border bg-card">
+    <Accordion value={stewardPanelOpen ? ["steward"] : []} onValueChange={(value) => setStewardOpen(value.includes("steward"))} className="overflow-hidden rounded-xl border bg-card">
       <AccordionItem value="steward" className="border-0">
         <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-5">
           <span className="grid gap-1">
@@ -490,6 +519,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <TabsList aria-label="Knowledge view" className="w-full sm:w-fit">
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          <TabsTrigger value="diary">Agent diary <Badge variant="outline" className="ml-2 px-1.5">{agentDiaries.length}</Badge></TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
         </TabsList>
         <div className="flex flex-1 flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -553,6 +583,22 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
         </div>
       </TabsContent>
 
+      <TabsContent value="diary">
+        <div className="grid min-h-[32rem] gap-4 lg:grid-cols-[minmax(15rem,0.78fr)_minmax(0,1.65fr)]">
+          <Card className="min-w-0 gap-0 bg-muted/20">
+            <CardHeader className="border-b pb-4"><div className="flex items-center justify-between gap-2"><CardTitle>Nightly entries</CardTitle><Badge variant="secondary">{agentDiaries.length}</Badge></div><CardDescription>One bounded, self-reported entry per agent, project, and local date.</CardDescription></CardHeader>
+            <CardContent className="min-h-0 flex-1 p-0">
+              {agentDiaries.length ? <div className="grid max-h-[36rem] overflow-y-auto">{agentDiaries.map((note) => <Button key={note.id} type="button" variant="ghost" aria-pressed={selectedNoteId === note.id} onClick={() => chooseNote(note.id)} className={`h-auto w-full justify-start rounded-none border-b px-4 py-3 text-left ${selectedNoteId === note.id ? "bg-accent/60" : ""}`}>
+                <span className="grid w-full min-w-0 gap-1.5 whitespace-normal"><strong className="line-clamp-2 text-sm font-medium leading-5 text-foreground"><AssistantRichInline text={note.title} /></strong><span className="text-xs text-muted-foreground">{agents.find((agent) => agent.id === note.source_agent)?.name || "Connected agent"} · {note.updated_at.slice(0, 10)}</span><span className="text-xs text-muted-foreground">{relativeTime(note.updated_at)} · self-reported</span></span>
+              </Button>)}</div> : <Empty className="min-h-64 border-0 p-6"><EmptyHeader><EmptyMedia variant="icon"><span className="text-xs font-semibold tracking-wide">AD</span></EmptyMedia><EmptyTitle>No agent diaries yet</EmptyTitle><EmptyDescription>Paste the Hourly Group Chat Check-In prompt into a connected agent and verify its own scheduler.</EmptyDescription></EmptyHeader></Empty>}
+            </CardContent>
+          </Card>
+          <div aria-label="Agent diary details" className="min-w-0">{selectedNote?.kind === "agent_diary" && selectedNote.project_id === projectId
+            ? <KnowledgeNoteDetail note={selectedNote} graph={currentOverview?.graph.graph} loading={loading} onEdit={editSelectedNote} />
+            : <Empty className="min-h-72 rounded-xl border bg-card p-8"><EmptyHeader><EmptyTitle>Select a nightly entry</EmptyTitle><EmptyDescription>Important threads, work completed, stated feelings, expectations, predictions, and blockers stay attributed to the agent that recorded them.</EmptyDescription></EmptyHeader></Empty>}</div>
+        </div>
+      </TabsContent>
+
       <TabsContent value="graph">
         <Card>
           <CardHeader className="gap-4 border-b sm:flex-row sm:items-end sm:justify-between">
@@ -567,7 +613,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
                   <SelectTrigger id="knowledge-kind-filter" className="w-full sm:min-w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All types</SelectItem>
-                    {kindOptions.map((value) => <SelectItem key={value} value={value}>{noteLabel(value)}</SelectItem>)}
+                    {filterKindOptions.map((value) => <SelectItem key={value} value={value}>{noteLabel(value)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
@@ -697,7 +743,7 @@ function KnowledgeNoteDetail({ note, graph, loading, onEdit }: {
           <CardTitle className="mt-3 break-words text-2xl leading-tight"><AssistantRichInline text={note.title} /></CardTitle>
           <CardDescription className="mt-2">{relativeTime(note.updated_at)} · {note.confidence} confidence</CardDescription>
         </div>
-        <Button type="button" variant="outline" onClick={onEdit} disabled={loading}>Edit note</Button>
+        {note.kind !== "agent_diary" && <Button type="button" variant="outline" onClick={onEdit} disabled={loading}>Edit note</Button>}
       </div>
       <Badge variant="secondary" className="w-fit">{note.source_agent ? "Agent sourced" : note.source_handoff ? "Handoff sourced" : "Owner sourced"}</Badge>
     </CardHeader>

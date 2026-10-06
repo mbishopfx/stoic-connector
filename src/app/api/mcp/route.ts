@@ -15,7 +15,8 @@ import { stoicMcpAppHtml } from "@/lib/mcp-app-resource";
 import { STOIC_DASHBOARD_RESOURCE_URI, stoicDashboardResourceMetadata, stoicDashboardToolMetadata } from "@/lib/chatgpt-app-metadata";
 import { addOAuthSecurityToMcpResponse } from "@/lib/mcp-metadata";
 import { KNOWLEDGE_KINDS, KNOWLEDGE_STATUSES } from "@/lib/knowledge";
-import { getKnowledgeEvidence, getProjectKnowledgeGraph, listProjectKnowledge, readKnowledgeNote, searchProjectKnowledge } from "@/lib/knowledge-store";
+import { getKnowledgeEvidence, getProjectKnowledgeGraph, getProjectKnowledgeSchedule, listProjectKnowledge, readKnowledgeNote, recordAgentDiaryEntry, searchProjectKnowledge } from "@/lib/knowledge-store";
+import { agentDiaryInput } from "@/lib/knowledge-boundary";
 import { draftIntakeForAgent, intakeDraftInputSchema } from "@/lib/intake-drafts";
 import { archiveIdea, assignIdea, listTeamIdeas } from "@/lib/ideas";
 import { createContact, importContactsFromArtifact, linkContact, searchContactsForAgent, contactInputSchema, contactLinkInputSchema } from "@/lib/contacts";
@@ -274,6 +275,20 @@ const handler = createMcpHandler((server) => {
     description: "Return the deterministic read-only graph derived from validated Markdown notes for one project, including typed edges, stale nodes, orphan nodes, and unresolved-reference warnings.",
     inputSchema: z.object({ projectId: z.uuid() }),
   }, async ({ projectId }, ctx) => run(ctx, (agent) => getProjectKnowledgeGraph(agent, projectId)));
+
+  trackedServer.registerTool("get_project_knowledge_schedule", {
+    annotations: readAnnotations,
+    title: "Read project diary schedule",
+    description: "Read the configured project time zone and nightly agent diary time. This reports the window an agent's own scheduler should use; Stoic does not wake agents.",
+    inputSchema: z.object({ projectId: z.uuid() }),
+  }, async ({ projectId }, ctx) => run(ctx, (agent) => getProjectKnowledgeSchedule(agent, projectId)));
+
+  trackedServer.registerTool("record_agent_diary_entry", {
+    annotations: writeAnnotations,
+    title: "Record nightly agent diary",
+    description: "Upsert one bounded self-reported diary for the authenticated agent, project, and local date. Thread IDs and handoff IDs are verified inside the same project. Feelings and predictions remain self-reported context, never verified fact or approval.",
+    inputSchema: agentDiaryInput,
+  }, async (args, ctx) => run(ctx, (agent) => recordAgentDiaryEntry(agent, args)));
 
   trackedServer.registerTool("read_project_board", {
     annotations: readAnnotations,

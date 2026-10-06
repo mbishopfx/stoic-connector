@@ -26,6 +26,13 @@ describe("agent-agnostic install instructions", () => {
     expect(agentInstallPrompt("ChatGPT", "https://stoic.example.com/api/mcp")).toContain("do not assume a custom MCP app is available");
   });
 
+  it("keeps the nightly diary schedule separate when the check-in cadence is not hourly", () => {
+    const prompt = agentInstallPrompt("Codex", "https://stoic.example.com/api/mcp", 360);
+    expect(prompt).toContain("every six hours");
+    expect(prompt).toContain("selected team check-in cadence does not replace the nightly diary run");
+    expect(prompt).toContain("11:30 PM in the project's configured local time zone");
+  });
+
   it("tailors setup to Grok web, Gemini CLI, and OpenClaw credential behavior", () => {
     const grok = agentInstallPrompt("Grok web", "https://stoic.example.com/api/mcp");
     expect(grok).toContain("New Connector → Custom");
