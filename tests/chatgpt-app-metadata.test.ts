@@ -19,7 +19,7 @@ describe("Stoic ChatGPT app metadata", () => {
     expect(stoicDashboardResourceMetadata("https://stoic.bishoptech.dev/path", "https://stoic-project.supabase.co")).toEqual({
       ui: {
         domain: "https://stoic.bishoptech.dev",
-        prefersBorder: true,
+        prefersBorder: false,
         permissions: { microphone: {} },
         csp: {
           connectDomains: ["https://stoic.bishoptech.dev", "https://stoic-project.supabase.co"],
