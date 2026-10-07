@@ -273,8 +273,8 @@ function AppRoot() {
 
   return (
     <div id="stoic-app" data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners} data-theme={resolvedTheme} className={`mcp-widget-shell flex w-full overflow-hidden bg-background text-foreground ${dark ? "dark" : ""}`}>
-      <aside className="mcp-rail flex w-[4.25rem] shrink-0 flex-col items-center border-r bg-background">
-        <div className="grid h-14 w-full shrink-0 place-items-center border-b">
+      <aside className="mcp-rail flex w-[4.25rem] shrink-0 flex-col items-center bg-background">
+        <div className="grid h-14 w-full shrink-0 place-items-center">
           <Avatar className="size-8 rounded-lg">
             <AvatarImage src={new URL("./stoic-connector-directory-icon.png", import.meta.url).toString()} alt="Stoic Connector" />
             <AvatarFallback className="text-[10px]">SC</AvatarFallback>
@@ -308,13 +308,13 @@ function AppRoot() {
             </div>)}
           </nav>
         </ScrollArea>
-        <div className="grid w-full shrink-0 place-items-center border-t py-3">
+        <div className="grid w-full shrink-0 place-items-center py-3">
           <Avatar className="size-8 border"><AvatarImage src={new URL("./stoic-connector-directory-icon.png", import.meta.url).toString()} alt="Stoic Connector" /><AvatarFallback className="text-[10px]">{context?.self.role.slice(0, 1).toUpperCase() || "A"}</AvatarFallback></Avatar>
         </div>
       </aside>
 
       <section className="mcp-widget-main flex min-w-0 flex-1 flex-col">
-        <header className="mcp-widget-header flex min-h-14 shrink-0 items-center justify-between gap-2 border-b bg-background px-4">
+        <header className="mcp-widget-header flex min-h-14 shrink-0 items-center justify-between gap-2 bg-background px-4">
           <div className="hidden min-w-0 items-center gap-2 md:flex">
             <span className="truncate text-xs text-muted-foreground">{context?.workspace.name || "Stoic workspace"}</span>
             <span className="text-muted-foreground/60">/</span>
