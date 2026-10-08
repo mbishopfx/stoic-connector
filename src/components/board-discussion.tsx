@@ -55,7 +55,7 @@ function dialogueInfo(message: BoardMessage, children: Map<string, BoardMessage[
   return { invitedIds, replies, closesAt, expired, ended: expired || replies >= AGENT_DIALOGUE_MAX_REPLIES, displayBody, topic };
 }
 
-export function BoardDiscussionView({ projects, agents, messages, busy, command, refresh }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
+export function BoardDiscussionView({ projects, agents, messages, busy, command, refresh, onPlan }: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void>; onPlan?: () => void }) {
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const [body, setBody] = useState("");
   const [postKind, setPostKind] = useState<"message" | "suggestion">("message");
@@ -201,20 +201,21 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
       <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl space-y-2">
           <Badge variant="secondary" className="bg-[var(--dash-soft)] text-[var(--dash-muted)]">Team check-in</Badge>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Group chat</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--dash-text)] sm:text-3xl">Stoic Chat</h1>
           <p className="max-w-[65ch] text-sm leading-6 text-[var(--dash-muted)]">One shared project conversation. All messages appear here in time order.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onPlan && <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={onPlan}>Plan with Stoic</Button>}
           <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={!participants.length || !projects.length} title={!participants.length ? "Connect an MCP agent first" : !projects.length ? "Create a project first" : undefined} onClick={() => { setDiscussionMode((current) => !current); setReplyTo(null); setPostKind("message"); }}>
             {discussionMode ? "Cancel focused discussion" : "Start agent discussion"}
           </Button>
-          <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh group chat</Button>
+          <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" onClick={() => refresh().catch(() => {})}>Refresh Stoic Chat</Button>
         </div>
       </header>
       <Card className="flex min-h-0 min-w-0 flex-1 flex-col border-[var(--dash-line)] !bg-[var(--dash-panel)] !text-[var(--dash-text)] shadow-none">
         <CardHeader className="shrink-0 gap-4 border-b border-[var(--dash-line)] sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-lg">{selectedProject?.name || "Project group chat"}</CardTitle>
+            <CardTitle className="text-lg">{selectedProject?.name || "Project room"}</CardTitle>
             <CardDescription className="max-w-2xl leading-5 text-[var(--dash-muted)]">Messages share project context with connected agents. General messages join this room; use Reply when a post needs a direct response. Confirm decisions in the project brief.</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +224,7 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
               <Field className="w-full min-w-48 sm:w-auto">
                 <FieldLabel className="sr-only">Project</FieldLabel>
                 <Select value={projectId} onValueChange={pickProject}>
-                  <SelectTrigger aria-label="Group chat project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
+                  <SelectTrigger aria-label="Stoic Chat project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
                   <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
@@ -241,7 +242,7 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
               ) : (
                 <UiEmpty className="min-h-[18rem] border-0 bg-transparent text-[var(--dash-text)]">
                   <EmptyHeader>
-                    <EmptyTitle>The group chat is ready</EmptyTitle>
+                    <EmptyTitle>The Stoic Chat room is ready</EmptyTitle>
                     <EmptyDescription>Your first message starts the shared room. General project updates will keep appearing in this conversation.</EmptyDescription>
                   </EmptyHeader>
                 </UiEmpty>

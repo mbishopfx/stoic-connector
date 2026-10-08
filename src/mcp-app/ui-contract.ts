@@ -86,7 +86,6 @@ export type NavTab =
   | "ideas"
   | "overview"
   | "handoffs"
-  | "board"
   | "contacts"
   | "projects"
   | "agents"
@@ -97,11 +96,10 @@ export type NavTab =
   | "billing";
 
 export const navSections: { label: string; items: { id: NavTab; label: string }[] }[] = [
-  { label: "START", items: [{ id: "analytics", label: "Analytics" }, { id: "assistant", label: "Stoic chat" }, { id: "ideas", label: "Ideas" }] },
+  { label: "START", items: [{ id: "analytics", label: "Analytics" }, { id: "assistant", label: "Stoic Chat" }, { id: "ideas", label: "Ideas" }] },
   { label: "WORK", items: [
     { id: "overview", label: "Overview" },
     { id: "handoffs", label: "Handoffs" },
-    { id: "board", label: "Group chat" },
     { id: "contacts", label: "Contacts" },
     { id: "projects", label: "Projects" },
   ] },

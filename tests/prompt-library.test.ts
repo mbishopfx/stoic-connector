@@ -33,24 +33,42 @@ describe("copy-ready Stoic prompts", () => {
     expect(text).toContain("check_inbox");
     expect(text).toContain("claim_handoff");
     expect(text).toContain("owner approval");
-    expect(promptLibrary.map((prompt) => prompt.id)).toEqual(["contact-link", "contact-link-browser", "team-check-in", "hourly-group-chat-check-in"]);
+    expect(promptLibrary.map((prompt) => prompt.id)).toEqual([
+      "contact-link", "contact-link-browser", "team-check-in", "stoic-chat-check-in-30m", "stoic-chat-check-in-60m",
+      "project-kickoff", "parallel-work-breakdown", "handoff-execution", "cross-agent-review", "integration-review",
+      "blocker-resolution", "team-status-roundup", "decision-synthesis",
+    ]);
   });
 
-  it("adds an hourly group-chat routine and a nightly self-reported diary", () => {
-    const text = renderStoicPrompt("hourly-group-chat-check-in", endpoint);
-    expect(text).toContain("every 60 minutes");
-    expect(text).toContain("read_project_board");
-    expect(text).toContain("ack_project_board");
-    expect(text).toContain("post_project_message");
-    expect(text).toContain("11:30 PM");
-    expect(text).toContain("get_project_knowledge_schedule");
-    expect(text).toContain("record_agent_diary_entry");
-    expect(text).toContain("a prompt alone does not wake an offline agent");
+  it("adds 30- and 60-minute Stoic Chat routines and a nightly self-reported diary", () => {
+    const thirtyMinute = renderStoicPrompt("stoic-chat-check-in-30m", endpoint);
+    const hourly = renderStoicPrompt("stoic-chat-check-in-60m", endpoint);
+    expect(thirtyMinute).toContain("every 30 minutes");
+    expect(hourly).toContain("every 60 minutes");
+    for (const text of [thirtyMinute, hourly]) {
+      expect(text).toContain("Stoic Chat");
+      expect(text).toContain("read_project_board");
+      expect(text).toContain("ack_project_board");
+      expect(text).toContain("post_project_message");
+      expect(text).toContain("11:30 PM");
+      expect(text).toContain("get_project_knowledge_schedule");
+      expect(text).toContain("record_agent_diary_entry");
+      expect(text).toContain("does not wake an offline agent");
+    }
+  });
+
+  it("provides bounded multi-agent orchestration prompts", () => {
+    const breakdown = renderStoicPrompt("parallel-work-breakdown", endpoint);
+    expect(breakdown).toContain("create_handoff");
+    expect(breakdown).toContain("pending owner approval");
+    expect(breakdown).toContain("idempotencyKey");
+    expect(renderStoicPrompt("cross-agent-review", endpoint)).toContain("Do not edit the teammate's work");
+    expect(renderStoicPrompt("decision-synthesis", endpoint)).toContain("expectedVersion");
   });
 
   it("changes prompt voice without changing task or boundary instructions", () => {
-    const balanced = renderStoicPrompt("hourly-group-chat-check-in", endpoint, "balanced");
-    const funny = renderStoicPrompt("hourly-group-chat-check-in", endpoint, "funny");
+    const balanced = renderStoicPrompt("stoic-chat-check-in-60m", endpoint, "balanced");
+    const funny = renderStoicPrompt("stoic-chat-check-in-60m", endpoint, "funny");
     expect(funny).not.toBe(balanced);
     for (const required of ["record_agent_diary_entry", "Complete authorized work", "Preserve every existing access, privacy, accuracy, and approval rule"]) {
       expect(funny).toContain(required);

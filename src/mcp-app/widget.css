@@ -152,6 +152,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .mcp-widget-main { min-height: 0; }
 .mcp-widget-content { min-height: 0; overflow: auto; }
 .mcp-widget-content > * { width: 100%; max-width: 1120px; margin-inline: auto; }
+.mcp-widget-chat-content { display: flex; flex-direction: column; overflow: hidden; }
+.mcp-widget-chat-inner { min-height: 0; flex: 1; }
 
 @media (max-width: 620px) {
   .mcp-widget-shell { height: 100dvh; min-height: 0; border-radius: 0; }

@@ -427,9 +427,6 @@
   .block {
     display: block;
   }
-  .contents {
-    display: contents;
-  }
   .flex {
     display: flex;
   }
@@ -578,9 +575,6 @@
   .h-auto {
     height: auto;
   }
-  .h-dvh {
-    height: 100dvh;
-  }
   .h-fit {
     height: fit-content;
   }
@@ -619,9 +613,6 @@
   }
   .max-h-\[min\(calc\(--spacing\(72\)---spacing\(9\)\)\,calc\(var\(--available-height\)---spacing\(9\)\)\)\] {
     max-height: min(calc(calc(var(--spacing) * 72) - calc(var(--spacing) * 9)), calc(var(--available-height) - calc(var(--spacing) * 9)));
-  }
-  .max-h-dvh {
-    max-height: 100dvh;
   }
   .min-h-0 {
     min-height: 0px;
@@ -5138,6 +5129,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   width: 100%;
   max-width: 1120px;
   margin-inline: auto;
+}
+.mcp-widget-chat-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.mcp-widget-chat-inner {
+  min-height: 0;
+  flex: 1;
 }
 @media (max-width: 620px) {
   .mcp-widget-shell {

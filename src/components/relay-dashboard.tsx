@@ -6,7 +6,6 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   BookOpenIcon,
   ChartBarIcon,
-  ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   ClipboardDocumentListIcon,
   CreditCardIcon,
@@ -22,7 +21,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Plan, type Platform } from "@/lib/config";
-import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, harnessSupports90MinuteCadence, isGrokBotHarness, type AgentHarnessId } from "@/lib/agent-harness";
+import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, harnessSupports30MinuteCadence, harnessSupports90MinuteCadence, isGrokBotHarness, type AgentHarnessId } from "@/lib/agent-harness";
 import { agentConnectionGuide } from "@/lib/agent-connection-guidance";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
 import { hermesInstallPrompt } from "@/lib/agent-setup-guidance";
@@ -96,7 +95,7 @@ type Idea = { id: string; workspace_id: string; project_id: string; run_id: stri
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
 type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
 type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; activityAnalytics?: ActivityAnalytics; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
-type Tab = "analytics" | "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "prompts" | "agents" | "install" | "projects" | "knowledge" | "files" | "billing";
+type Tab = "analytics" | "assistant" | "ideas" | "overview" | "handoffs" | "contacts" | "prompts" | "agents" | "install" | "projects" | "knowledge" | "files" | "billing";
 
 function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -105,13 +104,12 @@ function shellQuote(value: string) {
 const navSections: { label: string; items: { id: Tab; label: string; icon: typeof Squares2X2Icon }[] }[] = [
   { label: "START", items: [
     { id: "analytics", label: "Analytics", icon: ChartBarIcon },
-    { id: "assistant", label: "Stoic chat", icon: ChatBubbleOvalLeftEllipsisIcon },
+    { id: "assistant", label: "Stoic Chat", icon: ChatBubbleOvalLeftEllipsisIcon },
     { id: "ideas", label: "Ideas", icon: LightBulbIcon },
   ] },
   { label: "WORK", items: [
     { id: "overview", label: "Overview", icon: Squares2X2Icon },
     { id: "handoffs", label: "Handoffs", icon: ClipboardDocumentListIcon },
-    { id: "board", label: "Group chat", icon: ChatBubbleLeftRightIcon },
     { id: "contacts", label: "Contacts", icon: UserCircleIcon },
     { id: "projects", label: "Projects", icon: FolderIcon },
   ] },
@@ -223,6 +221,7 @@ export function StoicDashboard({ email }: { email: string }) {
   const { appearance, setAppearance } = useDashboardAppearance();
   const [state, setState] = useState<DashboardState | null>(null);
   const [tab, setTab] = useState<Tab>("analytics");
+  const [chatMode, setChatMode] = useState<"room" | "plan">("room");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -318,10 +317,17 @@ export function StoicDashboard({ email }: { email: string }) {
 
   function followDashboardGuidance(guidance: DashboardGuidance = dashboardGuidance) {
     if (guidance.agentId) setSelectedAgent(guidance.agentId);
+    if (guidance.tab === "assistant") setChatMode("room");
     setTab(guidance.tab);
   }
 
-  return <SidebarProvider className={`dashboard-shell ${tab === "board" ? "board-chat-shell" : ""}`} data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
+  function navigateToTab(nextTab: Tab) {
+    if (nextTab === "assistant") setChatMode("room");
+    setTab(nextTab);
+  }
+
+  const isStoicRoom = tab === "assistant" && chatMode === "room";
+  return <SidebarProvider className={`dashboard-shell ${isStoicRoom ? "board-chat-shell" : ""}`} data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
     <DashboardSidebarNavigation
       email={email}
       workspaceName={workspace.name}
@@ -329,12 +335,12 @@ export function StoicDashboard({ email }: { email: string }) {
       activeHandoffs={activeHandoffs.length}
       pendingApprovals={pendingApprovals.length}
       onSelect={(nextTab) => {
-        setTab(nextTab);
-        if (nextTab === "board" || nextTab === "ideas") void reload().catch(() => {});
+        navigateToTab(nextTab);
+        if (nextTab === "assistant" || nextTab === "ideas") void reload().catch(() => {});
       }}
       onSignOut={signOut}
     />
-    <SidebarInset className={`dashboard-main ${tab === "board" ? "board-chat-main" : ""}`}>
+    <SidebarInset className={`dashboard-main ${isStoicRoom ? "board-chat-main" : ""}`}>
       <header className="dashboard-header">
         <div className="dashboard-header-start">
           <SidebarTrigger className="dashboard-sidebar-trigger" aria-label="Toggle navigation" />
@@ -342,9 +348,15 @@ export function StoicDashboard({ email }: { email: string }) {
         </div>
         <div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div>
       </header>
-      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""} ${tab === "board" ? "board-chat-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
+      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""} ${isStoicRoom ? "board-chat-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
         {tab === "analytics" && <div className="space-y-5"><header className="space-y-2"><Badge variant="secondary">TEAM ACTIVITY</Badge><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1><p className="max-w-2xl text-sm leading-6 text-muted-foreground">Six-hour agent activity and 30-day trends. The latest workspace data refreshes while this view is open.</p></header><ActivityAnalyticsPanel analytics={state.activityAnalytics} workspaceAgentCount={agents.filter((agent) => agent.status !== "revoked").length} /></div>}
-        {tab === "assistant" && <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />}
+        {tab === "assistant" && <>
+          <div className={chatMode === "room" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} onPlan={() => setChatMode("plan")} /></div>
+          <div className={chatMode === "plan" ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto" : "hidden"}>
+            <div className="shrink-0 px-4 pt-3 sm:px-6"><Button type="button" variant="outline" size="sm" onClick={() => setChatMode("room")}>Back to Stoic Chat</Button></div>
+            <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />
+          </div>
+        </>}
         {tab === "ideas" && <IdeasView projects={projects} agents={agents} ideas={ideas} workspace={workspace} busy={busy} command={command} />}
         {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
         {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
@@ -352,7 +364,7 @@ export function StoicDashboard({ email }: { email: string }) {
         {tab === "overview" && <div className="space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-1"><Badge variant="secondary">Workspace overview</Badge><h1 className="text-2xl font-semibold tracking-tight">Good to see you.</h1><p className="text-sm text-muted-foreground">See what is moving and where your team could use a hand.</p></div>
-            <Button onClick={() => setTab("assistant")}>Start with Stoic</Button>
+            <Button onClick={() => navigateToTab("assistant")}>Start with Stoic</Button>
           </div>
           <BridgeGuide guidance={dashboardGuidance} onNavigate={(nextTab, agentId) => followDashboardGuidance({ ...dashboardGuidance, tab: nextTab, agentId })} />
           <section aria-label="Workspace summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -378,9 +390,8 @@ export function StoicDashboard({ email }: { email: string }) {
           </Card>}
         </div>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
-        {tab === "board" && <BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} />}
-        {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={(nextTab) => setTab(nextTab)} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
-        {tab === "projects" && <><ProjectsView projects={projects} handoffs={handoffs} agents={agents} busy={busy} command={command} onNavigate={setTab} /><RoutingView projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} /></>}
+        {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={navigateToTab} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
+        {tab === "projects" && <><ProjectsView projects={projects} handoffs={handoffs} agents={agents} busy={busy} command={command} onNavigate={navigateToTab} /><RoutingView projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} /></>}
         {tab === "knowledge" && <KnowledgeCenter projects={projects} agents={agents} onManageProjects={() => setTab("projects")} />}
         {tab === "files" && <FilesView projects={projects} handoffs={handoffs} artifacts={artifacts} busy={busy} command={command} setNotice={setNotice} onManageProjects={() => setTab("projects")} />}
         {tab === "billing" && <BillingView workspace={workspace} monthlyPrice={state.monthlyPrice} usage={state.usage || { handoffs: 0, storageBytes: 0 }} busy={busy} command={command} />}
@@ -998,6 +1009,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
                     >
                       <SelectTrigger id="expected-inbox-cadence"><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        {harnessSupports30MinuteCadence(selected.harness_name, selected.platform) && <SelectItem value="30">Every 30 minutes</SelectItem>}
                         <SelectItem value="60">Hourly</SelectItem>
                         {harnessSupports90MinuteCadence(selected.harness_name, selected.platform) && <SelectItem value="90">Every 90 minutes</SelectItem>}
                         <SelectItem value="360">Every 6 hours</SelectItem>
@@ -1244,8 +1256,8 @@ function ScheduleGuide({ agent, workspace }: { agent?: Agent; workspace: Workspa
   if (!agent || !["codex", "hermes", "openclaw"].includes(agent.platform)) return null;
 
   const prompt = schedulePromptFor(agent, workspace);
-  const interval = agent.schedule_cadence_minutes === 1440 ? "24h" : agent.schedule_cadence_minutes === 360 ? "6h" : agent.schedule_cadence_minutes === 90 ? "90m" : "1h";
-  const cadenceLabel = agent.schedule_cadence_minutes === 1440 ? "day" : agent.schedule_cadence_minutes === 360 ? "6 hours" : agent.schedule_cadence_minutes === 90 ? "90 minutes" : "hour";
+  const interval = agent.schedule_cadence_minutes === 1440 ? "24h" : agent.schedule_cadence_minutes === 360 ? "6h" : agent.schedule_cadence_minutes === 90 ? "90m" : agent.schedule_cadence_minutes === 30 ? "30m" : "1h";
+  const cadenceLabel = agent.schedule_cadence_minutes === 1440 ? "day" : agent.schedule_cadence_minutes === 360 ? "6 hours" : agent.schedule_cadence_minutes === 90 ? "90 minutes" : agent.schedule_cadence_minutes === 30 ? "30 minutes" : "hour";
   const command = agent.platform === "hermes"
     ? "hermes cron create 'every " + interval + "' " + shellQuote(prompt) + " --name " + shellQuote("Stoic inbox - " + agent.name) + " --deliver local"
     : agent.platform === "openclaw"
@@ -1610,7 +1622,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
 
 
 
-function BoardView(props: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void> }) {
+function BoardView(props: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void>; onPlan?: () => void }) {
   return <BoardDiscussionView {...props} />;
 }
 

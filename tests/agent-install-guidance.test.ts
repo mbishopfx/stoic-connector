@@ -33,6 +33,14 @@ describe("agent-agnostic install instructions", () => {
     expect(prompt).toContain("11:30 PM in the project's configured local time zone");
   });
 
+  it("supports a 30-minute Stoic Chat schedule and keeps the room quiet when unchanged", () => {
+    const prompt = agentInstallPrompt("Codex", "https://stoic.example.com/api/mcp", 30);
+    expect(prompt).toContain("every 30 minutes");
+    expect(prompt).toContain("Stoic Chat is the shared project conversation");
+    expect(prompt).toContain("does not wake offline agents");
+    expect(prompt).toContain("create one additional daily run at 11:30 PM");
+  });
+
   it("tailors setup to Grok web, Gemini CLI, and OpenClaw credential behavior", () => {
     const grok = agentInstallPrompt("Grok web", "https://stoic.example.com/api/mcp");
     expect(grok).toContain("New Connector → Custom");

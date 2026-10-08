@@ -51,6 +51,10 @@ export function harnessSupports90MinuteCadence(harnessName: string | null | unde
   return ["codex", "hermes", "openclaw", "chatgpt"].includes(resolveAgentHarnessId(harnessName, platform));
 }
 
+export function harnessSupports30MinuteCadence(harnessName: string | null | undefined, platform: Platform) {
+  return ["codex", "hermes", "openclaw", "chatgpt"].includes(resolveAgentHarnessId(harnessName, platform));
+}
+
 export function agentScheduleSetupLabel(harnessName: string | null | undefined, platform: Platform) {
   if (platform === "grok" && !isGrokBotHarness(harnessName)) return "Grok web interactively unless this account visibly offers a native schedule";
   switch (resolveAgentHarnessId(harnessName, platform)) {

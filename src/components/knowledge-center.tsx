@@ -420,7 +420,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">Agent diary</Badge><CardTitle className="text-base">Nightly check-in · 11:30 PM</CardTitle></div>
-          <CardDescription>Entries use {diaryTimezone}. Add the hourly group-chat prompt to an agent with a native schedule; Stoic cannot wake an offline host. The daily Ideas run reads these self-reported notes as context.</CardDescription>
+          <CardDescription>Entries use {diaryTimezone}. Add the 30- or 60-minute Stoic Chat check-in prompt to an agent with a native schedule; Stoic cannot wake an offline host. The daily Ideas run reads these self-reported notes as context.</CardDescription>
         </div>
         <Badge variant="outline">{agentDiaries.length} {agentDiaries.length === 1 ? "entry" : "entries"}</Badge>
       </CardHeader>
@@ -590,7 +590,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
             <CardContent className="min-h-0 flex-1 p-0">
               {agentDiaries.length ? <div className="grid max-h-[36rem] overflow-y-auto">{agentDiaries.map((note) => <Button key={note.id} type="button" variant="ghost" aria-pressed={selectedNoteId === note.id} onClick={() => chooseNote(note.id)} className={`h-auto w-full justify-start rounded-none border-b px-4 py-3 text-left ${selectedNoteId === note.id ? "bg-accent/60" : ""}`}>
                 <span className="grid w-full min-w-0 gap-1.5 whitespace-normal"><strong className="line-clamp-2 text-sm font-medium leading-5 text-foreground"><AssistantRichInline text={note.title} /></strong><span className="text-xs text-muted-foreground">{agents.find((agent) => agent.id === note.source_agent)?.name || "Connected agent"} · {note.updated_at.slice(0, 10)}</span><span className="text-xs text-muted-foreground">{relativeTime(note.updated_at)} · self-reported</span></span>
-              </Button>)}</div> : <Empty className="min-h-64 border-0 p-6"><EmptyHeader><EmptyMedia variant="icon"><span className="text-xs font-semibold tracking-wide">AD</span></EmptyMedia><EmptyTitle>No agent diaries yet</EmptyTitle><EmptyDescription>Paste the Hourly Group Chat Check-In prompt into a connected agent and verify its own scheduler.</EmptyDescription></EmptyHeader></Empty>}
+              </Button>)}</div> : <Empty className="min-h-64 border-0 p-6"><EmptyHeader><EmptyMedia variant="icon"><span className="text-xs font-semibold tracking-wide">AD</span></EmptyMedia><EmptyTitle>No agent diaries yet</EmptyTitle><EmptyDescription>Paste the Stoic Chat check-in prompt into a connected agent and verify its own scheduler.</EmptyDescription></EmptyHeader></Empty>}
             </CardContent>
           </Card>
           <div aria-label="Agent diary details" className="min-w-0">{selectedNote?.kind === "agent_diary" && selectedNote.project_id === projectId

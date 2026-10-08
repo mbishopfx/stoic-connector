@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BookOpen, Bot, ChartNoAxesCombined, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
-  MessageSquare, MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users, Wrench,
+  MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users, Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
@@ -19,7 +19,7 @@ import { ContactsTab, IdeasTab, PromptsTab, BillingTab } from "./tabs/other-tabs
 import { AgentsTab, FilesTab, KnowledgeTab, ProjectsTab } from "./tabs/team-tabs";
 import { BoardTab, HandoffsTab, OverviewTab, AnalyticsTab } from "./tabs/work-tabs";
 import { AgentInstallation } from "@/components/agent-installation";
-import { navSections, type McpRuntime, type NavTab, type TeamContext } from "./ui-contract";
+import { navSections, type McpRuntime, type McpTabProps, type NavTab, type TeamContext } from "./ui-contract";
 
 const app = new App({ name: "Stoic Connector", version: "0.2.0" });
 let connectPromise: Promise<void> | null = null;
@@ -30,7 +30,6 @@ const tabIcons: Record<NavTab, LucideIcon> = {
   ideas: Lightbulb,
   overview: LayoutDashboard,
   handoffs: ListTodo,
-  board: MessageSquare,
   contacts: Users,
   projects: Folder,
   agents: Bot,
@@ -114,6 +113,7 @@ function AppRoot() {
   const [context, setContext] = useState<TeamContext | null>(null);
   const [projectId, setProjectId] = useState("");
   const [tab, setTab] = useState<NavTab>("analytics");
+  const [chatEntry, setChatEntry] = useState(0);
   const [connection, setConnection] = useState<"connecting" | "connected" | "error">("connecting");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<Notice>(null);
@@ -130,6 +130,11 @@ function AppRoot() {
   const resolvedTheme = themeMode === "system" ? hostTheme || deviceTheme : themeMode;
   const hasContext = context !== null;
   const currentTab = navItems.find((item) => item.id === tab);
+
+  function selectTab(nextTab: NavTab) {
+    if (nextTab === "assistant") setChatEntry((entry) => entry + 1);
+    setTab(nextTab);
+  }
 
   const notify = useCallback((text: string, tone: "success" | "error" = "error") => {
     setNotice({ text, tone });
@@ -243,7 +248,6 @@ function AppRoot() {
       case "ideas": view = <IdeasTab {...props} />; break;
       case "overview": view = <OverviewTab {...props} />; break;
       case "handoffs": view = <HandoffsTab {...props} />; break;
-      case "board": view = <BoardTab {...props} />; break;
       case "contacts": view = <ContactsTab {...props} />; break;
       case "projects": view = <ProjectsTab {...props} />; break;
       case "agents": view = <AgentsTab {...props} />; break;
@@ -298,7 +302,7 @@ function AppRoot() {
                   aria-label={item.label}
                   aria-current={tab === item.id ? "page" : undefined}
                   title={item.label}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => selectTab(item.id)}
                 >
                   <Icon />
                   {item.id === "handoffs" && inboxCount > 0 && <span className="absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full border border-background bg-primary px-1 text-[9px] leading-4 text-primary-foreground">{Math.min(inboxCount, 99)}</span>}
@@ -321,7 +325,7 @@ function AppRoot() {
             <span className="truncate text-sm font-medium">{currentTab?.label || "Stoic"}</span>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-            <Select value={tab} onValueChange={(value) => { if (value) setTab(value as NavTab); }}>
+            <Select value={tab} onValueChange={(value) => { if (value) selectTab(value as NavTab); }}>
               <SelectTrigger className="w-[8.5rem] shrink-0 sm:w-40" aria-label="Navigate to tab"><SelectValue /></SelectTrigger>
               <SelectContent align="end" className="max-h-[min(70vh,28rem)]">
                 {navSections.map((section) => <SelectGroup key={section.label}>
@@ -356,11 +360,11 @@ function AppRoot() {
           </Alert>
         </div>}
 
-        <main className="mcp-widget-content flex-1 p-4 sm:p-6">
-          <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-4">
+        <main className={`mcp-widget-content flex-1 p-4 sm:p-6 ${tab === "assistant" ? "mcp-widget-chat-content" : ""}`}>
+          <div className={`mx-auto flex w-full max-w-6xl flex-col gap-4 ${tab === "assistant" ? "mcp-widget-chat-inner" : "min-h-full"}`}>
             {loading && !context ? <div className="grid gap-3" aria-label="Loading Stoic workspace"><Skeleton className="h-24 w-full" /><Skeleton className="h-56 w-full" /></div> : null}
             {!loading && !context ? <Alert variant="destructive"><AlertTitle>Could not connect</AlertTitle><AlertDescription>Reconnect Stoic or refresh this workspace to try again.</AlertDescription><Button variant="outline" size="sm" className="mt-3 w-fit" onClick={() => void refreshContext().catch((error) => notify(errorMessage(error), "error"))}>Try again</Button></Alert> : null}
-            {context && <div className={tab === "assistant" ? "contents" : "hidden"}><AssistantTab context={context} projectId={projectId} runtime={runtime} /></div>}
+            {context && <div className={tab === "assistant" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><StoicChatTab key={chatEntry} {...{ context, projectId, runtime }} /></div>}
             {context && tab !== "assistant" && view}
           </div>
         </main>
@@ -384,6 +388,15 @@ function AppRoot() {
       </Sheet>
     </div>
   );
+}
+
+function StoicChatTab(props: McpTabProps) {
+  const [view, setView] = useState<"room" | "plan">("room");
+  return <div className="flex min-h-0 flex-1 flex-col gap-3">
+    {view === "plan" && <div className="shrink-0"><Button type="button" variant="outline" size="sm" onClick={() => setView("room")}>Back to Stoic Chat</Button></div>}
+    <div className={view === "room" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><BoardTab {...props} onPlan={() => setView("plan")} /></div>
+    <div className={view === "plan" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><AssistantTab {...props} /></div>
+  </div>;
 }
 
 const rootElement = document.getElementById("stoic-root");

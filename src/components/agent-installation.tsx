@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 
 const cadences = [
+  { value: "30", label: "Every 30 minutes" },
   { value: "60", label: "Every hour" },
   { value: "90", label: "Every 90 minutes" },
   { value: "360", label: "Every six hours" },

@@ -102,8 +102,10 @@ export function getDashboardGuidance(input: DashboardGuideInput): DashboardGuida
       ? "daily"
       : overdueAgent.schedule_cadence_minutes === 360
         ? "six-hour"
-        : overdueAgent.schedule_cadence_minutes === 90
-          ? "90-minute"
+      : overdueAgent.schedule_cadence_minutes === 90
+        ? "90-minute"
+        : overdueAgent.schedule_cadence_minutes === 30
+          ? "30-minute"
           : "hourly";
     return {
       ...base,

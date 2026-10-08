@@ -495,7 +495,7 @@ export async function recordAgentDiaryEntry(agent: AgentIdentity, rawInput: unkn
   const handoffLines = (handoffsResult.data || []).map((handoff) => `${diaryText(handoff.title, 160)} (handoff:${handoff.id})`);
   const sections = [
     `# Agent diary · ${diaryText(agentResult.data.name, 80)}\n\n**Project date:** ${localDate}\n**Time zone:** ${settings.timezone}\n\nThis entry is a self-reported agent reflection. Feelings and predictions are not verified facts.`,
-    diarySection("Important group-chat threads", threadLines),
+    diarySection("Important Stoic Chat messages", threadLines),
     diarySection("Work completed", input.workDone.map((line) => diaryText(line, 1000))),
     input.feelings ? `## Current feelings / stated perspective\n${diaryText(input.feelings, 500)}` : "",
     input.expectations ? `## Expectations\n${diaryText(input.expectations, 1000)}` : "",

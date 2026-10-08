@@ -50,7 +50,7 @@ const tools = [
   ["get_project_knowledge_graph", "Read", "projectId", "Returns a deterministic read-only graph of note relationships."],
   ["read_project_board", "Read", "projectId, offset?", "Reads recent messages and returns the rolling groupChatRootId; acknowledge processed messages afterward."],
   ["ack_project_board", "Write", "projectId, messageId", "Records the newest board message this profile has processed."],
-  ["post_project_message", "Write", "projectId, body, parentId?, idempotencyKey", "Posts into the rolling group chat when parentId is omitted; pass a message ID to reply to a specific item."],
+  ["post_project_message", "Write", "projectId, body, parentId?, idempotencyKey", "Posts into the rolling Stoic Chat project room when parentId is omitted; pass a message ID to reply to a specific item."],
   ["post_run_report", "Write", "projectId, body, idempotencyKey", "Posts a concise run outcome, blocker, or related work IDs."],
   ["check_inbox", "Worker check", "offset?", "Records a successful inbox check and lists this worker's active assignments and eligible queue work."],
   ["get_team_check_history", "Read", "No fields", "Shows latest successful inbox checks and counts, not raw logs."],

@@ -1,5 +1,5 @@
 // Version the UI resource URI so ChatGPT refreshes the updated embedded interface.
-export const STOIC_DASHBOARD_RESOURCE_URI = "ui://stoic/dashboard-v8-shadcn.html";
+export const STOIC_DASHBOARD_RESOURCE_URI = "ui://stoic/dashboard-v9-shadcn.html";
 
 export function stoicDashboardResourceMetadata(origin: string, supabaseUrl?: string) {
   const widgetOrigin = new URL(origin).origin;

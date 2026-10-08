@@ -13,8 +13,9 @@ describe("prompt library dashboard surface", () => {
     expect(html).toContain("Contact Link");
     expect(html).toContain("browser relay");
     expect(html).toContain("Team Check-In");
-    expect(html).toContain("Hourly Group Chat Check-In");
-    expect(html.match(/Copy prompt/g)).toHaveLength(4);
+    expect(html).toContain("Stoic Chat · Every 30 Minutes");
+    expect(html).toContain("Parallel Work Breakdown");
+    expect(html.match(/Copy prompt/g)).toHaveLength(13);
     expect(html).not.toContain("Bearer ");
   });
 });
