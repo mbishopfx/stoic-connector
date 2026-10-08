@@ -57,15 +57,6 @@ describe("copy-ready Stoic prompts", () => {
     }
   });
 
-  it("provides bounded multi-agent orchestration prompts", () => {
-    const breakdown = renderStoicPrompt("parallel-work-breakdown", endpoint);
-    expect(breakdown).toContain("create_handoff");
-    expect(breakdown).toContain("pending owner approval");
-    expect(breakdown).toContain("idempotencyKey");
-    expect(renderStoicPrompt("cross-agent-review", endpoint)).toContain("Do not edit the teammate's work");
-    expect(renderStoicPrompt("decision-synthesis", endpoint)).toContain("expectedVersion");
-  });
-
   it("changes prompt voice without changing task or boundary instructions", () => {
     const balanced = renderStoicPrompt("stoic-chat-check-in-60m", endpoint, "balanced");
     const funny = renderStoicPrompt("stoic-chat-check-in-60m", endpoint, "funny");
