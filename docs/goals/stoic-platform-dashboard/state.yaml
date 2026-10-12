@@ -1,0 +1,595 @@
+# GoalBuddy v2 state: PM-owned board truth.
+version: 2
+
+goal:
+  title: "Stoic Platform Dashboard Redesign"
+  slug: "stoic-platform-dashboard"
+  kind: specific
+  tranche: "Implement and audit the owner dashboard redesign, ideas assignment workflow, and real six-hour/monthly agent activity analytics."
+  status: done
+  intake:
+    original_request: "Use the dashboard preset, keep current tabs, add six-hour agent-to-agent/action/MCP stats compounded over a month, and make Ideas a table with a popup to assign or deny."
+    interpreted_outcome: "A preset-based owner dashboard keeps the current 12 tabs, provides real agent activity analytics in Overview, and supports assigning or denying ideas from a table dialog."
+    input_shape: specific
+    audience: "Stoic workspace owners"
+    authority: requested
+    proof_type: artifact
+    completion_proof: "Dashboard, metrics capture/aggregation, and ideas assignment flow are implemented with truthful source boundaries and pass the selected source/build checks; final audit maps evidence to all requested behavior."
+    likely_misfire: "Mock metrics or an implication that the managed Agents API can inspect unrelated Codex Desktop or third-party conversations."
+    blind_spots_considered:
+      - "Dashboard surface choice is unanswered; proceed with the recommended owner web dashboard at /dashboard unless the user steers otherwise."
+      - "Historical MCP calls are not currently captured; exact MCP counts start after instrumentation."
+      - "Use consistent UTC six-hour windows and daily 30-day chart buckets."
+      - "Idea assignment must honor workspace policy and connected-worker eligibility."
+    existing_plan_facts:
+      - "design/main-redesign.md specifies dashboard-01 as the main layout and preset b4aRK5K0fb for active-window components."
+      - "Keep the current 12 navigation tabs and place collaboration stats in an existing tab."
+      - "Use design/ideas.md, design/charts.md, and design/graphs.md for the Ideas table and charts."
+      - "Ideas rows open a popup for assignment to an agent or denial."
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  preserve_and_validate_existing_plan: true
+  intake_misfire_must_be_audited: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+visual_board:
+  selected: none
+  local:
+    status: not_requested
+    url: null
+    command: "npx goalbuddy board docs/goals/stoic-platform-dashboard"
+  github_projects:
+    status: not_requested
+    url: null
+    command: "npx goalbuddy extend github-projects"
+    missing: []
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the real event and MCP-call sources, managed Agents API history boundaries, and the safest six-hour/monthly analytics design for the requested owner dashboard."
+    inputs:
+      - "src/lib/managed-codex.ts"
+      - "src/app/api/mcp/route.ts"
+      - "src/lib/account.ts"
+      - "src/lib/coordination.ts"
+      - "src/lib/board.ts"
+      - "src/lib/ideas.ts"
+      - "supabase/migrations"
+      - "src/app/api/cron"
+      - "design/"
+    constraints:
+      - "Read-only; do not edit product or board files."
+      - "Do not run tests or make provider requests."
+      - "Distinguish activity stored by Stoic from activity only visible to a user's Codex or third-party agent runtime."
+      - "Use concrete source paths and current official API documentation."
+    expected_output:
+      - "Existing event sources and gaps for each requested metric."
+      - "Managed Agents API session listing/history semantics and fit for this request."
+      - "A bounded data/retention/aggregation design, including workspace isolation."
+      - "Candidate implementation slices, exact files, verification commands, and stop conditions."
+      - "Unresolved user choices that materially change scope."
+    receipt:
+      result: done
+      summary: "Stoic stores workspace-scoped handoffs, task events, board messages, and selected audit events, but no universal MCP call log or external Codex/third-party history. The managed Codex helper is single-agent/no-tools and deletes sessions after each run. Build metrics only from records Stoic observes; instrument future MCP calls without args/results; preserve tenant boundaries and label historical gaps. Exact implementation sequencing and assignment semantics delegated to Judge."
+      evidence:
+        - src/lib/managed-codex.ts
+        - src/app/api/mcp/route.ts
+        - src/lib/account.ts
+        - src/lib/coordination.ts
+        - supabase/migrations
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review Scout evidence and select safe, bounded Worker slices for the dashboard, Ideas flow, analytics capture, and six-hour/monthly chart."
+    inputs:
+      - "T001 receipt"
+      - "User's current dashboard-surface answer, if provided"
+    constraints:
+      - "Read-only; do not edit implementation files."
+      - "Do not claim coverage of historical MCP calls that were not recorded."
+      - "Select exact allowed_files, verify commands, and stop conditions for each Worker."
+    expected_output:
+      - "Implementation decision and ordered Worker slices."
+      - "Exact file ownership per Worker."
+      - "Verification and stop conditions."
+      - "Any externally blocked proof kept separate from local work."
+    receipt:
+      result: done
+      decision: "Proceed with /dashboard, preserve all 12 tabs, and place metrics in Overview. Count tenant-scoped Stoic records for a rolling UTC six-hour window; instrument authenticated MCP tools by name/workspace/agent/time/outcome without arguments or results. Persist idempotent six-hour rollups; chart actual daily observations across 30 UTC days without extrapolation. Use bounded/redacted Stoic-shared content only for managed-agent analysis and retain deterministic counts as truth. Ideas denial maps to archived; assignment must explicitly target an eligible same-workspace connected worker and enforce policy server-side, never fall back to team queue."
+      next_allowed_task: T003
+      blocked_tasks: []
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Integrate the actual ShadCN dashboard-01 sidebar/inset shell and apply preset b4aRK5K0fb to the owner dashboard and shared active-view components while preserving all 12 tabs and their behavior."
+    inputs:
+      - "design/main-redesign.md"
+      - "src/components/relay-dashboard.tsx"
+      - "src/app/globals.css"
+      - "Next.js docs under node_modules/next/dist/docs/"
+    constraints:
+      - "Implement only the owner web dashboard at /dashboard; do not edit the bundled MCP widget."
+      - "Keep the existing 12 tabs and existing tab behavior."
+      - "Read the relevant installed Next.js docs before changing code."
+      - "Apply the supplied preset with the current ShadCN CLI and use the generated SidebarProvider/Sidebar/SidebarInset dashboard-01 composition."
+      - "Use the dashboard block as a shell reference; do not overwrite src/app/dashboard/page.tsx, copy sample data, or install unrelated demo content."
+      - "Keep existing workspace/auth behavior and map all 12 current tab handlers into the generated sidebar."
+      - "Do not add or run tests."
+    allowed_files:
+      - "components.json"
+      - "src/app/layout.tsx"
+      - "src/app/dashboard/layout.tsx"
+      - "src/components/relay-dashboard.tsx"
+      - "src/app/globals.css"
+      - "src/lib/utils.ts"
+      - "src/hooks/use-mobile.ts"
+      - "src/components/ui/accordion.tsx"
+      - "src/components/ui/alert-dialog.tsx"
+      - "src/components/ui/alert.tsx"
+      - "src/components/ui/attachment.tsx"
+      - "src/components/ui/avatar.tsx"
+      - "src/components/ui/badge.tsx"
+      - "src/components/ui/bubble.tsx"
+      - "src/components/ui/button-group.tsx"
+      - "src/components/ui/button.tsx"
+      - "src/components/ui/card.tsx"
+      - "src/components/ui/checkbox.tsx"
+      - "src/components/ui/collapsible.tsx"
+      - "src/components/ui/combobox.tsx"
+      - "src/components/ui/command.tsx"
+      - "src/components/ui/dialog.tsx"
+      - "src/components/ui/dropdown-menu.tsx"
+      - "src/components/ui/empty.tsx"
+      - "src/components/ui/field.tsx"
+      - "src/components/ui/input-group.tsx"
+      - "src/components/ui/input.tsx"
+      - "src/components/ui/item.tsx"
+      - "src/components/ui/label.tsx"
+      - "src/components/ui/marker.tsx"
+      - "src/components/ui/message-scroller.tsx"
+      - "src/components/ui/message.tsx"
+      - "src/components/ui/pagination.tsx"
+      - "src/components/ui/popover.tsx"
+      - "src/components/ui/progress.tsx"
+      - "src/components/ui/radio-group.tsx"
+      - "src/components/ui/scroll-area.tsx"
+      - "src/components/ui/select.tsx"
+      - "src/components/ui/separator.tsx"
+      - "src/components/ui/sheet.tsx"
+      - "src/components/ui/skeleton.tsx"
+      - "src/components/ui/slider.tsx"
+      - "src/components/ui/spinner.tsx"
+      - "src/components/ui/switch.tsx"
+      - "src/components/ui/table.tsx"
+      - "src/components/ui/tabs.tsx"
+      - "src/components/ui/textarea.tsx"
+      - "src/components/ui/toggle-group.tsx"
+      - "src/components/ui/toggle.tsx"
+      - "src/components/ui/tooltip.tsx"
+      - "src/components/ui/sidebar.tsx"
+      - "src/components/ui/breadcrumb.tsx"
+      - "src/components/ui/drawer.tsx"
+      - "src/components/ui/sonner.tsx"
+      - "public/stoic-mcp-widget.css"
+      - "public/stoic-mcp-widget.js"
+      - "package.json"
+      - "package-lock.json"
+    verify:
+      - "npm run typecheck"
+      - "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+      - "git diff --check"
+    stop_if:
+      - "The dashboard block implementation would replace the protected dashboard route or discard current tab/user/workspace behavior."
+      - "Applying the preset requires files outside allowed_files or causes component behavior changes that cannot be safely merged."
+      - "The installed Next.js docs conflict with a planned API or convention."
+    expected_output:
+      - "Changed files limited to allowed_files."
+      - "Dashboard shell uses generated ShadCN sidebar primitives and inset composition; preset b4aRK5K0fb is reflected in components.json/theme and shared active-view styling."
+      - "Commands and outcomes; do not run test suites."
+    receipt:
+      result: done
+      changed_files:
+        - "components.json"
+        - "package.json"
+        - "package-lock.json"
+        - "public/stoic-mcp-widget.css"
+        - "public/stoic-mcp-widget.js"
+        - "src/app/globals.css"
+        - "src/app/dashboard/layout.tsx"
+        - "src/components/relay-dashboard.tsx"
+        - "src/components/ui/accordion.tsx"
+        - "src/components/ui/alert-dialog.tsx"
+        - "src/components/ui/alert.tsx"
+        - "src/components/ui/attachment.tsx"
+        - "src/components/ui/badge.tsx"
+        - "src/components/ui/bubble.tsx"
+        - "src/components/ui/button-group.tsx"
+        - "src/components/ui/button.tsx"
+        - "src/components/ui/card.tsx"
+        - "src/components/ui/checkbox.tsx"
+        - "src/components/ui/combobox.tsx"
+        - "src/components/ui/command.tsx"
+        - "src/components/ui/dialog.tsx"
+        - "src/components/ui/dropdown-menu.tsx"
+        - "src/components/ui/empty.tsx"
+        - "src/components/ui/field.tsx"
+        - "src/components/ui/input-group.tsx"
+        - "src/components/ui/input.tsx"
+        - "src/components/ui/item.tsx"
+        - "src/components/ui/message-scroller.tsx"
+        - "src/components/ui/message.tsx"
+        - "src/components/ui/pagination.tsx"
+        - "src/components/ui/popover.tsx"
+        - "src/components/ui/progress.tsx"
+        - "src/components/ui/radio-group.tsx"
+        - "src/components/ui/select.tsx"
+        - "src/components/ui/sheet.tsx"
+        - "src/components/ui/skeleton.tsx"
+        - "src/components/ui/slider.tsx"
+        - "src/components/ui/spinner.tsx"
+        - "src/components/ui/switch.tsx"
+        - "src/components/ui/table.tsx"
+        - "src/components/ui/tabs.tsx"
+        - "src/components/ui/textarea.tsx"
+        - "src/components/ui/toggle-group.tsx"
+        - "src/components/ui/toggle.tsx"
+        - "src/components/ui/tooltip.tsx"
+        - "src/components/ui/sidebar.tsx"
+        - "src/hooks/use-mobile.ts"
+      commands:
+        - cmd: "npx shadcn@latest apply --preset b4aRK5K0fb --yes"
+          status: pass
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Applied the real ShadCN preset b4aRK5K0fb (Maia, mauve, emerald, Hugeicons, IBM Plex Sans and Merriweather), integrated dashboard-01's SidebarProvider/Sidebar/SidebarInset layout, scoped fonts to /dashboard, retained all 12 existing tab IDs/handlers, and replaced the CSS-only shell simulation with generated sidebar primitives. The build also regenerated tracked MCP widget CSS/JS from the shared primitives; its widget source/navigation were not changed. The original Worker exhausted credits mid-task, and PM task T009 completed the shell and verification."
+  - id: T004
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: low
+    objective: "Replace the Ideas cards with a review table and detail dialog that can explicitly deny or assign an idea to an eligible connected worker."
+    inputs:
+      - "src/components/relay-dashboard.tsx"
+      - "src/app/api/commands/route.ts"
+      - "src/lib/ideas.ts"
+      - "Existing ideas SQL RPC and connected-agent eligibility rules"
+      - "design/ideas.md"
+    constraints:
+      - "Use a transactional workspace-scoped server-side assignment path."
+      - "Deny uses the existing archived persistence state."
+      - "Do not fall back to the team queue; assignment must identify the selected eligible worker."
+      - "Do not edit files outside allowed_files or run tests."
+    allowed_files:
+      - "src/components/relay-dashboard.tsx"
+      - "src/app/api/commands/route.ts"
+      - "src/lib/ideas.ts"
+      - "supabase/migrations/202610060001_ideas_worker_assignment.sql"
+    verify:
+      - "npm run typecheck"
+      - "npm run build"
+      - "git diff --check"
+    stop_if:
+      - "Assignment cannot be validated for same-workspace worker, project, plan, and delegation policy in the guarded server/database path."
+      - "The exact connected-worker eligibility rules are ambiguous after reading source."
+      - "A safe migration cannot be written within the allowed migration path."
+    expected_output:
+      - "Accessible table and detail dialog with explicit selected-agent assignment and denial."
+      - "Transactional server-side policy/eligibility enforcement."
+      - "Commands and outcomes; no test suites."
+    receipt:
+      result: done
+      changed_files:
+        - "src/components/relay-dashboard.tsx"
+        - "src/app/api/commands/route.ts"
+        - "src/lib/ideas.ts"
+        - "supabase/migrations/202610060001_ideas_worker_assignment.sql"
+      commands:
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Replaced the Ideas cards with a ShadCN table and accessible detail dialog. Owners can explicitly choose an eligible connected worker or deny the idea into the existing archived state. The assignment RPC locks the workspace, idea, active project, and selected worker; it enforces Pro plan, delegation, same-workspace project/worker, connected status, non-boss/non-Muse eligibility, and creates a directly assigned handoff. Removed the old dashboard API team-queue acceptance path. Migration is source-only and has not been applied to a live database."
+      next_allowed_task: T005
+      blocked_tasks: []
+  - id: T005
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: low
+    objective: "Instrument authenticated MCP tools with workspace-scoped name/actor/time/outcome metadata only."
+    inputs:
+      - "src/app/api/mcp/route.ts"
+      - "src/lib/analytics instrumentation module"
+      - "Analytics schema migration"
+    constraints:
+      - "Capture every authenticated tools/call attempt, including failures, if the route boundary can establish it."
+      - "Never persist tool arguments, results, credentials, or chat bodies."
+      - "Do not edit files outside allowed_files or run tests."
+    allowed_files:
+      - "src/app/api/mcp/route.ts"
+      - "src/lib/activity-analytics.ts"
+      - "supabase/migrations/202610060002_activity_analytics.sql"
+    verify:
+      - "npm run typecheck"
+      - "npm run build"
+      - "git diff --check"
+    stop_if:
+      - "The authenticated tool-call boundary cannot be proven to cover all tools/call attempts."
+      - "Any persisted record could contain MCP arguments/results or cross workspace boundaries."
+      - "The migration would require a different file or external production access."
+    expected_output:
+      - "Tenant-scoped instrumentation with metadata allowlist and explicit capture start boundary."
+      - "Commands and outcomes; no test suites."
+    receipt:
+      result: done
+      changed_files:
+        - "src/app/api/mcp/route.ts"
+        - "src/lib/activity-analytics.ts"
+        - "supabase/migrations/202610060002_activity_analytics.sql"
+      commands:
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Instrumented the authenticated MCP tools/call boundary for every registered tool, including the app tool; handler callbacks provide success/error and validation or unknown-tool failures default to error. The tenant actor resolves from the verified agent ID or a hashed OAuth client ID with its owner workspace. Persistence uses an explicit metadata allowlist: workspace, actor key, tool name, outcome, duration, and database timestamp. Added an explicit per-workspace capture start timestamp. Tool arguments, results, credentials, and chat bodies are never written. Historical calls remain unavailable, and the migration has not been applied to a live database."
+      next_allowed_task: T006
+      blocked_tasks: []
+  - id: T006
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: low
+    objective: "Aggregate observed activity into idempotent six-hour UTC rollups and persist bounded managed-agent analysis results."
+    inputs:
+      - "src/lib/managed-codex.ts"
+      - "src/lib/activity-analytics.ts"
+      - "src/app/api/cron/analytics/route.ts"
+      - "vercel.json"
+      - "Analytics migration from T005"
+    constraints:
+      - "Use deterministic database counts as metric truth; analysis may only annotate bounded/redacted workspace summaries."
+      - "Persist only bounded analysis output and numeric rollups, not raw payloads or session history."
+      - "Respect existing managed session deletion behavior."
+      - "Do not edit files outside allowed_files or run tests."
+    allowed_files:
+      - "src/lib/managed-codex.ts"
+      - "src/lib/activity-analytics.ts"
+      - "src/app/api/cron/analytics/route.ts"
+      - "vercel.json"
+      - "supabase/migrations/202610060002_activity_analytics.sql"
+    verify:
+      - "npm run typecheck"
+      - "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+      - "git diff --check"
+    stop_if:
+      - "Rollups are not idempotent or do not use UTC time boundaries."
+      - "Model input would include unbounded or unredacted conversation text."
+      - "Provider failure could be represented as a successful complete rollup."
+    expected_output:
+      - "Scheduled, workspace-scoped six-hour aggregation with honest failure/coverage state."
+      - "Commands and outcomes; no test suites."
+    receipt:
+      result: done
+      changed_files:
+        - "src/lib/activity-analytics.ts"
+        - "src/app/api/cron/analytics/route.ts"
+        - "vercel.json"
+        - "supabase/migrations/202610060002_activity_analytics.sql"
+      commands:
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Added idempotent workspace-scoped six-hour UTC rollups for observed task events, shared messages, audit actions, agent actors, and metadata-only MCP calls; scheduled an authenticated analytics job; and added bounded managed Codex analysis of redacted Stoic-shared snippets with explicit failure states. The migration is source-only and has not been applied. MCP coverage begins when capture is deployed; no historical MCP calls or external Codex/third-party histories are represented."
+      next_allowed_task: T007
+      blocked_tasks: []
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Show real six-hour collaboration metrics and 30 actual daily activity buckets in Overview using the supplied chart components."
+    inputs:
+      - "src/lib/account.ts"
+      - "src/components/relay-dashboard.tsx"
+      - "design/charts.md"
+      - "design/graphs.md"
+      - "Analytics schema and rollup path from T005/T006"
+    constraints:
+      - "Preserve all 12 tabs and existing non-Overview behavior."
+      - "Use actual workspace-scoped values; show missing-history/instrumentation coverage."
+      - "Do not extrapolate, mock, or imply external agent-history access."
+      - "Do not edit files outside allowed_files or run tests."
+    allowed_files:
+      - "src/lib/account.ts"
+      - "src/components/relay-dashboard.tsx"
+      - "src/components/ui/chart.tsx"
+      - "package.json"
+      - "package-lock.json"
+    verify:
+      - "npm run typecheck"
+      - "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+      - "git diff --check"
+    stop_if:
+      - "The charts need to read another workspace or show mock/extrapolated values."
+      - "The 30-day buckets cannot distinguish actual zero activity from missing data."
+      - "The installed Next.js docs or supplied chart docs conflict with a planned API."
+    expected_output:
+      - "Overview displays six-hour actor/action/MCP counts and an honest 30-day chart with coverage labels."
+      - "Commands and outcomes; no test suites."
+    receipt:
+      result: done
+      changed_files:
+        - "src/lib/account.ts"
+        - "src/components/relay-dashboard.tsx"
+        - "src/components/ui/chart.tsx"
+        - "package.json"
+        - "package-lock.json"
+      commands:
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Added workspace-scoped rollup reads to dashboard state and an Overview analytics section with latest closed six-hour counts, per-tool MCP breakdown, managed Codex summary/status, and a 30-day ShadCN/Recharts chart. Daily values appear only for full days with four recorded UTC windows; missing and partial coverage remains blank and is summarized separately. The chart includes MCP calls, agent task updates, agent-authored shared messages, and audit actions."
+      next_allowed_task: T999
+      blocked_tasks: []
+  - id: T008
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review the ShadCN preset CLI's out-of-allowlist layout and utility changes and decide the safest scope update or rollback path for T003."
+    inputs:
+      - "T003 receipt and current working diff"
+      - "src/app/layout.tsx"
+      - "src/lib/utils.ts"
+      - "Official ShadCN preset apply semantics"
+    constraints:
+      - "Read-only; do not edit implementation files or run tests."
+      - "Preserve all user work and unrelated artifacts."
+      - "Determine whether the layout font wiring and utility re-export change are required by preset b4aRK5K0fb, and whether they are safe to retain."
+    expected_output:
+      - "Decision on keeping/authorizing or reverting the two files."
+      - "Exact allowed file additions if T003 may resume."
+      - "Verification/stop condition for the resumed Worker."
+    receipt:
+      result: done
+      decision: "Keep the preset's IBM Plex Sans and Merriweather font wiring, but scope it to /dashboard by adding src/app/dashboard/layout.tsx and removing font classes from the root layout. Revert the formatting-only semicolon change in src/lib/utils.ts. Authorize src/app/layout.tsx, src/app/dashboard/layout.tsx, and src/lib/utils.ts for T003; all other preset files are already within its allowed list. Use the generated shadcn sidebar primitives; stop if app-level scope cannot be preserved."
+      next_allowed_task: T003
+      blocked_tasks: []
+  - id: T009
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "Finish the partially applied dashboard-01 sidebar/inset shell in relay-dashboard, preserve all 12 existing tab handlers, scope preset fonts to /dashboard, remove the CSS-only imitation, and verify the local build."
+    inputs:
+      - "T003 partial Worker receipt"
+      - "T008 Judge receipt"
+      - "Current working diff and generated ShadCN sidebar primitive"
+    constraints:
+      - "Continue only the owner dashboard; do not change MCP widget source or dashboard route/auth behavior. The normal build may regenerate tracked widget assets from shared UI primitives."
+      - "Use SidebarProvider, Sidebar, SidebarInset, SidebarTrigger, and the existing 12-tab data/handlers."
+      - "Keep IBM Plex Sans and Merriweather scoped to /dashboard; root layout remains unchanged."
+      - "Remove/rework the obsolete CSS-only dashboard-01 mock rules and obsolete custom menu-open controls."
+      - "Do not add or run tests; run only typecheck, build with the validated HTTPS placeholder override, and diff check."
+    allowed_files:
+      - "src/components/relay-dashboard.tsx"
+      - "src/app/globals.css"
+      - "src/components/ui/spinner.tsx"
+      - "src/components/ui/sidebar.tsx"
+      - "src/hooks/use-mobile.ts"
+      - "src/app/dashboard/layout.tsx"
+      - "public/stoic-mcp-widget.css"
+      - "public/stoic-mcp-widget.js"
+    verify:
+      - "npm run typecheck"
+      - "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+      - "git diff --check"
+    stop_if:
+      - "The preset shell cannot preserve all 12 tabs or existing user/workspace behavior."
+      - "The app route/auth structure requires root-wide font or layout changes."
+      - "Typecheck/build exposes an unresolved dependency on a file outside allowed_files."
+    expected_output:
+      - "A complete functional dashboard-01 sidebar/inset shell using the generated ShadCN primitives."
+      - "Exact changed files and commands with statuses."
+    receipt:
+      result: done
+      changed_files:
+        - "src/components/relay-dashboard.tsx"
+        - "src/app/globals.css"
+        - "src/components/ui/spinner.tsx"
+        - "src/components/ui/sidebar.tsx"
+        - "src/hooks/use-mobile.ts"
+        - "src/app/dashboard/layout.tsx"
+        - "public/stoic-mcp-widget.css"
+        - "public/stoic-mcp-widget.js"
+      commands:
+        - cmd: "npm run typecheck"
+          status: pass
+        - cmd: "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Completed the dashboard-01 shell integration with generated ShadCN sidebar primitives, retained the existing 12 tab IDs and handlers, scoped the preset fonts to /dashboard, aligned existing dashboard colors with the emerald preset, removed the CSS-only shell imitation, and fixed the preset-generated Hugeicons spinner prop type."
+  - id: T999
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the complete implemented behavior satisfies the user's original dashboard redesign request."
+    inputs:
+      - "All completed Worker receipts"
+      - "Latest source/build verification"
+      - "Current diff and migration/config status"
+    constraints:
+      - "Read-only; do not implement."
+      - "Reject completion if requested tabs, truthful event sourcing, real chart data, or Ideas assignment/denial remain missing."
+      - "Separate local source/build proof from applied production migration, provider behavior, and deployed browser proof."
+    expected_output:
+      - "complete | not_complete"
+      - "full_outcome_complete: true | false"
+      - "Evidence mapped to the original request."
+      - "Remaining safe task if not complete."
+    receipt:
+      result: done
+      decision: complete
+      full_outcome_complete: true
+      evidence:
+        - "design/main-redesign.md and components.json: dashboard-01 shell direction and Maia preset configuration are retained."
+        - "src/components/relay-dashboard.tsx: all 12 existing navigation items remain; Overview contains truthful six-hour metrics, the 30-day chart, MCP tool breakdown, and managed Codex summary; Ideas remains a table with an assignment/denial dialog."
+        - "src/lib/account.ts and src/lib/activity-analytics.ts: analytics reads and writes are workspace-scoped, six-hour UTC rollups come from observed Stoic records, daily chart values are null unless all expected windows are recorded, and analysis input/output is bounded."
+        - "src/app/api/mcp/route.ts, src/app/api/cron/analytics/route.ts, vercel.json, and supabase/migrations/202610060002_activity_analytics.sql: metadata-only MCP capture and authenticated scheduled aggregation are implemented."
+        - "src/lib/ideas.ts, src/app/api/commands/route.ts, and supabase/migrations/202610060001_ideas_worker_assignment.sql: idea assignment validates workspace, policy, project, and connected-worker eligibility; denial retains the idea in history."
+        - "npm run typecheck, NEXT_PUBLIC_APP_URL=https://example.invalid npm run build, and git diff --check pass."
+      summary: "The requested owner-dashboard source implementation is complete. Existing tabs are preserved, Ideas supports review/assignment/denial, and Overview uses real workspace-scoped six-hour rollups with honest 30-day coverage and bounded managed Codex annotations."
+      proof_boundaries:
+        - "The analytics and Ideas migrations remain source-only and have not been applied to a live database."
+        - "MCP analytics coverage begins only after the capture migration and application code are deployed; no earlier MCP call history exists."
+        - "Managed Codex provider execution and deployed browser behavior were not exercised by the local source/build checks."
+      blocked_tasks: []
+
+checks:
+  dirty_fingerprint: unknown
+  last_verification:
+    result: pass
+    task: T999
+    commands:
+      - "npm run typecheck"
+      - "NEXT_PUBLIC_APP_URL=https://example.invalid npm run build"
+      - "git diff --check"

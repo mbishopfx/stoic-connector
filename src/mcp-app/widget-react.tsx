@@ -242,20 +242,17 @@ function AppRoot() {
   if (context) {
     const props = { context, projectId, runtime };
     switch (tab) {
-      case "assistant": view = null; break;
-      case "analytics": view = <AnalyticsTab {...props} />; break;
-      case "ideas": view = <IdeasTab {...props} />; break;
-      case "overview": view = <OverviewTab {...props} />; break;
-      case "handoffs": view = <HandoffsTab {...props} />; break;
-      case "contacts": view = <ContactsTab {...props} />; break;
-      case "projects": view = <ProjectsTab {...props} />; break;
-      case "agents": view = <AgentsTab {...props} />; break;
-      case "prompts": view = <PromptsTab {...props} />; break;
-      case "knowledge": view = <KnowledgeTab {...props} />; break;
-      case "install": view = <AgentInstallation endpoint="https://stoic.bishoptech.dev/api/mcp" onManageAgents={() => setTab("agents")} />; break;
-      case "files": view = <FilesTab {...props} />; break;
-      case "billing": view = <BillingTab {...props} />; break;
-    }
+          case "assistant": view = null; break;
+          case "overview": view = <OverviewTab {...props} />; break;
+          case "handoffs": view = <HandoffsTab {...props} />; break;
+          case "contacts": view = <ContactsTab {...props} />; break;
+          case "projects": view = <ProjectsTab {...props} />; break;
+          case "agents": view = <AgentsTab {...props} />; break;
+          case "knowledge": view = <KnowledgeTab {...props} />; break;
+          case "files": view = <FilesTab {...props} />; break;
+          case "billing": view = <BillingTab {...props} />; break;
+          default: view = null; break;
+        }
   }
 
   const dark = resolvedTheme === "dark";
