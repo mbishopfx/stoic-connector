@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { AgentInstallation } from "@/components/agent-installation";
 import type { Agent, McpTabProps, Project } from "../ui-contract";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
@@ -273,7 +274,7 @@ export function ProjectsTab({ context, projectId, runtime }: McpTabProps) {
       <header className="space-y-1">
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Workspace</p>
         <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">Each project keeps its brief, conversations, handoffs, knowledge, and files together.</p>
+        <p className="max-w-2xl text-sm text-muted-foreground">Each project keeps briefs, conversations, handoffs, and files together.</p>
       </header>
 
       {isBoss && (
@@ -366,7 +367,7 @@ export function AgentsTab({ context, runtime }: McpTabProps) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Agents</h1><p className="max-w-2xl text-sm text-muted-foreground">Review connected profiles, scheduled check-ins, and each agent’s workspace role.</p></div>
+        <div className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Agents</h1><p className="max-w-2xl text-sm text-muted-foreground">Connected profiles and scheduled check-ins.</p></div>
         <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />} Refresh roster</Button>
       </header>
 
@@ -405,7 +406,10 @@ export function AgentsTab({ context, runtime }: McpTabProps) {
           })}
         </div>
       ) : (
-        <EmptyPanel icon={<Bot />} title="No agent profiles connected" description="Connect a profile from the Stoic dashboard. Each profile gets its own revocable access." />
+        <div className="space-y-5">
+          <EmptyPanel icon={<Bot />} title="No agent profiles connected" description="Generate a setup prompt to connect an agent host to this workspace." />
+          <AgentInstallation endpoint="https://stoic.bishoptech.dev/api/mcp" />
+        </div>
       )}
     </div>
   );
@@ -522,7 +526,7 @@ export function KnowledgeTab({ context, projectId, runtime }: McpTabProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
-      <header className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1><p className="max-w-2xl text-sm text-muted-foreground">Validated project notes keep shared context current. Review the source and provenance before using a note in a decision.</p></header>
+      <header className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1><p className="max-w-2xl text-sm text-muted-foreground">Project notes with source provenance.</p></header>
 
       {!projectId ? <EmptyPanel icon={<BookOpen />} title="Choose a project first" description="Project knowledge is scoped to a shared workspace project." /> : (
         <>
@@ -655,7 +659,7 @@ export function FilesTab({ context, projectId, runtime }: McpTabProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
-      <header className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Artifacts</h1><p className="max-w-2xl text-sm text-muted-foreground">Project files stay in private storage. Create a short-lived download link when you need one.</p></header>
+      <header className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Files</h1><p className="max-w-2xl text-sm text-muted-foreground">Project files with secure download links.</p></header>
 
       {!projectId ? <EmptyPanel icon={<FileText />} title="Choose a project first" description="Shared files are attached to a project or to a specific handoff." /> : (
         <Card>

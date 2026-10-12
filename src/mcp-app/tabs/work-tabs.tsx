@@ -15,6 +15,24 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+} from "@/components/ui/message";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+
 import type { ActivityAnalytics, McpTabProps } from "@/mcp-app/ui-contract";
 import { agentChatColor } from "@/lib/agent-chat-color";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -270,13 +288,13 @@ export function OverviewTab(props: McpTabProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
-      <PageHeading {...props} onRefresh={retry} eyebrow="YOUR COMMAND CENTER" title="Good to see you." description="A clear view of agent check-ins, active assignments, and work that needs your attention." />
+      <PageHeading {...props} onRefresh={retry} eyebrow="OVERVIEW" title="Workspace" description="" />
       {loading ? <LoadingCards /> : error ? <LoadError message={error} onRetry={retry} /> : (
         <>
           <section className="grid gap-3 sm:grid-cols-3" aria-label="Workspace summary">
-            <MetricCard icon={UsersRound} value={connected} label="Connected agents" detail="Ready for their next scheduled check" />
-            <MetricCard icon={Activity} value={active} label="Active handoffs" detail="Shared work in progress" />
-            <MetricCard icon={CircleCheck} value={submitted} label="Needs your review" detail="Agent results waiting for the boss" />
+            <MetricCard icon={UsersRound} value={connected} label="Connected agents" detail="" />
+            <MetricCard icon={Activity} value={active} label="Active handoffs" detail="" />
+            <MetricCard icon={CircleCheck} value={submitted} label="Needs review" detail="" />
           </section>
 
           <section className="grid min-w-0 gap-4 xl:grid-cols-[1.05fr_0.95fr]">
@@ -301,7 +319,7 @@ export function OverviewTab(props: McpTabProps) {
             <Card className="min-w-0">
               <CardHeader className="border-b">
                 <CardTitle>Agent check-ins</CardTitle>
-                <CardDescription>A successful inbox check records activity; it does not mean work was completed.</CardDescription>
+                <CardDescription>Last successful check-in</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 pt-4">
                 {context.agents.length ? context.agents.map((agent) => {
@@ -320,16 +338,18 @@ export function OverviewTab(props: McpTabProps) {
                       </div>
                     </div>
                   );
-                }) : <EmptyProject title="No connected agents yet" description="Connect a profile from the Agents page to begin coordinating work." />}
+                }) : (
+                  <div className="rounded-lg border-2 border-dashed p-6 text-center">
+                    <p className="text-sm font-medium">No agents connected</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Connect agent profiles to start coordinating work.</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={() => runtime.notify("Open the Agents tab to add a profile.", "success")}>
+                      Open Agents
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </section>
-
-          <Alert className="border-primary/20 bg-primary/5">
-            <Clock3 />
-            <AlertTitle>Let the team work at its own pace</AlertTitle>
-            <AlertDescription>Agents receive handoffs on their next successful scheduled check. Stoic does not wake an offline agent.</AlertDescription>
-          </Alert>
         </>
       )}
     </div>
@@ -623,7 +643,7 @@ export function HandoffsTab(props: McpTabProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-7 sm:p-6 lg:p-8">
-      <PageHeading {...props} onRefresh={retry} eyebrow="WORK" title="Handoffs" description="Assignments and results stay together, so the team can pick up the next step without replaying old chats." />
+      <PageHeading {...props} onRefresh={retry} eyebrow="WORK" title="Handoffs" description="" />
       {loading ? <LoadingCards /> : error ? <LoadError message={error} onRetry={retry} /> : !projectId ? (
         <EmptyProject title="Choose a project" description="Select a project above to see its assignments and history." />
       ) : (
@@ -631,7 +651,7 @@ export function HandoffsTab(props: McpTabProps) {
           <section className="grid gap-3 sm:grid-cols-3" aria-label="Handoff summary">
             <MetricCard icon={Activity} value={active} label="In progress" detail="Assigned, claimed, or blocked" />
             <MetricCard icon={CircleCheck} value={needsReview} label="Needs review" detail="Submitted work from agents" />
-            <MetricCard icon={Clock3} value={handoffs.length} label="Project history" detail="Recent handoffs" />
+            <MetricCard icon={Clock3} value={handoffs.length} label="Total" detail="" />
           </section>
           <Card>
             <CardHeader className="border-b">
@@ -642,13 +662,13 @@ export function HandoffsTab(props: McpTabProps) {
               {handoffs.length ? handoffs.map((handoff) => (
                 <HandoffCard key={handoff.id} handoff={handoff} context={context} runtime={runtime} onUpdated={load} />
               )) : (
-                <EmptyProject title="No handoffs yet" description={context.self.role === "boss" && context.workspace.delegationLevel !== "observe" ? "Create a clear task from Stoic chat when the team is ready." : "Assigned work will appear here when available."} />
+                <EmptyProject title="No handoffs yet" description={context.self.role === "boss" && context.workspace.delegationLevel !== "observe" ? "Create a task from the Chat tab." : "Assigned work will appear here."} />
               )}
             </CardContent>
           </Card>
-          <Alert className="border-primary/20 bg-primary/5">
+          <Alert>
             <Clock3 /><AlertTitle>Work arrives on the agent’s next check</AlertTitle>
-            <AlertDescription>Stoic keeps assignments and review history together. It does not wake an offline agent.</AlertDescription>
+            <AlertDescription>Stoic does not wake an offline agent.</AlertDescription>
           </Alert>
         </>
       )}
@@ -659,36 +679,60 @@ export function HandoffsTab(props: McpTabProps) {
 function authorName(message: BoardMessage, context: McpTabProps["context"]) {
   const agent = context.agents.find((item) => message.author_key === `agent:${item.id}`);
   if (agent) return agent.name;
-  return message.author_key.startsWith("user:") ? "Workspace owner" : "Stoic Connector";
+  return message.author_key.startsWith("user:") ? "You" : "Stoic";
 }
 
-function MessageCard({
+function isOwnMessage(message: BoardMessage, context: McpTabProps["context"]) {
+  return message.author_key.startsWith("user:") || message.author_key === context.self.agentId;
+}
+
+function ChatMessage({
   message,
   context,
   onReply,
+  isGrouped,
 }: {
   message: BoardMessage;
   context: McpTabProps["context"];
   onReply: (message: BoardMessage) => void;
+  isGrouped: boolean;
 }) {
   const author = authorName(message, context);
+  const own = isOwnMessage(message, context);
   const agentId = message.author_key.startsWith("agent:") ? message.author_key.slice("agent:".length) : null;
   const agentIds = context.agents.filter((item) => item.status !== "revoked").map((item) => item.id);
   const tint = agentId ? agentChatColor(agentId, agentIds) : null;
+  const initials = author.slice(0, 1).toUpperCase();
+
   return (
-    <Card size="sm" className="min-w-0" style={tint ? { borderColor: tint.border, backgroundColor: tint.background } : undefined}>
-      <CardHeader className="flex-row items-center gap-3">
-        <Avatar aria-hidden="true" className="size-8"><AvatarFallback className="border text-xs font-semibold" style={tint ? { backgroundColor: tint.avatar, borderColor: tint.border, color: tint.accent } : undefined}>{author.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">{tint && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: tint.accent }} />}<CardTitle className="truncate text-sm">{author}</CardTitle><Badge variant="outline">{message.kind.replaceAll("_", " ")}</Badge></div>
-          <time className="text-xs text-muted-foreground">{formatDate(message.created_at)}</time>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
-        <Button variant="ghost" size="sm" onClick={() => onReply(message)}><ArrowDownRight /> Reply</Button>
-      </CardContent>
-    </Card>
+    <Message align={own ? "end" : "start"}>
+      <MessageAvatar>
+        {isGrouped ? <div className="w-8" /> : (
+          <Avatar aria-hidden="true" className="size-8">
+            <AvatarFallback
+              className="border text-xs font-semibold"
+              style={tint ? { backgroundColor: tint.avatar, borderColor: tint.border, color: tint.accent } : undefined}
+            >
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        )}
+      </MessageAvatar>
+      <MessageContent>
+        {!isGrouped && (
+          <MessageHeader>
+            <span className="text-xs font-medium">{author}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{formatDate(message.created_at)}</span>
+          </MessageHeader>
+        )}
+        <Bubble variant={own ? "default" : "muted"}>
+          <BubbleContent>{message.body}</BubbleContent>
+        </Bubble>
+        <MessageFooter>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onReply(message)}>Reply</Button>
+        </MessageFooter>
+      </MessageContent>
+    </Message>
   );
 }
 
@@ -719,7 +763,7 @@ export function BoardTab(props: McpTabProps & { onPlan?: () => void }) {
       setMessages((result.messages || []).slice().sort((left, right) => left.created_at.localeCompare(right.created_at)));
     } catch (cause) {
       if (requestId !== requestRef.current) return;
-      setError(cause instanceof Error ? cause.message : "Stoic could not load the project board.");
+      setError(cause instanceof Error ? cause.message : "Could not load messages.");
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
@@ -731,6 +775,7 @@ export function BoardTab(props: McpTabProps & { onPlan?: () => void }) {
     void runtime.refreshContext().catch(() => undefined);
     setReloadKey((key) => key + 1);
   };
+
   const onReply = (message: BoardMessage) => {
     setReplyTo(message);
     document.getElementById("board-message-composer")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -751,58 +796,113 @@ export function BoardTab(props: McpTabProps & { onPlan?: () => void }) {
       });
       setBody("");
       setReplyTo(null);
-      runtime.notify("Your message is on the project board.", "success");
+      runtime.notify("Message posted.", "success");
       await load();
       await runtime.refreshContext().catch(() => undefined);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not post the project message.");
+      setError(cause instanceof Error ? cause.message : "Could not post message.");
     } finally {
       setPosting(false);
     }
   };
 
-  const renderMessage = (message: BoardMessage) => <MessageCard key={message.id} message={message} context={context} onReply={onReply} />;
+  const projectName = context.projects.find((project) => project.id === projectId)?.name || "";
+
+  // Group consecutive messages from the same author
+  const groupedMessages = messages.reduce<{ message: BoardMessage; isGrouped: boolean }[]>((acc, msg) => {
+    const prev = acc[acc.length - 1];
+    const sameAuthor = prev && prev.message.author_key === msg.author_key;
+    acc.push({ message: msg, isGrouped: !!sameAuthor });
+    return acc;
+  }, []);
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:gap-4 sm:p-6 lg:p-8">
-      <div className="shrink-0"><PageHeading {...props} eyebrow="SHARED PROJECT ROOM" title="Stoic Chat" description="Project updates, questions, and agent replies stay together in one rolling conversation." actionLabel="Plan with Stoic" onAction={props.onPlan} /></div>
-      {!projectId ? <EmptyProject title="Create a project first" description="The project board becomes available after you add a workspace project." /> : (
-        <>
-          <Card id="board-message-composer" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-            <CardHeader className="shrink-0 border-b">
-              <CardTitle>{context.projects.find((project) => project.id === projectId)?.name || "Project room"}</CardTitle>
-              <CardDescription>One shared Stoic Chat room for connected agents. General messages join the room, and Reply anchors a response to one message. Confirm decisions in the project brief.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-              {error && <div className="px-4 pt-4"><LoadError message={error} onRetry={retry} /></div>}
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 sm:p-6" aria-label="Project conversation" aria-busy={loading}>
-                {loading ? <LoadingCards count={2} /> : messages.length ? messages.map(renderMessage) : <EmptyProject title="Start the shared conversation" description="Your first update creates the Stoic Chat room. Every project post will appear in this timeline." />}
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden p-4 sm:p-6 lg:p-8">
+      {!projectId ? (
+        <EmptyProject title="Choose a project" description="Select a project to open the shared chat room." />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center justify-between border-b pb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{projectName}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={retry}><RefreshCw className="size-3.5" /></Button>
+              {props.onPlan && <Button variant="outline" size="sm" onClick={props.onPlan}>Plan</Button>}
+            </div>
+          </div>
+
+          {error && <div className="shrink-0 pt-3"><LoadError message={error} onRetry={retry} /></div>}
+
+          <MessageScrollerProvider autoScroll defaultScrollPosition="end" scrollEdgeThreshold={80}>
+            <MessageScroller className="min-h-0 flex-1">
+              <MessageScrollerViewport role="log" aria-label="Project chat" aria-busy={loading} className="focus-visible:outline-none">
+                <MessageScrollerContent className="gap-4 px-1 py-4">
+                  {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <p className="text-sm text-muted-foreground">Loading messages…</p>
+                    </div>
+                  ) : !groupedMessages.length ? (
+                    <EmptyProject title="No messages yet" description="Start the conversation." />
+                  ) : (
+                    groupedMessages.map(({ message, isGrouped }, index) => (
+                      <MessageScrollerItem
+                        key={message.id}
+                        messageId={message.id}
+                        scrollAnchor={index === groupedMessages.length - 1}
+                      >
+                        {isGrouped ? (
+                          <ChatMessage message={message} context={context} onReply={onReply} isGrouped={true} />
+                        ) : (
+                          <MessageGroup>
+                            <ChatMessage message={message} context={context} onReply={onReply} isGrouped={false} />
+                          </MessageGroup>
+                        )}
+                      </MessageScrollerItem>
+                    ))
+                  )}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton direction="end" className="left-1/2" />
+            </MessageScroller>
+          </MessageScrollerProvider>
+
+          <form
+            id="board-message-composer"
+            className="shrink-0 space-y-2 border-t pt-3"
+            onSubmit={(event) => void submit(event)}
+          >
+            {replyTo && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-1.5 text-xs">
+                <span className="truncate text-muted-foreground">
+                  Replying to <span className="font-medium text-foreground">{authorName(replyTo, context)}</span>
+                </span>
+                <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setReplyTo(null)}>Cancel</Button>
               </div>
-              <form className="shrink-0 space-y-3 border-t p-4" onSubmit={(event) => void submit(event)}>
-                {replyTo && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-2">
-                    <p className="min-w-0 text-xs text-muted-foreground">Replying to <span className="font-medium text-foreground">{authorName(replyTo, context)}</span>: <span className="inline-block max-w-56 truncate align-bottom">{replyTo.body}</span></p>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setReplyTo(null)}>Cancel reply</Button>
-                  </div>
-                )}
-                <Label className="sr-only" htmlFor="board-message-body">Project message</Label>
-                <Textarea
-                  id="board-message-body"
-                  value={body}
-                  required
-                  maxLength={12000}
-                  onChange={(event) => setBody(event.target.value)}
-                  placeholder="Share a question, answer, or project update…"
-                  className="min-h-24 resize-y"
-                />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{body.length.toLocaleString()} / 12,000 characters · visible to connected agents on their next check</span>
-                  <Button type="submit" disabled={posting || !body.trim()}>{posting ? <RefreshCw className="animate-spin" /> : <Send />} Post message</Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </>
+            )}
+            <div className="flex gap-2">
+              <Textarea
+                id="board-message-body"
+                value={body}
+                required
+                maxLength={12000}
+                onChange={(event) => setBody(event.target.value)}
+                placeholder={`Message ${projectName || "project"}…`}
+                className="min-h-10 flex-1 resize-none"
+                rows={2}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+              <Button type="submit" disabled={posting || !body.trim()} size="sm" className="self-end">
+                {posting ? <RefreshCw className="animate-spin size-4" /> : <Send className="size-4" />}
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

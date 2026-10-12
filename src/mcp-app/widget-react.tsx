@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  BookOpen, Bot, ChartNoAxesCombined, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
-  MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users, Wrench,
+  BookOpen, Bot, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
+  MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
@@ -15,17 +15,16 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantTab } from "./tabs/assistant-tab";
-import { ContactsTab, IdeasTab, PromptsTab, BillingTab } from "./tabs/other-tabs";
+import { ContactsTab, BillingTab } from "./tabs/other-tabs";
 import { AgentsTab, FilesTab, KnowledgeTab, ProjectsTab } from "./tabs/team-tabs";
-import { BoardTab, HandoffsTab, OverviewTab, AnalyticsTab } from "./tabs/work-tabs";
-import { AgentInstallation } from "@/components/agent-installation";
+import { BoardTab, HandoffsTab, OverviewTab } from "./tabs/work-tabs";
 import { navSections, type McpRuntime, type McpTabProps, type NavTab, type TeamContext } from "./ui-contract";
 
 const app = new App({ name: "Stoic Connector", version: "0.2.0" });
 let connectPromise: Promise<void> | null = null;
 
 const tabIcons: Record<NavTab, LucideIcon> = {
-  analytics: ChartNoAxesCombined,
+  analytics: LayoutDashboard,
   assistant: MessageSquareText,
   ideas: Lightbulb,
   overview: LayoutDashboard,
@@ -35,7 +34,7 @@ const tabIcons: Record<NavTab, LucideIcon> = {
   agents: Bot,
   prompts: BookOpen,
   knowledge: BookOpen,
-  install: Wrench,
+  install: Bot,
   files: Paperclip,
   billing: CreditCard,
 };
@@ -112,7 +111,7 @@ function AppearanceSelect({
 function AppRoot() {
   const [context, setContext] = useState<TeamContext | null>(null);
   const [projectId, setProjectId] = useState("");
-  const [tab, setTab] = useState<NavTab>("analytics");
+  const [tab, setTab] = useState<NavTab>("assistant");
   const [chatEntry, setChatEntry] = useState(0);
   const [connection, setConnection] = useState<"connecting" | "connected" | "error">("connecting");
   const [loading, setLoading] = useState(true);

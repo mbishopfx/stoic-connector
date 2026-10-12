@@ -96,7 +96,7 @@ export type NavTab =
   | "billing";
 
 export const navSections: { label: string; items: { id: NavTab; label: string }[] }[] = [
-  { label: "START", items: [{ id: "analytics", label: "Analytics" }, { id: "assistant", label: "Stoic Chat" }, { id: "ideas", label: "Ideas" }] },
+  { label: "START", items: [{ id: "assistant", label: "Chat" }] },
   { label: "WORK", items: [
     { id: "overview", label: "Overview" },
     { id: "handoffs", label: "Handoffs" },
@@ -105,10 +105,8 @@ export const navSections: { label: string; items: { id: NavTab; label: string }[
   ] },
   { label: "TEAM", items: [
     { id: "agents", label: "Agents" },
-    { id: "install", label: "Installation" },
-    { id: "prompts", label: "Prompt library" },
     { id: "knowledge", label: "Knowledge" },
-    { id: "files", label: "Artifacts" },
+    { id: "files", label: "Files" },
   ] },
-  { label: "ACCOUNT", items: [{ id: "billing", label: "Plan & billing" }] },
+  { label: "ACCOUNT", items: [{ id: "billing", label: "Billing" }] },
 ];
