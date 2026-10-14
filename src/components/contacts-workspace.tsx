@@ -26,6 +26,37 @@ type Contact = {
 };
 type Command = (action: string, payload?: Record<string, unknown>) => Promise<unknown>;
 
+function makePreviewContacts(projects: Project[]): Contact[] {
+  const now = Date.now();
+  const daysAgo = (days: number) => new Date(now - days * 86_400_000).toISOString();
+  const projectId = projects[0]?.id || null;
+  const records: Array<Pick<Contact, "full_name" | "email" | "phone" | "company" | "job_title" | "status" | "notes" | "project_id">> = [
+    { full_name: "Maya Chen", email: "maya@northstar.example", phone: "+1 (312) 555-0142", company: "Northstar Labs", job_title: "Operations Lead", status: "qualified", notes: "Asked for a short workflow audit before the next planning cycle.", project_id: projectId },
+    { full_name: "Jordan Rivera", email: "jordan@fieldnote.example", phone: null, company: "Fieldnote Studio", job_title: "Founder", status: "contacted", notes: "Shared the product brief and requested a follow-up summary.", project_id: projectId },
+    { full_name: "Avery Brooks", email: null, phone: "+1 (415) 555-0188", company: "Common Ground", job_title: "Community Director", status: "new", notes: "Source record needs an email before any outreach is considered.", project_id: null },
+    { full_name: "Sam Patel", email: "sam@brightpath.example", phone: "+1 (646) 555-0193", company: "Brightpath", job_title: "Product Manager", status: "customer", notes: "Prefers concise project updates with source links.", project_id: projects[1]?.id || projectId },
+    { full_name: "Taylor Morgan", email: "taylor@atelier.example", phone: null, company: "Atelier Works", job_title: "Creative Director", status: "new", notes: "Imported from the spring partner list; verify role before use.", project_id: null },
+  ];
+  return records.map((record, index) => {
+    const createdAt = daysAgo(index + 1);
+    return {
+      id: `preview-contact-${index + 1}`,
+      ...record,
+      created_at: createdAt,
+      updated_at: daysAgo(Math.max(0, index - 1)),
+      last_seen_at: daysAgo(index),
+      sources: [{
+        id: `preview-source-${index + 1}`,
+        source_label: index === 2 ? "Website inquiry" : "Partner research",
+        source_url: index === 2 ? "https://example.com/contact" : "https://example.com/partners",
+        notes: "Added from a public source; confirm details before use.",
+        artifact_id: null,
+        created_at: createdAt,
+      }],
+    };
+  });
+}
+
 const statusNames: Record<ContactSearchFilters["status"], string> = {
   all: "All", new: "New", contacted: "Contacted", qualified: "Qualified", customer: "Customer", archived: "Archived",
 };
@@ -79,6 +110,7 @@ function SelectField({ id, label, options, value, defaultValue, onChange, name, 
   return <Field className={fieldClassName}>
     <FieldLabel htmlFor={id}>{label}</FieldLabel>
     <Select
+      items={options.map((option) => ({ value: option.value, label: option.label }))}
       id={id}
       name={name}
       value={value}
@@ -115,17 +147,18 @@ async function jsonResponse(response: Response) {
   return body.data;
 }
 
-export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
-  projects: Project[]; busy: boolean; command: Command; onOpenPrompts: () => void;
+export function ContactsWorkspace({ projects, busy, command, onOpenPrompts, preview = false }: {
+  projects: Project[]; busy: boolean; command: Command; onOpenPrompts: () => void; preview?: boolean;
 }) {
+  const demoContacts = useMemo(() => preview ? makePreviewContacts(projects) : [], [preview, projects]);
   const [filters, setFilters] = useState<ContactSearchFilters>({ ...DEFAULT_CONTACT_FILTERS });
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [total, setTotal] = useState(0);
+  const [contacts, setContacts] = useState<Contact[]>(demoContacts);
+  const [total, setTotal] = useState(demoContacts.length);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loading, setLoading] = useState(!preview);
+  const [hasLoaded, setHasLoaded] = useState(preview);
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -137,6 +170,14 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
   const projectNames = useMemo(() => Object.fromEntries(projects.map((project) => [project.id, project.name])), [projects]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    if (preview) {
+      setContacts(demoContacts);
+      setTotal(demoContacts.length);
+      setHasLoaded(true);
+      setLoading(false);
+      setLoadError("");
+      return;
+    }
     const current = ++requestId.current;
     setLoading(true);
     setLoadError("");
@@ -154,13 +195,14 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
     } finally {
       if (current === requestId.current) setLoading(false);
     }
-  }, [filters]);
+  }, [demoContacts, filters, preview]);
 
   useEffect(() => {
+    if (preview) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => { void load(controller.signal); }, filters.search ? 280 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); requestId.current += 1; };
-  }, [filters.search, load]);
+  }, [filters.search, load, preview]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -209,6 +251,7 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
 
   async function addContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (preview) { setNotice("Design preview · changes are not saved."); return; }
     const element = event.currentTarget;
     const form = new FormData(element);
     const selectedProjectId = String(form.get("projectId") || "");
@@ -229,6 +272,7 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts }: {
 
   async function importCsv(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (preview) { setImportMessage("Design preview · imports are disabled."); return; }
     if (!file) return;
     const element = event.currentTarget;
     const form = new FormData(element);
@@ -783,7 +827,7 @@ function ContactDetail({ contact, projectName, busy, command, onSaved, onNotice 
         <div className="min-w-0">
           <span className="block text-xs font-medium text-muted-foreground">Email</span>
           {contact.email ? (
-            <Button render={<a href={"mailto:" + contact.email} />} variant="link" size="sm" className="h-auto max-w-full justify-start break-all px-0 py-0 text-left">
+            <Button nativeButton={false} render={<a href={"mailto:" + contact.email} />} variant="link" size="sm" className="h-auto max-w-full justify-start break-all px-0 py-0 text-left">
               {contact.email}
             </Button>
           ) : <span className="mt-1 block text-sm text-muted-foreground">Not recorded</span>}
@@ -794,7 +838,7 @@ function ContactDetail({ contact, projectName, busy, command, onSaved, onNotice 
         <div className="min-w-0">
           <span className="block text-xs font-medium text-muted-foreground">Phone</span>
           {contact.phone ? (
-            <Button render={<a href={"tel:" + contact.phone} />} variant="link" size="sm" className="h-auto max-w-full justify-start break-all px-0 py-0 text-left">
+            <Button nativeButton={false} render={<a href={"tel:" + contact.phone} />} variant="link" size="sm" className="h-auto max-w-full justify-start break-all px-0 py-0 text-left">
               {contact.phone}
             </Button>
           ) : <span className="mt-1 block text-sm text-muted-foreground">Not recorded</span>}
@@ -892,7 +936,7 @@ function ContactDetail({ contact, projectName, busy, command, onSaved, onNotice 
                     {source.notes && <p className="text-sm leading-5 text-muted-foreground">{source.notes}</p>}
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       {source.source_url && (
-                        <Button render={<a href={source.source_url} target="_blank" rel="noopener noreferrer" />} variant="link" size="sm" className="h-auto justify-start px-0 py-0">
+                        <Button nativeButton={false} render={<a href={source.source_url} target="_blank" rel="noopener noreferrer" />} variant="link" size="sm" className="h-auto justify-start px-0 py-0">
                           Open source <ArrowUpRight aria-hidden="true" />
                         </Button>
                       )}

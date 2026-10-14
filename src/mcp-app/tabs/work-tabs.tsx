@@ -9,9 +9,13 @@ import {
   ChevronDown,
   CircleCheck,
   Clock3,
+  Folder,
   MessageSquareText,
+  Search,
   RefreshCw,
+  Reply,
   Send,
+  Sparkles,
   UsersRound,
 } from "lucide-react";
 
@@ -60,6 +64,7 @@ import {
 } from "@/components/ui/empty";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ActivityAnalyticsPanel } from "./activity-analytics";
@@ -123,6 +128,16 @@ function formatDate(value?: string | null) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function formatMessageDay(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Earlier" : date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   const variant = ["blocked", "changes_requested", "proposed", "pending"].includes(normalized)
@@ -156,7 +171,7 @@ function PageHeading({
           {context.projects.length > 0 && (
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
               <Label htmlFor="work-project-select" className="text-xs text-muted-foreground">Project</Label>
-              <Select value={projectId || context.projects[0]?.id || ""} onValueChange={(value) => value && runtime.selectProject(value)}>
+              <Select items={context.projects.map((project) => ({ value: project.id, label: project.name }))} value={projectId || context.projects[0]?.id || ""} onValueChange={(value) => value && runtime.selectProject(value)}>
                 <SelectTrigger id="work-project-select" className="w-full">
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
@@ -705,8 +720,8 @@ function ChatMessage({
   const initials = author.slice(0, 1).toUpperCase();
 
   return (
-    <Message align={own ? "end" : "start"}>
-      <MessageAvatar>
+    <Message align={own ? "end" : "start"} className="mcp-room-message">
+      {!own && <MessageAvatar className="mcp-room-message-avatar">
         {isGrouped ? <div className="w-8" /> : (
           <Avatar aria-hidden="true" className="size-8">
             <AvatarFallback
@@ -717,19 +732,22 @@ function ChatMessage({
             </AvatarFallback>
           </Avatar>
         )}
-      </MessageAvatar>
-      <MessageContent>
+      </MessageAvatar>}
+      <MessageContent className="mcp-room-message-content">
         {!isGrouped && (
-          <MessageHeader>
-            <span className="text-xs font-medium">{author}</span>
-            <span className="ml-2 text-xs text-muted-foreground">{formatDate(message.created_at)}</span>
+          <MessageHeader className="mcp-room-message-header">
+            <span>{author}</span>
+            <time dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
           </MessageHeader>
         )}
-        <Bubble variant={own ? "default" : "muted"}>
-          <BubbleContent>{message.body}</BubbleContent>
+        <Bubble variant={own ? "default" : "muted"} className="mcp-room-bubble">
+          <BubbleContent className="mcp-room-bubble-copy">{message.body}</BubbleContent>
         </Bubble>
-        <MessageFooter>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onReply(message)}>Reply</Button>
+        <MessageFooter className="mcp-room-message-footer">
+          <Button type="button" variant="ghost" size="icon-xs" className="mcp-room-reply" aria-label={`Reply to ${author}`} title={`Reply to ${author}`} onClick={() => onReply(message)}>
+            <Reply aria-hidden="true" />
+            <span className="sr-only">Reply to {author}</span>
+          </Button>
         </MessageFooter>
       </MessageContent>
     </Message>
@@ -744,6 +762,8 @@ export function BoardTab(props: McpTabProps & { onPlan?: () => void }) {
   const [body, setBody] = useState("");
   const [replyTo, setReplyTo] = useState<BoardMessage | null>(null);
   const [posting, setPosting] = useState(false);
+  const [roomPickerOpen, setRoomPickerOpen] = useState(false);
+  const [roomSearch, setRoomSearch] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const requestRef = useRef(0);
 
@@ -806,104 +826,117 @@ export function BoardTab(props: McpTabProps & { onPlan?: () => void }) {
     }
   };
 
-  const projectName = context.projects.find((project) => project.id === projectId)?.name || "";
+  const selectedProject = context.projects.find((project) => project.id === projectId);
+  const projectName = selectedProject?.name || "";
+  const memberCount = context.agents.filter((agent) => agent.status !== "revoked").length + 1;
+  const normalizedRoomSearch = roomSearch.trim().toLowerCase();
+  const filteredProjects = context.projects.filter((project) => !normalizedRoomSearch || project.name.toLowerCase().includes(normalizedRoomSearch) || project.brief?.toLowerCase().includes(normalizedRoomSearch));
 
-  // Group consecutive messages from the same author
-  const groupedMessages = messages.reduce<{ message: BoardMessage; isGrouped: boolean }[]>((acc, msg) => {
+  const groupedMessages = messages.reduce<{ message: BoardMessage; isGrouped: boolean; startsNewDay: boolean }[]>((acc, msg) => {
     const prev = acc[acc.length - 1];
-    const sameAuthor = prev && prev.message.author_key === msg.author_key;
-    acc.push({ message: msg, isGrouped: !!sameAuthor });
+    const messageDate = new Date(msg.created_at);
+    const previousDate = prev ? new Date(prev.message.created_at) : null;
+    const sameDay = Boolean(previousDate && messageDate.toDateString() === previousDate.toDateString());
+    const elapsed = previousDate ? messageDate.getTime() - previousDate.getTime() : Number.POSITIVE_INFINITY;
+    const isGrouped = Boolean(prev && prev.message.author_key === msg.author_key && sameDay && elapsed >= 0 && elapsed < 5 * 60_000);
+    acc.push({ message: msg, isGrouped, startsNewDay: !sameDay });
     return acc;
   }, []);
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden p-4 sm:p-6 lg:p-8">
-      {!projectId ? (
-        <EmptyProject title="Choose a project" description="Select a project to open the shared chat room." />
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center justify-between border-b pb-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{projectName}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={retry}><RefreshCw className="size-3.5" /></Button>
-              {props.onPlan && <Button variant="outline" size="sm" onClick={props.onPlan}>Plan</Button>}
-            </div>
+    <div className="mcp-room-chat">
+      <header className="mcp-room-header">
+        <div className="mcp-room-title-group">
+          <Button type="button" variant="ghost" size="icon" className="mcp-room-picker-trigger" aria-label="Browse project conversations" title="Browse project conversations" onClick={() => setRoomPickerOpen(true)}>
+            <Folder aria-hidden="true" />
+          </Button>
+          <div className="min-w-0">
+            <p className="mcp-room-eyebrow">Shared room</p>
+            <h1 className="mcp-room-title">{projectName || "Choose a project"}</h1>
           </div>
-
-          {error && <div className="shrink-0 pt-3"><LoadError message={error} onRetry={retry} /></div>}
-
-          <MessageScrollerProvider autoScroll defaultScrollPosition="end" scrollEdgeThreshold={80}>
-            <MessageScroller className="min-h-0 flex-1">
-              <MessageScrollerViewport role="log" aria-label="Project chat" aria-busy={loading} className="focus-visible:outline-none">
-                <MessageScrollerContent className="gap-4 px-1 py-4">
-                  {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <p className="text-sm text-muted-foreground">Loading messages…</p>
-                    </div>
-                  ) : !groupedMessages.length ? (
-                    <EmptyProject title="No messages yet" description="Start the conversation." />
-                  ) : (
-                    groupedMessages.map(({ message, isGrouped }, index) => (
-                      <MessageScrollerItem
-                        key={message.id}
-                        messageId={message.id}
-                        scrollAnchor={index === groupedMessages.length - 1}
-                      >
-                        {isGrouped ? (
-                          <ChatMessage message={message} context={context} onReply={onReply} isGrouped={true} />
-                        ) : (
-                          <MessageGroup>
-                            <ChatMessage message={message} context={context} onReply={onReply} isGrouped={false} />
-                          </MessageGroup>
-                        )}
-                      </MessageScrollerItem>
-                    ))
-                  )}
-                </MessageScrollerContent>
-              </MessageScrollerViewport>
-              <MessageScrollerButton direction="end" className="left-1/2" />
-            </MessageScroller>
-          </MessageScrollerProvider>
-
-          <form
-            id="board-message-composer"
-            className="shrink-0 space-y-2 border-t pt-3"
-            onSubmit={(event) => void submit(event)}
-          >
-            {replyTo && (
-              <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/60 px-3 py-1.5 text-xs">
-                <span className="truncate text-muted-foreground">
-                  Replying to <span className="font-medium text-foreground">{authorName(replyTo, context)}</span>
-                </span>
-                <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setReplyTo(null)}>Cancel</Button>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Textarea
-                id="board-message-body"
-                value={body}
-                required
-                maxLength={12000}
-                onChange={(event) => setBody(event.target.value)}
-                placeholder={`Message ${projectName || "project"}…`}
-                className="min-h-10 flex-1 resize-none"
-                rows={2}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
-                  }
-                }}
-              />
-              <Button type="submit" disabled={posting || !body.trim()} size="sm" className="self-end">
-                {posting ? <RefreshCw className="animate-spin size-4" /> : <Send className="size-4" />}
-              </Button>
-            </div>
-          </form>
         </div>
-      )}
+        <div className="mcp-room-header-actions">
+          {projectId && <span className="mcp-room-member-count" aria-label={`${memberCount} group members`} title={`${memberCount} group members`}><UsersRound aria-hidden="true" /><span>{memberCount}</span></span>}
+          <Button type="button" variant="ghost" size="icon" aria-label="Refresh room" title="Refresh room" onClick={retry} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" /></Button>
+          {props.onPlan && <Button type="button" variant="ghost" size="icon" aria-label="Plan with Stoic" title="Plan with Stoic" onClick={props.onPlan}><Sparkles aria-hidden="true" /></Button>}
+        </div>
+      </header>
+
+      {error && <div className="mcp-room-error"><LoadError message={error} onRetry={retry} /></div>}
+
+      {!projectId ? <div className="mcp-room-empty-state"><EmptyProject title="Choose a project room" description="Browse your project conversations to open a shared room." /></div> : <>
+        <MessageScrollerProvider autoScroll defaultScrollPosition="end" scrollEdgeThreshold={80}>
+          <MessageScroller className="mcp-room-scroller">
+            <MessageScrollerViewport role="log" aria-label={`${projectName} group chat`} aria-busy={loading} className="mcp-room-transcript focus-visible:outline-none">
+              <MessageScrollerContent className="mcp-room-transcript-content">
+                {loading ? (
+                  <div className="flex items-center justify-center py-12"><p className="text-sm text-muted-foreground">Loading messages…</p></div>
+                ) : !groupedMessages.length ? (
+                  <EmptyProject title="Your room is ready" description="Send a message to start the shared conversation." />
+                ) : groupedMessages.map(({ message, isGrouped, startsNewDay }, index) => (
+                  <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor={index === groupedMessages.length - 1} className={`mcp-room-scroller-item ${isGrouped ? "is-grouped" : ""}`}>
+                    {startsNewDay && <div className="mcp-room-day-divider"><span>{formatMessageDay(message.created_at)}</span></div>}
+                    {isGrouped ? <ChatMessage message={message} context={context} onReply={onReply} isGrouped={true} /> : (
+                      <MessageGroup className="mcp-room-message-group"><ChatMessage message={message} context={context} onReply={onReply} isGrouped={false} /></MessageGroup>
+                    )}
+                  </MessageScrollerItem>
+                ))}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton direction="end" className="left-1/2" />
+          </MessageScroller>
+        </MessageScrollerProvider>
+
+        <form id="board-message-composer" className="mcp-room-composer" onSubmit={(event) => void submit(event)}>
+          {replyTo && <div className="mcp-room-replying"><span>Replying to <strong>{authorName(replyTo, context)}</strong></span><Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setReplyTo(null)}>Cancel</Button></div>}
+          <Label htmlFor="board-message-body" className="sr-only">Message the project group</Label>
+          <div className="mcp-room-composer-row">
+            <Textarea
+              id="board-message-body"
+              value={body}
+              required
+              maxLength={12000}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Message the project group…"
+              className="mcp-room-composer-input"
+              rows={1}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <Button type="submit" variant="default" size="icon-lg" className="mcp-room-send" aria-label="Send message" title="Send message" disabled={posting || !body.trim()}>
+              {posting ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+            </Button>
+          </div>
+        </form>
+      </>}
+
+      <Sheet open={roomPickerOpen} onOpenChange={setRoomPickerOpen}>
+        <SheetContent side="left" className="mcp-room-picker">
+          <SheetHeader className="mcp-room-picker-header">
+            <SheetTitle>Project conversations</SheetTitle>
+            <SheetDescription>Switch to a shared room and keep its project context together.</SheetDescription>
+          </SheetHeader>
+          <label className="mcp-room-search-label">
+            <Search aria-hidden="true" />
+            <span className="sr-only">Search project conversations</span>
+            <input value={roomSearch} onChange={(event) => setRoomSearch(event.target.value)} placeholder="Search projects" />
+          </label>
+          <div className="mcp-room-picker-list" role="group" aria-label="Project rooms">
+            {filteredProjects.length ? filteredProjects.map((project) => {
+              const summary = project.brief?.replace(/\s+/g, " ").trim();
+              const preview = summary ? `${summary.slice(0, 100)}${summary.length > 100 ? "…" : ""}` : `Shared brief · version ${project.brief_version}`;
+              return <button key={project.id} type="button" className="mcp-room-option" aria-current={project.id === projectId ? "true" : undefined} onClick={() => { runtime.selectProject(project.id); setRoomSearch(""); setRoomPickerOpen(false); }}>
+                <span className="mcp-room-option-icon"><Folder aria-hidden="true" /></span>
+                <span className="mcp-room-option-copy"><span className="mcp-room-option-heading"><strong>{project.name}</strong><small>v{project.brief_version}</small></span><span className="mcp-room-option-preview">{preview}</span></span>
+              </button>;
+            }) : <p className="mcp-room-picker-empty">{context.projects.length ? "No project rooms match your search." : "No project rooms yet. Create one from Projects to start a shared conversation."}</p>}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

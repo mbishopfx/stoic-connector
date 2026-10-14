@@ -113,9 +113,8 @@ export function DashboardAppearanceControl({
     <Popover>
       <PopoverTrigger
         render={
-          <Button variant="outline" size="sm" aria-label="Customize appearance">
+          <Button variant="ghost" size="icon" aria-label="Customize appearance" title="Appearance">
             <SlidersHorizontalIcon aria-hidden="true" />
-            <span className="hidden sm:inline">Appearance</span>
           </Button>
         }
       />
@@ -127,7 +126,7 @@ export function DashboardAppearanceControl({
         <FieldGroup className="gap-3">
           <Field>
             <FieldLabel htmlFor="appearance-theme">Theme</FieldLabel>
-            <Select value={theme || "system"} onValueChange={(value) => setTheme(value || "system")}>
+            <Select items={[{ value: "system", label: "Use device setting" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} value={theme || "system"} onValueChange={(value) => setTheme(value || "system")}>
               <SelectTrigger id="appearance-theme" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -140,7 +139,7 @@ export function DashboardAppearanceControl({
           </Field>
           <Field>
             <FieldLabel htmlFor="appearance-accent">Accent color</FieldLabel>
-            <Select value={appearance.accent} onValueChange={(value) => {
+            <Select items={[{ value: "forest", label: "Forest" }, { value: "slate", label: "Slate" }, { value: "ocean", label: "Ocean" }, { value: "clay", label: "Clay" }]} value={appearance.accent} onValueChange={(value) => {
               if (value && ["forest", "slate", "ocean", "clay"].includes(value)) update("accent", value as DashboardAppearancePreferences["accent"]);
             }}>
               <SelectTrigger id="appearance-accent" className="w-full">
@@ -156,7 +155,7 @@ export function DashboardAppearanceControl({
           </Field>
           <Field>
             <FieldLabel htmlFor="appearance-density">Spacing</FieldLabel>
-            <Select value={appearance.density} onValueChange={(value) => {
+            <Select items={[{ value: "comfortable", label: "Comfortable" }, { value: "compact", label: "Compact" }]} value={appearance.density} onValueChange={(value) => {
               if (value === "comfortable" || value === "compact") update("density", value);
             }}>
               <SelectTrigger id="appearance-density" className="w-full">
@@ -171,7 +170,7 @@ export function DashboardAppearanceControl({
           </Field>
           <Field>
             <FieldLabel htmlFor="appearance-corners">Corners</FieldLabel>
-            <Select value={appearance.corners} onValueChange={(value) => {
+            <Select items={[{ value: "soft", label: "Soft" }, { value: "crisp", label: "Crisp" }]} value={appearance.corners} onValueChange={(value) => {
               if (value === "soft" || value === "crisp") update("corners", value);
             }}>
               <SelectTrigger id="appearance-corners" className="w-full">

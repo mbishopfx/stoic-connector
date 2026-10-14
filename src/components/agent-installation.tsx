@@ -68,14 +68,14 @@ export function AgentInstallation({
           <CardContent className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="install-harness">Agent host</Label>
-              <Select value={harness} onValueChange={(value) => value && setHarness(value as AgentHarnessId)}>
+              <Select items={AGENT_HARNESSES.map((item) => ({ value: item.id, label: item.label }))} value={harness} onValueChange={(value) => value && setHarness(value as AgentHarnessId)}>
                 <SelectTrigger id="install-harness" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{AGENT_HARNESSES.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="install-cadence">Check-in cadence</Label>
-              <Select value={cadence} onValueChange={(value) => value && setCadence(value)}>
+              <Select items={cadences.map((item) => ({ value: item.value, label: item.label }))} value={cadence} onValueChange={(value) => value && setCadence(value)}>
                 <SelectTrigger id="install-cadence" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{cadences.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
               </Select>

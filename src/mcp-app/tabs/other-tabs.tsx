@@ -113,7 +113,7 @@ function FilterSelect({
   return (
     <div className="grid min-w-0 gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Select value={value} onValueChange={(nextValue) => onChange(String(nextValue ?? ""))}>
+      <Select items={options} value={value} onValueChange={(nextValue) => onChange(String(nextValue ?? ""))}>
         <SelectTrigger id={id} className="w-full">
           <SelectValue />
         </SelectTrigger>
@@ -611,7 +611,7 @@ export function IdeasTab({ context, runtime }: McpTabProps) {
           </div>
           <div className="flex min-w-0 flex-col gap-2 sm:w-56">
             <Label htmlFor="ideas-project-filter" className="text-xs text-muted-foreground">Project</Label>
-            <Select value={projectFilter} onValueChange={(value) => setProjectFilter(value || "all")}>
+            <Select items={[{ value: "all", label: "All projects" }, ...context.projects.map((project) => ({ value: project.id, label: project.name }))]} value={projectFilter} onValueChange={(value) => setProjectFilter(value || "all")}>
               <SelectTrigger id="ideas-project-filter" className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="all">All projects</SelectItem>{context.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
             </Select>
@@ -661,7 +661,7 @@ export function IdeasTab({ context, runtime }: McpTabProps) {
             <section className="space-y-2"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">Source evidence</h3><Badge variant="outline">{selectedIdea.evidence_ids.length}</Badge></div>{selectedIdea.evidence_ids.length ? <ul className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">{selectedIdea.evidence_ids.map((source) => <li key={source} className="break-all rounded-md border bg-muted/30 px-3 py-2">{source}</li>)}</ul> : <p className="text-sm text-muted-foreground">No evidence references were attached.</p>}</section>
             {selectedIdea.status === "pending" && context.self.role === "boss" && <section className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <div><h3 className="text-sm font-semibold">Assign this idea</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Choose a connected worker. Assignment creates a handoff for that worker.</p></div>
-              <div className="grid gap-2"><Label htmlFor="idea-worker">Connected worker</Label><Select value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !workers.length || context.workspace.delegationLevel === "observe"}>
+              <div className="grid gap-2"><Label htmlFor="idea-worker">Connected worker</Label><Select items={[{ value: "__none__", label: "Choose a worker" }, ...workers.map((worker) => ({ value: worker.id, label: worker.name }))]} value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !workers.length || context.workspace.delegationLevel === "observe"}>
                 <SelectTrigger id="idea-worker" aria-label="Choose a connected worker" className="w-full"><SelectValue placeholder="Choose a worker" /></SelectTrigger>
                 <SelectContent><SelectItem value="__none__" disabled>Choose a worker</SelectItem>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.name}</SelectItem>)}</SelectContent>
               </Select></div>
@@ -717,7 +717,7 @@ export function PromptsTab({ runtime }: McpTabProps) {
           <Button type="button" variant="outline" onClick={() => void runtime.openLink(DASHBOARD_URL)}><ExternalLink />Open owner setup</Button>
         </CardContent>
       </Card>
-      <Card size="sm"><CardHeader className="sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">Choose a voice</CardTitle><CardDescription>These styles change phrasing only. They never change whether an authorized task is completed or its access and approval rules.</CardDescription></div><div className="grid w-full gap-2 sm:max-w-xs"><label htmlFor="mcp-prompt-tone" className="text-sm font-medium">Voice style</label><Select value={tone} onValueChange={(value) => { if (value) setTone(value as StoicPromptTone); }}><SelectTrigger id="mcp-prompt-tone" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{promptTones.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div></CardHeader></Card>
+      <Card size="sm"><CardHeader className="sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">Choose a voice</CardTitle><CardDescription>These styles change phrasing only. They never change whether an authorized task is completed or its access and approval rules.</CardDescription></div><div className="grid w-full gap-2 sm:max-w-xs"><label htmlFor="mcp-prompt-tone" className="text-sm font-medium">Voice style</label><Select items={promptTones.map((item) => ({ value: item.id, label: item.label }))} value={tone} onValueChange={(value) => { if (value) setTone(value as StoicPromptTone); }}><SelectTrigger id="mcp-prompt-tone" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{promptTones.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div></CardHeader></Card>
       <section className="grid gap-4 xl:grid-cols-2" aria-label="Available prompts">
         {promptLibrary.map((item) => {
           const text = renderStoicPrompt(item.id, MCP_ENDPOINT, tone);

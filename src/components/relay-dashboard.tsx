@@ -215,11 +215,11 @@ function DashboardSidebarNavigation({
   </Sidebar>;
 }
 
-export function StoicDashboard({ email }: { email: string }) {
+export function StoicDashboard({ email, previewState, previewMode = false }: { email: string; previewState?: DashboardState; previewMode?: boolean }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const { appearance, setAppearance } = useDashboardAppearance();
-  const [state, setState] = useState<DashboardState | null>(null);
+  const [state, setState] = useState<DashboardState | null>(previewState || null);
   const [tab, setTab] = useState<Tab>("analytics");
   const [chatMode, setChatMode] = useState<"room" | "plan">("room");
   const [busy, setBusy] = useState(false);
@@ -231,15 +231,16 @@ export function StoicDashboard({ email }: { email: string }) {
   const clearIntakeSeed = useCallback(() => setIntakeSeed(null), []);
 
   const reload = useCallback(async () => {
+    if (previewState) { setState(previewState); return; }
     const response = await fetch("/api/state", { cache: "no-store" });
     if (!response.ok) { if (response.status === 401) router.push("/login"); throw new Error("Could not load your workspace"); }
     setState(await response.json());
-  }, [router]);
+  }, [previewState, router]);
 
-  useEffect(() => { void fetch("/api/state", { cache: "no-store" }).then(async (response) => {
+  useEffect(() => { if (previewState) return; void fetch("/api/state", { cache: "no-store" }).then(async (response) => {
     if (!response.ok) throw new Error("Could not load your workspace");
     return response.json();
-  }).then(setState).catch((cause) => setError(cause.message)); }, []);
+  }).then(setState).catch((cause) => setError(cause.message)); }, [previewState]);
   useEffect(() => {
     if (tab !== "agents" && tab !== "overview" && tab !== "assistant" && tab !== "analytics") return;
     const refreshWhenVisible = () => {
@@ -259,6 +260,7 @@ export function StoicDashboard({ email }: { email: string }) {
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
 
   async function command(action: string, payload: Record<string, unknown> = {}) {
+    if (previewMode) { setNotice("Design preview · changes are not saved."); return undefined; }
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/commands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
@@ -274,6 +276,7 @@ export function StoicDashboard({ email }: { email: string }) {
 
   const timezoneInitialization = useRef<string | null>(null);
   useEffect(() => {
+    if (previewMode) return;
     const workspace = state?.workspace;
     if (!workspace || workspace.ideas_timezone || timezoneInitialization.current === workspace.id) return;
     timezoneInitialization.current = workspace.id;
@@ -286,9 +289,10 @@ export function StoicDashboard({ email }: { email: string }) {
       if (!response.ok) throw new Error("Could not save the workspace time zone");
       await reload();
     }).catch(() => undefined);
-  }, [reload, state?.workspace]);
+  }, [previewMode, reload, state?.workspace]);
 
   async function signOut() {
+    if (previewMode) return;
     const client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
     await client.auth.signOut();
     router.push("/");
@@ -327,7 +331,7 @@ export function StoicDashboard({ email }: { email: string }) {
   }
 
   const isStoicRoom = tab === "assistant" && chatMode === "room";
-  return <SidebarProvider className={`dashboard-shell ${isStoicRoom ? "board-chat-shell" : ""}`} data-theme={resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
+  return <SidebarProvider defaultOpen={false} suppressHydrationWarning className={`dashboard-shell ${isStoicRoom ? "board-chat-shell" : ""}`} data-theme={previewMode ? "dark" : resolvedTheme === "dark" ? "dark" : "light"} data-component-system="shadcn" data-accent={appearance.accent} data-density={appearance.density} data-corners={appearance.corners}>
     <DashboardSidebarNavigation
       email={email}
       workspaceName={workspace.name}
@@ -344,21 +348,21 @@ export function StoicDashboard({ email }: { email: string }) {
       <header className="dashboard-header">
         <div className="dashboard-header-start">
           <SidebarTrigger className="dashboard-sidebar-trigger" aria-label="Toggle navigation" />
-          <div className="breadcrumb" role="img" aria-label={`${workspace.name} · ${currentNavItem.label}`} title={`${workspace.name} · ${currentNavItem.label}`}><CurrentNavIcon aria-hidden="true" /><span className="sr-only">{workspace.name} · {currentNavItem.label}</span></div>
+          <div className="breadcrumb" aria-label={currentNavItem.label} title={currentNavItem.label}><CurrentNavIcon aria-hidden="true" /><span className="dashboard-header-title">{currentNavItem.label}</span></div>
         </div>
         <div className="header-right"><DashboardAppearanceControl appearance={appearance} onChange={setAppearance} /><Avatar size="sm" aria-label={`Account: ${email}`} title={email}><AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback></Avatar></div>
       </header>
-      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""} ${isStoicRoom ? "board-chat-content" : ""}`}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
+      <div className={`dashboard-content ${tab === "assistant" ? "assistant-content" : ""} ${isStoicRoom ? "board-chat-content" : ""}`} data-tab={tab}>{error && <Alert variant="destructive" className="mb-3 flex items-center justify-between gap-3"><AlertDescription>{error}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setError("")}>Dismiss</Button></Alert>}{notice && <Alert role="status" className="mb-3 flex items-center justify-between gap-3 border-primary/30 bg-primary/5"><AlertDescription>{notice}</AlertDescription><Button type="button" variant="ghost" size="sm" onClick={() => setNotice("")}>Dismiss</Button></Alert>}
         {tab === "analytics" && <div className="space-y-5"><header className="space-y-2"><Badge variant="secondary">TEAM ACTIVITY</Badge><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1><p className="max-w-2xl text-sm leading-6 text-muted-foreground">Six-hour agent activity and 30-day trends. The latest workspace data refreshes while this view is open.</p></header><ActivityAnalyticsPanel analytics={state.activityAnalytics} workspaceAgentCount={agents.filter((agent) => agent.status !== "revoked").length} /></div>}
         {tab === "assistant" && <>
-          <div className={chatMode === "room" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} onPlan={() => setChatMode("plan")} /></div>
+          <div className={chatMode === "room" ? "flex min-h-0 flex-1 flex-col" : "hidden"}><BoardView projects={projects} agents={agents} messages={board} busy={busy} command={command} refresh={reload} onPlan={() => setChatMode("plan")} onManageProjects={() => setTab("projects")} /></div>
           <div className={chatMode === "plan" ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto" : "hidden"}>
             <div className="shrink-0 px-4 pt-3 sm:px-6"><Button type="button" variant="outline" size="sm" onClick={() => setChatMode("room")}>Back to Stoic Chat</Button></div>
             <StoicIntake projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} guidance={dashboardGuidance} command={command} onHandoffCreated={() => { void reload().catch(() => {}); }} onViewHandoffs={() => setTab("handoffs")} onManageAgents={() => setTab("agents")} onOpenGuidance={() => followDashboardGuidance()} initialPrompt={intakeSeed?.prompt} initialProjectId={intakeSeed?.projectId} onPrefillConsumed={clearIntakeSeed} />
           </div>
         </>}
         {tab === "ideas" && <IdeasView projects={projects} agents={agents} ideas={ideas} workspace={workspace} busy={busy} command={command} />}
-        {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} />}
+        {tab === "contacts" && <ContactsWorkspace projects={projects} busy={busy} command={command} onOpenPrompts={() => setTab("prompts")} preview={previewMode} />}
         {tab === "prompts" && <PromptLibraryView onOpenAgents={() => setTab("agents")} onOpenContacts={() => setTab("contacts")} />}
         {tab === "install" && <AgentInstallation onManageAgents={() => setTab("agents")} />}
         {tab === "overview" && <div className="space-y-5">
@@ -389,10 +393,10 @@ export function StoicDashboard({ email }: { email: string }) {
             <CardContent className="divide-y pt-1">{pendingApprovals.map((approval) => <div key={approval.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="text-sm font-medium"><AssistantRichInline text={approval.action_summary} /></p><p className="mt-1 text-xs text-muted-foreground">For {handoffs.find((handoff) => handoff.id === approval.handoff_id)?.title || "a handoff"}</p></div><div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "approved" }).catch(() => {})}>Approve</Button><Button size="sm" variant="destructive" disabled={busy} onClick={() => command("decide_approval", { approvalId: approval.id, decision: "denied" }).catch(() => {})}>Deny</Button></div></div>)}</CardContent>
           </Card>}
         </div>}
-        {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} />}
+        {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} preview={previewMode} />}
         {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={navigateToTab} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
         {tab === "projects" && <><ProjectsView projects={projects} handoffs={handoffs} agents={agents} busy={busy} command={command} onNavigate={navigateToTab} /><RoutingView projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} /></>}
-        {tab === "knowledge" && <KnowledgeCenter projects={projects} agents={agents} onManageProjects={() => setTab("projects")} />}
+        {tab === "knowledge" && <KnowledgeCenter projects={projects} agents={agents} onManageProjects={() => setTab("projects")} preview={previewMode} />}
         {tab === "files" && <FilesView projects={projects} handoffs={handoffs} artifacts={artifacts} busy={busy} command={command} setNotice={setNotice} onManageProjects={() => setTab("projects")} />}
         {tab === "billing" && <BillingView workspace={workspace} monthlyPrice={state.monthlyPrice} usage={state.usage || { handoffs: 0, storageBytes: 0 }} busy={busy} command={command} />}
       </div>
@@ -460,7 +464,7 @@ async function fetchHandoffHistoryPage(url: string, signal?: AbortSignal) {
   return result as HandoffHistoryPage;
 }
 
-function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgentId, busy, command }: { agents: Agent[]; projects: Project[]; handoffs: Handoff[]; events: Event[]; artifacts: Artifact[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
+function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgentId, busy, command, preview = false }: { agents: Agent[]; projects: Project[]; handoffs: Handoff[]; events: Event[]; artifacts: Artifact[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; preview?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(handoffs[0]?.id || null);
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
@@ -473,7 +477,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   const [filters, setFilters] = useState<HandoffHistoryFilters>({ q: "", projectId: "all", agentId: "all", status: "all" });
   const [historyItems, setHistoryItems] = useState(handoffs);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(!preview);
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyRevision, setHistoryRevision] = useState(0);
@@ -490,6 +494,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   const agentNames = Object.fromEntries(agents.map((agent) => [agent.id, agent.name]));
 
   useEffect(() => {
+    if (preview) { setHistoryItems(handoffs); setSelectedId((current) => current || handoffs[0]?.id || null); setHistoryLoading(false); return; }
     const controller = new AbortController();
     void fetchHandoffHistoryPage(historyUrl(filters), controller.signal).then((page) => {
       setHistoryItems(page.items);
@@ -503,9 +508,19 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
       }
     }).finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
     return () => controller.abort();
-  }, [filters, historyRevision]);
+  }, [filters, handoffs, historyRevision, preview]);
 
   useEffect(() => {
+    if (preview) {
+      const handoff = handoffs.find((item) => item.id === selectedId);
+      setDetail(handoff ? {
+        handoff,
+        events: events.filter((item) => item.handoff_id === handoff.id),
+        artifacts: artifacts.filter((item) => item.handoff_id === handoff.id),
+      } : null);
+      setDetailError("");
+      return;
+    }
     if (!selectedId) return;
     const controller = new AbortController();
     void fetch(`/api/handoffs?id=${encodeURIComponent(selectedId)}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
@@ -519,7 +534,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
       if (!controller.signal.aborted) setDetailError(error instanceof Error ? error.message : "Could not load this handoff");
     });
     return () => controller.abort();
-  }, [selectedId, historyRevision]);
+  }, [artifacts, events, handoffs, preview, selectedId, historyRevision]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -607,14 +622,14 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
         <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => submit(event).catch(() => {})}>
           <Field>
             <FieldLabel htmlFor="handoff-project" className={fieldClass}>Project</FieldLabel>
-            <Select value={projectId} onValueChange={(value) => { const next = projects.find((project) => project.id === (value || "")); setProjectId(value || ""); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }}>
+            <Select items={projects.map((project) => ({ value: project.id, label: project.name }))} value={projectId} onValueChange={(value) => { const next = projects.find((project) => project.id === (value || "")); setProjectId(value || ""); setAssignedAgentId(next?.default_agent_id && workers.some((agent) => agent.id === next.default_agent_id) ? next.default_agent_id : workers[0]?.id || ""); }}>
               <SelectTrigger id="handoff-project" className={selectClass}><SelectValue placeholder="Choose a project" /></SelectTrigger>
               <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
           <Field>
             <FieldLabel htmlFor="handoff-assignee" className={fieldClass}>Who can take this?</FieldLabel>
-            <Select value={teamQueue ? "team_queue" : effectiveAssigneeId} onValueChange={(value) => { const next = value || "team_queue"; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }}>
+            <Select items={[{ value: "team_queue", label: "All connected workers · first claim wins" }, ...workers.map((agent) => ({ value: agent.id, label: `${agent.name} only` }))]} value={teamQueue ? "team_queue" : effectiveAssigneeId} onValueChange={(value) => { const next = value || "team_queue"; setTeamQueue(next === "team_queue"); if (next !== "team_queue") setAssignedAgentId(next); }}>
               <SelectTrigger id="handoff-assignee" className={selectClass}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="team_queue">All connected workers · first claim wins</SelectItem>
@@ -664,21 +679,21 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
             <div className="grid gap-3 sm:grid-cols-3">
               <Field>
                 <FieldLabel className={fieldClass}>Project</FieldLabel>
-                <Select value={filterInput.projectId} onValueChange={(value) => setFilterInput((current) => ({ ...current, projectId: value || "all" }))} disabled={historyLoadingMore}>
+                <Select items={[{ value: "all", label: "All projects" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} value={filterInput.projectId} onValueChange={(value) => setFilterInput((current) => ({ ...current, projectId: value || "all" }))} disabled={historyLoadingMore}>
                   <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <Field>
                 <FieldLabel className={fieldClass}>Agent</FieldLabel>
-                <Select value={filterInput.agentId} onValueChange={(value) => setFilterInput((current) => ({ ...current, agentId: value || "all" }))} disabled={historyLoadingMore}>
+                <Select items={[{ value: "all", label: "All agents" }, { value: "unassigned", label: "Team queue" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} value={filterInput.agentId} onValueChange={(value) => setFilterInput((current) => ({ ...current, agentId: value || "all" }))} disabled={historyLoadingMore}>
                   <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="all">All agents</SelectItem><SelectItem value="unassigned">Team queue</SelectItem>{agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <Field>
                 <FieldLabel className={fieldClass}>Status</FieldLabel>
-                <Select value={filterInput.status} onValueChange={(value) => setFilterInput((current) => ({ ...current, status: value || "all" }))} disabled={historyLoadingMore}>
+                <Select items={[{ value: "all", label: "All statuses" }, { value: "proposed", label: "Proposed" }, { value: "assigned", label: "Assigned" }, { value: "claimed", label: "Claimed" }, { value: "blocked", label: "Blocked" }, { value: "submitted", label: "Submitted" }, { value: "changes_requested", label: "Changes requested" }, { value: "accepted", label: "Accepted" }, { value: "canceled", label: "Canceled" }]} value={filterInput.status} onValueChange={(value) => setFilterInput((current) => ({ ...current, status: value || "all" }))} disabled={historyLoadingMore}>
                   <SelectTrigger className={selectClass}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All statuses</SelectItem><SelectItem value="proposed">Proposed</SelectItem><SelectItem value="assigned">Assigned</SelectItem><SelectItem value="claimed">Claimed</SelectItem><SelectItem value="blocked">Blocked</SelectItem><SelectItem value="submitted">Submitted</SelectItem><SelectItem value="changes_requested">Changes requested</SelectItem><SelectItem value="accepted">Accepted</SelectItem><SelectItem value="canceled">Canceled</SelectItem>
@@ -886,7 +901,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
               </Field>
               <Field>
                 <FieldLabel htmlFor="new-agent-harness">Harness</FieldLabel>
-                <Select value={harness} onValueChange={(value) => setHarness((value || "codex") as AgentHarnessId)}>
+                <Select items={AGENT_HARNESSES.map((option) => ({ value: option.id, label: option.label }))} value={harness} onValueChange={(value) => setHarness((value || "codex") as AgentHarnessId)}>
                   <SelectTrigger id="new-agent-harness"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
                   <SelectContent>{AGENT_HARNESSES.map((option) => <SelectItem value={option.id} key={option.id}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
@@ -908,7 +923,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
           <CardContent className="space-y-4">
             <Field>
               <FieldLabel htmlFor="team-boss">Who leads?</FieldLabel>
-              <Select value={boss || "none"} onValueChange={(value) => setBoss(!value || value === "none" ? "" : value)}>
+              <Select items={[{ value: "none", label: "No boss yet" }, ...activeAgents.map((agent) => ({ value: agent.id, label: `${agent.name}${agent.platform === "muse" ? " · browser relay only" : ""}` }))]} value={boss || "none"} onValueChange={(value) => setBoss(!value || value === "none" ? "" : value)}>
                 <SelectTrigger id="team-boss"><SelectValue placeholder="Choose a lead agent" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No boss yet</SelectItem>
@@ -919,7 +934,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
             </Field>
             <Field>
               <FieldLabel htmlFor="delegation-level">Delegation level</FieldLabel>
-              <Select value={level} onValueChange={(value) => { if (value === "observe" || value === "propose" || value === "delegate") setLevel(value); }}>
+              <Select items={[{ value: "observe", label: "Observe · updates only" }, { value: "propose", label: "Propose · owner approves assignments" }, { value: "delegate", label: "Delegate · boss assigns directly" }]} value={level} onValueChange={(value) => { if (value === "observe" || value === "propose" || value === "delegate") setLevel(value); }}>
                 <SelectTrigger id="delegation-level"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="observe">Observe · updates only</SelectItem>
@@ -1147,7 +1162,7 @@ function AgentConnectionStep({ agent, endpoint, busy, secret, issue }: { agent: 
           <p className="text-sm leading-6 text-muted-foreground">Or copy a ready-to-paste setup prompt. It includes the shared Stoic rules for ideas and contacts, and only describes scheduling when this harness has a verified native path.</p>
           <Button type="button" variant="outline" size="sm" onClick={() => copyHermesInstallPrompt().catch(() => {})}>Copy {agentHarnessLabel(agent)} setup prompt</Button>
           {promptCopyStatus && <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{promptCopyStatus}</p>}
-          <Button type="button" variant="link" size="sm" render={<a href={guide.docs} target="_blank" rel="noopener noreferrer" />}>Platform setup reference</Button>
+          <Button nativeButton={false} variant="link" size="sm" render={<a href={guide.docs} target="_blank" rel="noopener noreferrer" />}>Platform setup reference</Button>
         </CardContent>
       </Card>}
       <p className="text-sm leading-6 text-muted-foreground">Use a different key for each agent profile. Replacing a key or switching to OAuth disconnects the previous installation. A fresh inbox check verifies the new connection.</p>
@@ -1366,7 +1381,7 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
       <CardContent className="grid gap-4 sm:grid-cols-2 sm:items-end">
         {projects.length ? <Field>
           <FieldLabel htmlFor="project-space-select">Current project</FieldLabel>
-          <Select value={selected?.id || ""} onValueChange={selectProject}>
+          <Select items={projects.map((project) => ({ value: project.id, label: project.name }))} value={selected?.id || ""} onValueChange={selectProject}>
             <SelectTrigger id="project-space-select" aria-label="Choose a project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
             <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
           </Select>
@@ -1521,7 +1536,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
         </div>
         <Field className="w-full max-w-xs">
           <FieldLabel className="text-[var(--dash-text)]">Project</FieldLabel>
-          <Select value={projectId} onValueChange={(value) => setProjectId(value || "all")}>
+          <Select items={[{ value: "all", label: "All projects" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} value={projectId} onValueChange={(value) => setProjectId(value || "all")}>
             <SelectTrigger aria-label="Filter ideas by project" className={selectClass}><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
           </Select>
@@ -1582,7 +1597,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
             <div><h3 className="text-sm font-semibold">Assign this idea</h3><p className="mt-1 text-xs leading-5 text-[var(--dash-muted)]">Choose a connected worker for {projectNames[selectedIdea.project_id] || "this project"}. Assignment creates a handoff for that worker.</p></div>
             <Field>
               <FieldLabel htmlFor="idea-worker" className="text-[var(--dash-text)]">Connected worker</FieldLabel>
-              <Select value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !hasWorkers || workspace.delegation_level === "observe"}>
+              <Select items={[{ value: "__none__", label: "Choose a worker" }, ...workers.map((agent) => ({ value: agent.id, label: agent.name }))]} value={selectedWorkerId} onValueChange={(value) => setSelectedWorkerId(value || "__none__")} disabled={busy || !hasWorkers || workspace.delegation_level === "observe"}>
                 <SelectTrigger id="idea-worker" aria-label="Choose a connected worker" className={selectClass}><SelectValue placeholder="Choose a worker" /></SelectTrigger>
                 <SelectContent><SelectItem value="__none__" disabled>Choose a worker</SelectItem>{workers.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
               </Select>
@@ -1622,7 +1637,7 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
 
 
 
-function BoardView(props: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void>; onPlan?: () => void }) {
+function BoardView(props: { projects: Project[]; agents: Agent[]; messages: BoardMessage[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; refresh: () => Promise<void>; onPlan?: () => void; onManageProjects?: () => void }) {
   return <BoardDiscussionView {...props} />;
 }
 
@@ -1666,7 +1681,7 @@ function RoutingView({ projects, agents, bossAgentId, busy, command }: { project
               </Alert>}
               <Field>
                 <FieldLabel htmlFor={"routing-" + project.id}>Default worker</FieldLabel>
-                <Select value={assignedWorker ? project.default_agent_id || "__none__" : "__none__"} disabled={busy} onValueChange={(value) => command("set_project_routing", { projectId: project.id, agentId: value === "__none__" ? null : value || null }).catch(() => {})}>
+                <Select items={[{ value: "__none__", label: "No default agent" }, ...workers.map((agent) => ({ value: agent.id, label: agent.name }))]} value={assignedWorker ? project.default_agent_id || "__none__" : "__none__"} disabled={busy} onValueChange={(value) => command("set_project_routing", { projectId: project.id, agentId: value === "__none__" ? null : value || null }).catch(() => {})}>
                   <SelectTrigger id={"routing-" + project.id} aria-label={"Default worker for " + project.name}><SelectValue placeholder="No default agent" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">No default agent</SelectItem>
@@ -1792,14 +1807,14 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
         </div> : <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => upload(event).catch(() => {})}>
           <Field>
             <FieldLabel htmlFor="artifact-project">Project</FieldLabel>
-            <Select value={projectId} onValueChange={(value) => { setProjectId(value || ""); setHandoffId(""); uploadKey.current = null; }}>
+            <Select items={projects.map((project) => ({ value: project.id, label: project.name }))} value={projectId} onValueChange={(value) => { setProjectId(value || ""); setHandoffId(""); uploadKey.current = null; }}>
               <SelectTrigger id="artifact-project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
               <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
           <Field>
             <FieldLabel htmlFor="artifact-handoff">Handoff (optional)</FieldLabel>
-            <Select value={handoffId || "__none__"} onValueChange={(value) => { setHandoffId(value === "__none__" ? "" : value || ""); uploadKey.current = null; }}>
+            <Select items={[{ value: "__none__", label: "No specific handoff" }, ...handoffs.filter((handoff) => handoff.project_id === projectId).map((handoff) => ({ value: handoff.id, label: handoff.title }))]} value={handoffId || "__none__"} onValueChange={(value) => { setHandoffId(value === "__none__" ? "" : value || ""); uploadKey.current = null; }}>
               <SelectTrigger id="artifact-handoff"><SelectValue placeholder="Project file, visible to its agents" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No specific handoff</SelectItem>
@@ -1949,7 +1964,7 @@ function BillingView({ workspace, monthlyPrice, usage, busy, command }: { worksp
           </div>
           <div className="flex flex-wrap gap-2">
             {workspace.stripe_customer_id && <Button type="button" variant="outline" disabled={busy} onClick={() => portal().catch(() => {})}>{busy ? "Opening Stripe…" : "Manage billing"}</Button>}
-            <Button type="button" variant="outline" render={<a href="/api/export" />}>Export workspace data</Button>
+            <Button nativeButton={false} variant="outline" render={<a href="/api/export" />}>Export workspace data</Button>
           </div>
         </CardContent>
       </Card>

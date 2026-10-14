@@ -59,7 +59,7 @@ export function AgentSetupProgress({ agent, bossAgentId, handoffs, onOpenIntake 
       </ol>
       {next?.id === "handoff"
         ? <Button type="button" variant="outline" size="sm" onClick={onOpenIntake}>Start in Stoic chat</Button>
-        : next && <Button type="button" variant="link" size="sm" render={<a href={target} />}>Go to this step</Button>}
+        : next && <Button nativeButton={false} variant="link" size="sm" render={<a href={target} />}>Go to this step</Button>}
     </CardContent>
   </Card>;
 }

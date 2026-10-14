@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,7 +100,7 @@ function AppearanceSelect({
   return (
     <div className="grid gap-2">
       <span className="text-sm font-medium">{label}</span>
-      <Select value={value} onValueChange={(next) => { if (next) onChange(next); }}>
+      <Select items={options} value={value} onValueChange={(next) => { if (next) onChange(next); }}>
         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
         <SelectContent>{options.map((option) => <SelectItem value={option.value} key={option.value}>{option.label}</SelectItem>)}</SelectContent>
       </Select>
@@ -129,6 +129,7 @@ function AppRoot() {
   const resolvedTheme = themeMode === "system" ? hostTheme || deviceTheme : themeMode;
   const hasContext = context !== null;
   const currentTab = navItems.find((item) => item.id === tab);
+  const CurrentTabIcon = tabIcons[tab];
 
   function selectTab(nextTab: NavTab) {
     if (nextTab === "assistant") setChatEntry((entry) => entry + 1);
@@ -315,27 +316,17 @@ function AppRoot() {
 
       <section className="mcp-widget-main flex min-w-0 flex-1 flex-col">
         <header className="mcp-widget-header flex min-h-14 shrink-0 items-center justify-between gap-2 bg-background px-4">
-          <div className="hidden min-w-0 items-center gap-2 md:flex">
-            <span className="truncate text-xs text-muted-foreground">{context?.workspace.name || "Stoic workspace"}</span>
-            <span className="text-muted-foreground/60">/</span>
-            <span className="truncate text-sm font-medium">{currentTab?.label || "Stoic"}</span>
+          <div className="mcp-active-tab-title" aria-current="page">
+            <CurrentTabIcon aria-hidden="true" />
+            <span>{currentTab?.label || "Stoic"}</span>
           </div>
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-            <Select value={tab} onValueChange={(value) => { if (value) selectTab(value as NavTab); }}>
-              <SelectTrigger className="w-[8.5rem] shrink-0 sm:w-40" aria-label="Navigate to tab"><SelectValue /></SelectTrigger>
-              <SelectContent align="end" className="max-h-[min(70vh,28rem)]">
-                {navSections.map((section) => <SelectGroup key={section.label}>
-                  <SelectLabel>{section.label}</SelectLabel>
-                  {section.items.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}
-                </SelectGroup>)}
-              </SelectContent>
-            </Select>
-            <Select value={projectId || undefined} onValueChange={(value) => { if (value) setProjectId(value); }} disabled={!context?.projects.length}>
+          <div className="mcp-widget-header-utilities flex min-w-0 flex-1 items-center justify-end gap-2">
+            {tab !== "assistant" && <Select items={context?.projects.map((project) => ({ value: project.id, label: project.name })) || []} value={projectId || undefined} onValueChange={(value) => { if (value) setProjectId(value); }} disabled={!context?.projects.length}>
               <SelectTrigger className="mcp-project-picker flex w-[6.5rem] shrink-0 sm:w-40" aria-label="Current project"><SelectValue placeholder="Choose project" /></SelectTrigger>
               <SelectContent align="end">
                 {context?.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
               </SelectContent>
-            </Select>
+            </Select>}
             <div className="hidden items-center gap-2 text-xs text-muted-foreground lg:flex" role="status">
               <span className={`size-2 rounded-full ${connection === "connected" ? "bg-emerald-600" : connection === "error" ? "bg-destructive" : "bg-amber-500"}`} />
               {connection === "connected" ? `Connected · ${context?.self.role || "agent"}` : connection === "error" ? "Needs attention" : "Connecting"}
@@ -356,7 +347,7 @@ function AppRoot() {
           </Alert>
         </div>}
 
-        <main className={`mcp-widget-content flex-1 p-4 sm:p-6 ${tab === "assistant" ? "mcp-widget-chat-content" : ""}`}>
+        <main className={`mcp-widget-content flex-1 ${tab === "assistant" ? "mcp-widget-chat-content" : "p-4 sm:p-6"}`}>
           <div className={`mx-auto flex w-full max-w-6xl flex-col gap-4 ${tab === "assistant" ? "mcp-widget-chat-inner" : "min-h-full"}`}>
             {loading && !context ? <div className="grid gap-3" aria-label="Loading Stoic workspace"><Skeleton className="h-24 w-full" /><Skeleton className="h-56 w-full" /></div> : null}
             {!loading && !context ? <Alert variant="destructive"><AlertTitle>Could not connect</AlertTitle><AlertDescription>Reconnect Stoic or refresh this workspace to try again.</AlertDescription><Button variant="outline" size="sm" className="mt-3 w-fit" onClick={() => void refreshContext().catch((error) => notify(errorMessage(error), "error"))}>Try again</Button></Alert> : null}

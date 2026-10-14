@@ -6,11 +6,11 @@ export function stoicMcpAppHtml(origin: string) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Stoic Connector</title>
-  <link rel="stylesheet" href="${origin}/stoic-mcp-widget.css?v=20261007-shadcn-mcp-v4">
+  <link rel="stylesheet" href="${origin}/stoic-mcp-widget.css?v=20261014-room-finder-mcp-v5">
 </head>
 <body>
   <div id="stoic-root"></div>
-  <script type="module" src="${origin}/stoic-mcp-widget.js?v=20261007-shadcn-mcp-v4"></script>
+  <script type="module" src="${origin}/stoic-mcp-widget.js?v=20261014-room-finder-mcp-v5"></script>
 </body>
 </html>`;
 }

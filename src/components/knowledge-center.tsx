@@ -40,6 +40,43 @@ type Overview = {
   graph: { graph: KnowledgeGraphIndex; errors: unknown[]; warnings: unknown[] };
   refreshRuns: Array<{ status?: string; trigger_kind?: string; scheduled_slot?: string; scheduled_local_date?: string; created_at?: string; output_counts?: Record<string, number> }>;
 };
+const previewKnowledgeBodies: Record<string, string> = {
+  "preview-note-voice": "## Working rule\nKeep customer-facing recommendations direct, specific, and easy to verify.\n\n## Evidence\nLink every factual claim to the source that supports it. Mark estimates as estimates and open questions as unresolved.\n\n## Review\nAsk the project owner before publishing or contacting anyone.",
+  "preview-note-positioning": "The current positioning centers on a calm, useful workspace for teams coordinating more than one agent. Show the shared project context before describing automation.",
+  "preview-note-decision": "Keep customer records private to the workspace. Source notes should describe where a record came from and what needs verification, without implying permission to contact.",
+};
+
+function makePreviewOverview(project: Project): Overview {
+  const now = Date.now();
+  const ago = (hours: number) => new Date(now - hours * 3_600_000).toISOString();
+  const notes: KnowledgeNoteSummary[] = [
+    { id: "preview-note-voice", project_id: project.id, path: "decisions/brand-voice.md", kind: "decision", title: "Brand voice and evidence rules", status: "proposed", confidence: "likely", created_at: ago(4), updated_at: ago(2), source_agent: "agent-editor", supersedes: [], related: ["preview-note-positioning"], evidence: ["handoff:campaign-refresh"], stale: false, stored_updated_at: ago(2) },
+    { id: "preview-note-positioning", project_id: project.id, path: "notes/positioning.md", kind: "note", title: "Positioning: calm team workspace", status: "active", confidence: "verified", created_at: ago(40), updated_at: ago(12), source_user: "workspace-owner", supersedes: [], related: ["preview-note-voice"], evidence: ["project-brief:v3"], stale: false, stored_updated_at: ago(12) },
+    { id: "preview-note-decision", project_id: project.id, path: "decisions/contact-boundary.md", kind: "decision", title: "Contact records need source context", status: "stale", confidence: "likely", created_at: ago(240), updated_at: ago(120), source_user: "workspace-owner", supersedes: [], related: [], evidence: ["handoff:contact-import"], stale: true, stored_updated_at: ago(120) },
+  ];
+  const graph: KnowledgeGraphIndex = {
+    contract_version: 1,
+    project_id: project.id,
+    nodes: notes.map((note) => ({
+      id: note.id, project_id: project.id, kind: note.kind, title: note.title, status: note.status,
+      confidence: note.confidence, updated_at: note.updated_at, source_path: note.path,
+      ...(note.source_agent ? { source_agent: note.source_agent } : {}),
+      ...(note.source_user ? { source_user: note.source_user } : {}),
+      evidence: note.evidence, stale: note.stale, orphan: false,
+    })),
+    edges: [
+      { id: "preview-edge-voice", source: "preview-note-voice", target: "preview-note-positioning", type: "related", target_exists: true },
+      { id: "preview-edge-positioning", source: "preview-note-positioning", target: "preview-note-voice", type: "wikilink", target_exists: true },
+    ],
+  };
+  return {
+    project,
+    settings: { enabled: true, timezone: "America/Chicago", schedule_slots: ["08:00", "13:00", "18:00"], source_scopes: [...KNOWLEDGE_SOURCE_SCOPES], retention_days: 365, pinned_note_ids: ["preview-note-positioning"], settings_revision: 3, persisted: true },
+    notes,
+    graph: { graph, errors: [], warnings: [] },
+    refreshRuns: [{ status: "complete", trigger_kind: "scheduled", scheduled_slot: "08:00", scheduled_local_date: new Date(now).toLocaleDateString("en-CA"), created_at: ago(3), output_counts: { proposed: 1, indexed: 2 } }],
+  };
+}
 type Draft = {
   id: string;
   title: string;
@@ -119,16 +156,20 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
   return "outline";
 }
 
-export function KnowledgeCenter({ projects, agents, onManageProjects }: {
+export function KnowledgeCenter({ projects, agents, onManageProjects, preview = false }: {
   projects: Project[];
   agents: Agent[];
   onManageProjects: () => void;
+  preview?: boolean;
 }) {
   const [requestedProjectId, setRequestedProjectId] = useState(projects[0]?.id || "");
   const projectId = projects.some((project) => project.id === requestedProjectId) ? requestedProjectId : projects[0]?.id || "";
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState("");
-  const [selectedNote, setSelectedNote] = useState<NoteDetail | null>(null);
+  const selectedProject = projects.find((project) => project.id === projectId) || projects[0];
+  const demoOverview = useMemo(() => preview && selectedProject ? makePreviewOverview(selectedProject) : null, [preview, selectedProject?.id, selectedProject?.name]);
+  const firstDemoNote = demoOverview?.notes[0];
+  const [overview, setOverview] = useState<Overview | null>(demoOverview);
+  const [selectedNoteId, setSelectedNoteId] = useState(firstDemoNote?.id || "");
+  const [selectedNote, setSelectedNote] = useState<NoteDetail | null>(() => firstDemoNote ? { ...firstDemoNote, body: previewKnowledgeBodies[firstDemoNote.id] || "", markdown: previewKnowledgeBodies[firstDemoNote.id] || "" } : null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [panel, setPanel] = useState<Panel>("notes");
   const [scope, setScope] = useState<KnowledgeGraphScope>("all");
@@ -150,8 +191,18 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
 
   const stewardPanelOpen = stewardOpen ?? Boolean(stewardSettings?.enabled || error);
 
+  useEffect(() => {
+    if (!preview || !demoOverview) return;
+    const note = demoOverview.notes[0];
+    setOverview(demoOverview);
+    setSettingsDraft(settingsDraftFrom(demoOverview.settings));
+    setSelectedNoteId(note?.id || "");
+    setSelectedNote(note ? { ...note, body: previewKnowledgeBodies[note.id] || "", markdown: previewKnowledgeBodies[note.id] || "" } : null);
+  }, [demoOverview, preview]);
+
   const refreshOverview = useCallback(async (preferredNoteId?: string, signal?: AbortSignal) => {
     if (!projectId) return null;
+    if (preview) { setOverview(demoOverview); return demoOverview; }
     const response = await fetch(`/api/knowledge?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store", signal });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Could not load knowledge");
@@ -161,10 +212,15 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     setSettingsDraft(settingsDraftFrom(next.settings));
     setSelectedNoteId(preferredNoteId && next.notes.some((note) => note.id === preferredNoteId) ? preferredNoteId : next.notes[0]?.id || "");
     return next;
-  }, [projectId]);
+  }, [demoOverview, preview, projectId]);
 
   const loadNote = useCallback(async (noteId: string, signal?: AbortSignal) => {
     if (!projectId || !noteId) return;
+    if (preview) {
+      const note = demoOverview?.notes.find((item) => item.id === noteId);
+      if (note) setSelectedNote({ ...note, body: previewKnowledgeBodies[note.id] || "", markdown: previewKnowledgeBodies[note.id] || "" });
+      return;
+    }
     const revision = ++noteLoadRevision.current;
     setLoading(true);
     setError("");
@@ -181,9 +237,10 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     } finally {
       if (!signal?.aborted && revision === noteLoadRevision.current) setLoading(false);
     }
-  }, [projectId]);
+  }, [demoOverview, preview, projectId]);
 
   useEffect(() => {
+    if (preview) return;
     if (!projectId) return;
     const controller = new AbortController();
     async function loadProject() {
@@ -204,9 +261,10 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
     }
     void loadProject();
     return () => controller.abort();
-  }, [loadNote, projectId]);
+  }, [loadNote, preview, projectId]);
 
   useEffect(() => {
+    if (preview) return;
     if (!projectId) return;
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
@@ -222,7 +280,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [loadNote, projectId, refreshOverview, selectedNoteId]);
+  }, [loadNote, preview, projectId, refreshOverview, selectedNoteId]);
 
   const filteredGraph = useMemo(() => currentOverview
     ? filterKnowledgeGraph(currentOverview.graph.graph, { query, scope, kind, agentId, edgeTypes })
@@ -285,6 +343,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
   async function saveNote(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!projectId || !draft || saving) return;
+    if (preview) { setNotice("Design preview · changes are not saved."); return; }
     setSaving(true);
     setError("");
     setNotice("");
@@ -322,6 +381,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
   async function saveStewardSettings(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!projectId || !settingsDraft || stewardSaving) return;
+    if (preview) { setNotice("Design preview · changes are not saved."); return; }
     setStewardSaving(true);
     setError("");
     setNotice("");
@@ -345,6 +405,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
 
   async function runStewardNow() {
     if (!projectId || stewardRunning) return;
+    if (preview) { setNotice("Design preview · refreshes are not run."); return; }
     setStewardRunning(true);
     setError("");
     setNotice("");
@@ -402,7 +463,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
       </div>
       <Field className="w-full max-w-sm">
         <FieldLabel htmlFor="knowledge-project">Project</FieldLabel>
-        <Select value={projectId} onValueChange={(value) => { if (value !== null) chooseProject(value); }}>
+        <Select items={projects.map((project) => ({ value: project.id, label: project.name }))} value={projectId} onValueChange={(value) => { if (value !== null) chooseProject(value); }}>
           <SelectTrigger id="knowledge-project" className="w-full"><SelectValue placeholder="Choose a project" /></SelectTrigger>
           <SelectContent>
             {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
@@ -609,7 +670,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
             <div className="grid w-full gap-3 sm:grid-cols-2 sm:gap-4 sm:w-auto">
               <Field>
                 <FieldLabel htmlFor="knowledge-kind-filter">Note type</FieldLabel>
-                <Select value={kind} onValueChange={(value) => setKind(value as KnowledgeKind | "all")}>
+                <Select items={[{ value: "all", label: "All types" }, ...filterKindOptions.map((value) => ({ value, label: noteLabel(value) }))]} value={kind} onValueChange={(value) => setKind(value as KnowledgeKind | "all")}>
                   <SelectTrigger id="knowledge-kind-filter" className="w-full sm:min-w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All types</SelectItem>
@@ -619,7 +680,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects }: {
               </Field>
               <Field>
                 <FieldLabel htmlFor="knowledge-agent-filter">Source agent</FieldLabel>
-                <Select value={agentId} onValueChange={(value) => { if (value !== null) setAgentId(value); }}>
+                <Select items={[{ value: "all", label: "All agents" }, ...agentOptions.map((agent) => ({ value: agent.id, label: agent.name }))]} value={agentId} onValueChange={(value) => { if (value !== null) setAgentId(value); }}>
                   <SelectTrigger id="knowledge-agent-filter" className="w-full sm:min-w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All agents</SelectItem>
@@ -719,7 +780,7 @@ function KnowledgeSelectField<T extends string>({ label, id, value, values, form
 }) {
   return <Field>
     <FieldLabel htmlFor={id}>{label}</FieldLabel>
-    <Select value={value} onValueChange={(next) => { if (next !== null) onChange(next); }}>
+    <Select items={values.map((option) => ({ value: option, label: format(option) }))} value={value} onValueChange={(next) => { if (next !== null) onChange(next); }}>
       <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>{values.map((option) => <SelectItem key={option} value={option}>{format(option)}</SelectItem>)}</SelectContent>
     </Select>

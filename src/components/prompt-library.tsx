@@ -30,7 +30,7 @@ export function PromptLibraryView({ onOpenAgents, onOpenContacts }: { onOpenAgen
 
   const toneSelect = <div className="grid w-full max-w-xs gap-2">
     <label htmlFor="prompt-tone" className="text-sm font-medium">Voice style</label>
-    <Select value={tone} onValueChange={(value) => { if (value) setTone(value as StoicPromptTone); }}>
+    <Select items={promptTones.map((item) => ({ value: item.id, label: item.label }))} value={tone} onValueChange={(value) => { if (value) setTone(value as StoicPromptTone); }}>
       <SelectTrigger id="prompt-tone" className="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>{promptTones.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
     </Select>
