@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   BookOpenIcon,
@@ -805,11 +805,15 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
   const [name, setName] = useState("");
   const [harness, setHarness] = useState<AgentHarnessId>("codex");
   const [customHarnessName, setCustomHarnessName] = useState("");
-  const [boss, setBoss] = useState(workspace.boss_agent_id || "");
   const [level, setLevel] = useState(workspace.delegation_level);
+  const [leadTransferOpen, setLeadTransferOpen] = useState(false);
+  const [leadTransferRecipientId, setLeadTransferRecipientId] = useState("");
   const endpoint = typeof window !== "undefined" ? window.location.origin + "/api/mcp" : "/api/mcp";
   const schedulePrompt = selected ? schedulePromptFor(selected, workspace) : "";
   const activeAgents = agents.filter((agent) => agent.status !== "revoked");
+  const connectedWorkers = activeAgents.filter((agent) => agent.status === "connected" && agent.platform !== "muse");
+  const reassignmentCandidates = selected ? connectedWorkers.filter((agent) => agent.id !== selected.id) : [];
+  const currentBoss = activeAgents.find((agent) => agent.id === workspace.boss_agent_id);
   const activeCredentials = agents.filter((agent) => agent.status === "connected" && agent.platform !== "muse").length;
 
   async function add(event: FormEvent) {
@@ -831,14 +835,33 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
     onSecret({ agentId: selected.id, value: (type === "key" ? value.key : value.code) || "", type });
   }
 
+  function openLeadTransfer() {
+    if (!selected) return;
+    const defaultRecipient = reassignmentCandidates.find((agent) => agent.id === workspace.boss_agent_id) || reassignmentCandidates[0];
+    setLeadTransferRecipientId(defaultRecipient?.id || "");
+    setLeadTransferOpen(true);
+  }
+
+  async function confirmLeadTransfer(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    await command("set_policy", {
+      bossAgentId: selected.id,
+      delegationLevel: level,
+      reassignActiveHandoffsToAgentId: leadTransferRecipientId || null,
+    });
+    setLeadTransferOpen(false);
+  }
+
   const isMuse = selected?.platform === "muse";
 
-  return <div className="space-y-5 sm:space-y-6">
+  return <>
+    <div className="space-y-5 sm:space-y-6">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
         <Badge variant="secondary">Your team</Badge>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agents</h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Connect each agent with its own Stoic profile, then set access notes and team rules.</p>
+        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Connect each agent with its own Stoic profile, then set its access notes and team role.</p>
       </div>
       <Card size="sm" className="sm:min-w-52">
         <CardContent className="flex items-center justify-between gap-4 py-3">
@@ -874,7 +897,9 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2 font-medium text-foreground">
                       <span className="truncate">{agent.name}</span>
-                      {workspace.boss_agent_id === agent.id && <Badge variant="outline">Boss</Badge>}
+                      {agent.platform === "muse"
+                        ? <Badge variant="outline">Browser relay</Badge>
+                        : <Badge variant={workspace.boss_agent_id === agent.id ? "secondary" : "outline"}>{workspace.boss_agent_id === agent.id ? "Boss" : "Worker"}</Badge>}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-muted-foreground">{agentHarnessLabel(agent)}</span>
                   </span>
@@ -918,20 +943,9 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
         <Card>
           <CardHeader>
             <CardTitle>Team rules</CardTitle>
-            <CardDescription>These preferences apply to connected MCP agents.</CardDescription>
+            <CardDescription>Set how the team boss can delegate work. Change an agent’s role from its profile.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Field>
-              <FieldLabel htmlFor="team-boss">Who leads?</FieldLabel>
-              <Select items={[{ value: "none", label: "No boss yet" }, ...activeAgents.map((agent) => ({ value: agent.id, label: `${agent.name}${agent.platform === "muse" ? " · browser relay only" : ""}` }))]} value={boss || "none"} onValueChange={(value) => setBoss(!value || value === "none" ? "" : value)}>
-                <SelectTrigger id="team-boss"><SelectValue placeholder="Choose a lead agent" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No boss yet</SelectItem>
-                  {activeAgents.map((agent) => <SelectItem value={agent.id} key={agent.id} disabled={agent.platform === "muse"}>{agent.name}{agent.platform === "muse" ? " · browser relay only" : ""}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <FieldDescription>Muse is a browser relay and cannot be selected as a boss.</FieldDescription>
-            </Field>
             <Field>
               <FieldLabel htmlFor="delegation-level">Delegation level</FieldLabel>
               <Select items={[{ value: "observe", label: "Observe · updates only" }, { value: "propose", label: "Propose · owner approves assignments" }, { value: "delegate", label: "Delegate · boss assigns directly" }]} value={level} onValueChange={(value) => { if (value === "observe" || value === "propose" || value === "delegate") setLevel(value); }}>
@@ -947,7 +961,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
               <AlertTitle>External actions still need your approval</AlertTitle>
               <AlertDescription>Muse can share browser-based project ideas, but it is not a verified MCP handoff or boss connection.</AlertDescription>
             </Alert>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => command("set_policy", { bossAgentId: boss || null, delegationLevel: level }).catch(() => {})}>Save team rules</Button>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => command("set_policy", { bossAgentId: workspace.boss_agent_id, delegationLevel: level }).catch(() => {})}>Save team rules</Button>
           </CardContent>
         </Card>
       </div>
@@ -962,6 +976,29 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
             <CardDescription>{agentHarnessLabel(selected)} · {isMuse ? "Muse does not have an MCP connection through this setup." : selected.status === "connected" ? selected.last_check_at ? "Stoic has received a successful inbox check." : "A key or OAuth profile is paired; the first check is still pending." : "Finish the connection steps to verify this profile."}</CardDescription>
           </CardHeader>
           <CardContent className="min-w-0 space-y-5 pt-5">
+            <Card size="sm" className="border-primary/20 bg-primary/[0.03]">
+              <CardHeader className="sm:grid-cols-[1fr_auto]">
+                <div className="space-y-1">
+                  <CardTitle>Team role</CardTitle>
+                  <CardDescription>{workspace.boss_agent_id === selected.id
+                    ? "This agent is the team boss and leads handoffs."
+                    : isMuse ? "Browser relay · outside the MCP boss/worker roles."
+                    : currentBoss ? `Worker · reports to ${currentBoss.name}.` : "Worker · no team boss is assigned yet."}</CardDescription>
+                </div>
+                <Badge variant={workspace.boss_agent_id === selected.id ? "secondary" : "outline"}>{workspace.boss_agent_id === selected.id ? "Boss" : isMuse ? "Browser relay" : "Worker"}</Badge>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {workspace.boss_agent_id === selected.id
+                  ? <p className="text-sm leading-5 text-muted-foreground">To make this profile a worker, select another connected MCP agent and choose <span className="font-medium text-foreground">Make team boss</span>. Leadership moves in one step.</p>
+                  : isMuse
+                    ? <p className="text-sm leading-5 text-muted-foreground">Muse provides browser relay access and cannot be designated as the MCP team boss or worker.</p>
+                    : <>
+                    <p className="text-sm leading-5 text-muted-foreground">Promote this profile to team boss. The current boss automatically becomes a worker.</p>
+                    {selected.status !== "connected" && <p className="text-xs text-muted-foreground">Connect this MCP profile before making it the team boss.</p>}
+                    <Button type="button" disabled={busy || isMuse || selected.status !== "connected"} onClick={openLeadTransfer}>Make team boss</Button>
+                  </>}
+              </CardContent>
+            </Card>
             {!isMuse && <AgentProofSummary agent={selected} />}
             {!isMuse && <AgentSetupProgress agent={selected} bossAgentId={workspace.boss_agent_id} handoffs={handoffs} onOpenIntake={() => onNavigate("assistant")} />}
             {isMuse ? <MuseBrowserSetup key={selected.id} dashboardUrl={typeof window !== "undefined" ? window.location.origin + "/login" : "https://stoic.bishoptech.dev/login"} /> : <>
@@ -1064,7 +1101,39 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
         </CardContent>}
       </Card>
     </div>
-  </div>;
+    </div>
+    <AlertDialog open={leadTransferOpen} onOpenChange={setLeadTransferOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Make {selected?.name || "this agent"} the team boss?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {selected && currentBoss
+              ? <>{selected.name} will become the boss and {currentBoss.name} will become a worker. Any unfinished handoffs assigned to {selected.name} will move to the worker you choose below, with their activity history preserved.</>
+              : "This agent will become the team boss. If it has unfinished handoffs, assign them to a connected worker below so the new boss does not inherit work it must review."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {reassignmentCandidates.length ? <Field>
+          <FieldLabel htmlFor="lead-transfer-recipient">Worker for unfinished handoffs</FieldLabel>
+          <Select
+            items={reassignmentCandidates.map((agent) => ({ value: agent.id, label: agent.name }))}
+            value={leadTransferRecipientId}
+            onValueChange={(value) => setLeadTransferRecipientId(value || "")}
+          >
+            <SelectTrigger id="lead-transfer-recipient"><SelectValue placeholder="Choose a connected worker" /></SelectTrigger>
+            <SelectContent>{reassignmentCandidates.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
+          </Select>
+          <FieldDescription>Only open handoffs currently assigned to {selected?.name || "this agent"} will move.</FieldDescription>
+        </Field> : <Alert>
+          <AlertTitle>No other connected worker is available</AlertTitle>
+          <AlertDescription>You can promote this agent if it has no unfinished handoffs. Connect another MCP agent first if open work needs to move.</AlertDescription>
+        </Alert>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction disabled={busy} onClick={(event) => { void confirmLeadTransfer(event).catch(() => {}); }}>{busy ? "Changing role…" : "Confirm role change"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </>;
 }
 
 function MuseBrowserSetup({ dashboardUrl }: { dashboardUrl: string }) {

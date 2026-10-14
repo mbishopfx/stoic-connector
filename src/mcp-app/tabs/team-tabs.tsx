@@ -367,14 +367,14 @@ export function AgentsTab({ context, runtime }: McpTabProps) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Agents</h1><p className="max-w-2xl text-sm text-muted-foreground">Connected profiles and scheduled check-ins.</p></div>
+        <div className="space-y-1"><p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Team</p><h1 className="text-2xl font-semibold tracking-tight">Agents</h1><p className="max-w-2xl text-sm text-muted-foreground">Connected profiles and scheduled check-ins. Workspace owners can change which agent leads from its dashboard profile.</p></div>
         <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />} Refresh roster</Button>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card size="sm"><CardContent className="flex items-center gap-3 pt-(--card-spacing)"><div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><Users className="size-4" /></div><div><p className="text-xl font-semibold">{connected}</p><p className="text-xs text-muted-foreground">Connected profiles</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 pt-(--card-spacing)"><div className="flex size-9 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"><Clock3 className="size-4" /></div><div><p className="text-xl font-semibold">{scheduled}</p><p className="text-xs text-muted-foreground">Scheduled check-ins</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 pt-(--card-spacing)"><div className="flex size-9 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400"><ShieldCheck className="size-4" /></div><div><p className="text-xl font-semibold">{context.self.role === "boss" ? "Owner" : "Worker"}</p><p className="text-xs text-muted-foreground">This profile’s role</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 pt-(--card-spacing)"><div className="flex size-9 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400"><ShieldCheck className="size-4" /></div><div><p className="text-xl font-semibold">{context.self.role === "boss" ? "Boss" : "Worker"}</p><p className="text-xs text-muted-foreground">This profile’s role</p></div></CardContent></Card>
       </div>
 
       {context.agents.length ? (
@@ -391,7 +391,7 @@ export function AgentsTab({ context, runtime }: McpTabProps) {
                   </div>
                   <CardAction className="flex flex-wrap justify-end gap-1.5">
                     <Badge variant={statusVariant(agent.status)}>{agent.status.replaceAll("_", " ")}</Badge>
-                    {isBoss && <Badge variant="secondary">Boss</Badge>}
+                    <Badge variant={agent.platform === "muse" ? "outline" : isBoss ? "secondary" : "outline"}>{agent.platform === "muse" ? "Browser relay" : isBoss ? "Boss" : "Worker"}</Badge>
                     {isSelf && <Badge variant="outline">This profile</Badge>}
                   </CardAction>
                 </CardHeader>

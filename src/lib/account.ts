@@ -250,7 +250,12 @@ export async function setProjectRouting(ownerId: string, projectId: string, agen
   return data;
 }
 
-export async function setWorkspacePolicy(ownerId: string, bossAgentId: string | null, delegationLevel: DelegationLevel) {
+export async function setWorkspacePolicy(
+  ownerId: string,
+  bossAgentId: string | null,
+  delegationLevel: DelegationLevel,
+  reassignmentAgentId: string | null = null,
+) {
   const workspace = await requireActiveWorkspace(ownerId);
   if (bossAgentId) {
     const { data: boss, error: bossError } = await adminDb().from("agents").select("platform,status")
@@ -259,11 +264,26 @@ export async function setWorkspacePolicy(ownerId: string, bossAgentId: string | 
     if (!boss || boss.status !== "connected") throw new AppError("Choose a connected MCP agent as the team lead", 400);
     if (boss.platform === "muse") throw new AppError("Muse's browser relay cannot lead MCP handoffs", 400);
   }
+  if (reassignmentAgentId) {
+    if (reassignmentAgentId === bossAgentId) throw new AppError("Choose a worker other than the new team lead to receive open handoffs", 400);
+    const { data: replacement, error: replacementError } = await adminDb().from("agents").select("platform,status")
+      .eq("workspace_id", workspace.id).eq("id", reassignmentAgentId).maybeSingle();
+    if (replacementError) throw replacementError;
+    if (!replacement || replacement.status !== "connected" || replacement.platform === "muse") {
+      throw new AppError("Choose a connected MCP worker to receive open handoffs", 400);
+    }
+  }
   const { data, error } = await adminDb().rpc("stoic_set_workspace_policy", {
-    p_workspace_id: workspace.id, p_owner_id: ownerId, p_boss_agent_id: bossAgentId, p_delegation_level: delegationLevel,
+    p_workspace_id: workspace.id,
+    p_owner_id: ownerId,
+    p_boss_agent_id: bossAgentId,
+    p_delegation_level: delegationLevel,
+    p_reassignment_agent_id: reassignmentAgentId,
   });
-  if (error?.message.includes("boss_has_active_handoffs")) throw new AppError("Finish or cancel this agent's open handoffs before making it the boss", 409);
+  if (error?.message.includes("boss_has_active_handoffs")) throw new AppError("This agent has open handoffs. Choose a connected worker to receive them as part of the leadership change.", 409);
   if (error?.message.includes("boss_agent_not_found")) throw new AppError("Choose an active agent in this workspace", 400);
+  if (error?.message.includes("reassignment_agent_not_found")) throw new AppError("Choose a connected MCP worker to receive open handoffs", 400);
+  if (error?.message.includes("invalid_reassignment_agent")) throw new AppError("Choose a worker other than the new team lead to receive open handoffs", 400);
   if (error) throw error;
   return data;
 }

@@ -50,8 +50,12 @@ export async function POST(request: Request) {
         break;
       }
       case "set_policy": {
-        const parsed = z.object({ bossAgentId: uuid.nullable(), delegationLevel: z.enum(["observe", "propose", "delegate"]) }).parse(body);
-        data = await setWorkspacePolicy(user.id, parsed.bossAgentId, parsed.delegationLevel);
+        const parsed = z.object({
+          bossAgentId: uuid.nullable(),
+          delegationLevel: z.enum(["observe", "propose", "delegate"]),
+          reassignActiveHandoffsToAgentId: uuid.nullable().optional(),
+        }).parse(body);
+        data = await setWorkspacePolicy(user.id, parsed.bossAgentId, parsed.delegationLevel, parsed.reassignActiveHandoffsToAgentId || null);
         break;
       }
       case "update_brief": {
