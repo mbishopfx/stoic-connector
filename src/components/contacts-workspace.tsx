@@ -379,37 +379,25 @@ export function ContactsWorkspace({ projects, busy, command, onOpenPrompts, prev
           />
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground">Status</p>
-          <div className="flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter by status">
-            {(["all", ...CONTACT_STATUSES] as ContactSearchFilters["status"][]).map((value) => (
-              <Button
-                type="button"
-                key={value}
-                size="sm"
-                variant={filters.status === value ? "secondary" : "ghost"}
-                aria-pressed={filters.status === value}
-                onClick={() => changeFilter("status", value)}
-                className="shrink-0 rounded-full px-3"
-              >
-                {statusNames[value]}
-              </Button>
-            ))}
-          </div>
-        </div>
-
         <Accordion defaultValue={[]}>
           <AccordionItem value="more-filters" className="border-t border-border/70">
-            <AccordionTrigger className="py-3 text-sm hover:no-underline">
+            <AccordionTrigger className="py-3 text-sm hover:no-underline" aria-label="More filters: Status, project, contactability, activity, and sort">
               <span className="flex items-center gap-2">
                 More filters
                 <Badge variant="outline" className="h-5 min-w-5 justify-center px-1.5">
-                  {activeFilters.filter((item) => ["projectId", "contactability", "activity"].includes(item.key)).length + (filters.sort !== "recent" ? 1 : 0)}
+                  {activeFilters.filter((item) => ["status", "projectId", "contactability", "activity"].includes(item.key)).length + (filters.sort !== "recent" ? 1 : 0)}
                 </Badge>
               </span>
             </AccordionTrigger>
             <AccordionContent className="pb-1">
-              <div className="grid grid-cols-1 gap-3 pb-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 pb-3 sm:grid-cols-2 xl:grid-cols-5">
+                <SelectField
+                  id="contact-status-filter"
+                  label="Status"
+                  value={filters.status}
+                  onChange={(value) => changeFilter("status", value as ContactSearchFilters["status"])}
+                  options={(["all", ...CONTACT_STATUSES] as ContactSearchFilters["status"][]).map((value) => ({ value, label: statusNames[value] }))}
+                />
                 <SelectField
                   id="contact-project-filter"
                   label="Project"

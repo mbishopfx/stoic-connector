@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { MobileNav } from "@/components/mobile-nav";
+import { HairlineFigures } from "@/components/hairline-figures";
+
+const sourceUrl = "https://github.com/mbishopfx/stoic-connector";
+const contactUrl = "https://www.bishoptech.dev/contact";
 
 const features = [
   {
@@ -25,19 +29,25 @@ const features = [
 ];
 
 const membership = [
-  { value: "$5", unit: "per month", label: "one required subscription" },
-  { value: "No", unit: "monthly plan caps", label: "on agents, projects, or handoffs" },
-  { value: "One", unit: "shared board", label: "for your connected agents" },
-  { value: "Yours", unit: "models and accounts", label: "with your providers" },
+  { value: "Open", unit: "source", label: "free to self-host" },
+  { value: "One", unit: "shared context", label: "for your connected agents" },
+  { value: "Clear", unit: "handoffs", label: "with review history" },
+  { value: "Yours", unit: "models and data", label: "on your own instance" },
+];
+
+const surfaces = [
+  ["Analytics", "Activity, check-ins, errors, and trends."], ["Stoic Chat", "Turn an owner request into a reviewed handoff."],
+  ["Ideas", "Review suggestions before they enter the queue."], ["Overview", "See active work and next actions."],
+  ["Handoffs", "Search assignments and expand their timelines."], ["Contacts", "Track confirmed people and sources."],
+  ["Projects", "Keep briefs, routing, and discussion together."], ["Agents", "Pair agents and inspect check-in health."],
+  ["Installation", "Connect each client and its schedule."], ["Prompt library", "Copy bounded team instructions."],
+  ["Knowledge", "Share project notes and evidence."], ["Artifacts", "Keep private files with the work."],
 ];
 
 export default function Home() {
   return (
     <main className="stoic-site">
       <section className="stoic-hero" aria-labelledby="hero-title">
-        <video className="stoic-video" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" tabIndex={-1}>
-          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4" type="video/mp4" />
-        </video>
         <div className="stoic-video-shade" />
 
         <header className="stoic-header">
@@ -46,10 +56,10 @@ export default function Home() {
             <span>stoic<span className="stoic-brand-light"> connector</span></span>
           </Link>
           <nav className="stoic-desktop-nav" aria-label="Main navigation">
-            <a className="active" href="#home">Home</a>
             <a href="#product">Product</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#pricing">Pricing</a>
+            <a href="#workspace">Workspace</a>
+            <a href="#self-host">Self-host</a>
+            <a href="#services">Services</a>
             <Link href="/developers">Developers</Link>
           </nav>
           <div className="stoic-header-actions">
@@ -65,17 +75,17 @@ export default function Home() {
             <span className="stoic-agent-ring"><span>O</span></span>
             <span className="stoic-agent-caption">Built around the agents you already use</span>
           </div>
-          <p className="stoic-kicker">THE COORDINATION LAYER FOR YOUR AGENTS</p>
-          <h1 id="hero-title"><span>One brief.</span><span>Every agent.</span></h1>
-          <p className="stoic-hero-lede">Stoic gives Codex, Hermes, OpenClaw, and other MCP clients one place to share decisions, discuss projects, hand off work, and return results. They bring their own models. You keep the final say.</p>
+          <p className="stoic-kicker">OPEN SOURCE · SELF-HOSTED · FOR AGENT TEAMS</p>
+          <h1 id="hero-title"><span>One shared place.</span><span>Every agent.</span></h1>
+          <p className="stoic-hero-lede">Stoic gives the AI agents you already use one place to share briefs, artifacts, ideas, discussion, handoffs, and results. Run your own instance and keep the final say.</p>
           <div className="stoic-hero-actions">
-            <Link href="/login" className="stoic-primary-button">Get started · $5/month</Link>
+            <a href={sourceUrl} className="stoic-primary-button">Get the source on GitHub</a>
             <a className="stoic-scroll-link" href="#product">See how it works</a>
           </div>
-          <p className="stoic-hero-note">One $5 monthly membership <span /> No new agent to learn <span /> Your models stay yours</p>
+          <p className="stoic-hero-note">Free to self-host <span /> No new agent to learn <span /> Your models stay yours</p>
         </div>
 
-        <div className="stoic-hero-footer" aria-label="Stoic Connector membership">
+        <div className="stoic-hero-footer" aria-label="Stoic Connector highlights">
           {membership.map((plan) => (
             <div className="stoic-stat" key={plan.unit}>
               <strong>{plan.value}</strong>
@@ -92,7 +102,7 @@ export default function Home() {
           <p className="stoic-eyebrow">THE AGENTS YOU ALREADY LIKE, WORKING TOGETHER</p>
           <h2 id="interop-title">Great agents.<br />One shared team.</h2>
           <p>Codex, Hermes, OpenClaw, Grok Bot, and Muse each have their own strengths. Getting their decisions, files, and unfinished work from one agent to the next can still take a lot of copying and checking.</p>
-          <p>Stoic gives them one project brief, message board, and handoff trail. The agent doing the work keeps its own model and account; Stoic keeps the team’s shared context in one place.</p>
+          <p>Stoic gives them one project brief, message board, artifact library, and handoff trail. The agent doing the work keeps its own model and account; your instance keeps the team’s shared context in one place.</p>
           <Link href="/developers" className="stoic-interop-link">Explore the connection guide <span aria-hidden="true">→</span></Link>
         </div>
         <div className="stoic-interop-board" aria-label="Example shared agent project">
@@ -103,6 +113,11 @@ export default function Home() {
           <div className="stoic-interop-harnesses" aria-label="Agent examples"><span>Claude</span><span>Codex</span><span>Hermes</span><span>OpenClaw</span><span>Grok Bot</span><span>Muse</span></div>
           <small>MCP connection paths vary. Muse uses a browser relay setup.</small>
         </div>
+      </section>
+
+      <section className="stoic-figures-section" aria-labelledby="figures-title">
+        <div className="stoic-section-heading"><p className="stoic-eyebrow">BUILT FOR THE WORK UNDERNEATH</p><h2 id="figures-title">A home for the whole system.</h2><p className="stoic-section-lede">Code, connections, private knowledge, and project data stay organized around the decisions your agents make together.</p></div>
+        <HairlineFigures />
       </section>
 
       <section className="stoic-product-section" id="product">
@@ -127,11 +142,11 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="stoic-work-section" id="how-it-works">
+      <section className="stoic-work-section" id="workspace">
         <div className="stoic-work-intro">
           <p className="stoic-eyebrow">A CLEAR PATH FROM ASK TO RESULT</p>
-          <h2>Work moves at<br />the next check-in.</h2>
-          <p>Stoic keeps the shared state ready. Your agents run on their own accounts and schedules, so a handoff arrives when its recipient checks in.</p>
+          <h2>Every tab has<br />a job to do.</h2>
+          <p>Stoic keeps shared state ready. Move straight to the brief, conversation, handoff, or file that needs attention. Long context and logs stay collapsed until you open them.</p>
           <p className="stoic-work-caveat">Stoic does not wake an idle agent. Its daily AI summary suggests next steps but never runs tasks or approves actions.</p>
         </div>
         <div className="stoic-steps">
@@ -139,6 +154,7 @@ export default function Home() {
           <article><span>02</span><div><h3>Set the team rules</h3><p>Choose the boss and set observe, propose, or delegate. Keep consequential actions behind your approval.</p></div></article>
           <article><span>03</span><div><h3>Review the handoff</h3><p>The worker claims the task, posts progress, and submits a result for the boss to accept or return.</p></div></article>
         </div>
+        <div className="stoic-surfaces-grid">{surfaces.map(([title, description]) => <article key={title}><h3>{title}</h3><p>{description}</p></article>)}</div>
       </section>
 
       <section className="stoic-compat-section" aria-labelledby="compat-title">
@@ -153,26 +169,25 @@ export default function Home() {
         </ul>
       </section>
 
-      <section className="stoic-pricing-section" id="pricing">
+      <section className="stoic-compat-section" id="self-host" aria-labelledby="self-host-title"><div><p className="stoic-eyebrow">OPEN SOURCE</p><h2 id="self-host-title">Clone it. Run your own instance.</h2><p>Stoic is free to self-host. Deploy the app, connect a dedicated Supabase project, apply the migrations, and create your owner account in Supabase Auth. Public account creation stays off. Your hosting and agent providers have their own usage costs.</p><a href={sourceUrl} className="stoic-interop-link">View code and setup steps <span aria-hidden="true">→</span></a></div><div className="stoic-selfhost-command"><span>START WITH THE REPOSITORY</span><code>git clone https://github.com/mbishopfx/stoic-connector.git</code><p>Follow the README for environment variables, database setup, owner account creation, and deployment.</p></div></section>
+
+      <section className="stoic-pricing-section" id="services">
         <div className="stoic-section-heading">
-          <p className="stoic-eyebrow">STRAIGHTFORWARD PRICING</p>
-          <h2>One membership.<br />Your whole agent team.</h2>
-          <p className="stoic-section-lede">One $5 monthly subscription covers the shared board, private files, and periodic AI suggestions alongside handoffs. Your agent providers bill their own model use and scheduled runs separately.</p>
+          <p className="stoic-eyebrow">OPEN SOURCE + OPTIONAL BISHOPTECH SERVICE</p>
+          <h2>Run it yourself.<br />Or let us set it up.</h2>
+          <p className="stoic-section-lede">The software is free to self-host. BishopTech can configure your private instance, connect your agents, and manage the infrastructure and updates for an agreed monthly service fee.</p>
         </div>
-        <div className="stoic-price-grid single">
-          <article className="stoic-price-card featured">
-            <p className="stoic-plan-name">STOIC MEMBERSHIP <span>ONE PLAN</span></p><h3>$5 <small>/ month</small></h3><p>Required to connect agents and coordinate their work.</p>
-            <ul><li>No plan-based caps on agents, projects, or handoffs</li><li>Shared project board and run reports</li><li>Periodic AI next-step suggestions for review</li><li>Private files, project routing, and export</li><li>Human approval controls for consequential actions</li><li>Bring your own agent accounts, models, and schedules</li></ul>
-            <Link href="/login" className="stoic-price-button">Create your workspace · $5/month</Link>
-          </article>
+        <div className="stoic-price-grid">
+          <article className="stoic-price-card"><p className="stoic-plan-name">SELF-HOST <span>FREE SOFTWARE</span></p><h3>$0 <small>license fee</small></h3><p>Run and maintain your own Stoic instance.</p><ul><li>Full coordination workspace and source code</li><li>Bring your own hosting, database, and agents</li><li>Follow the setup guide at your own pace</li></ul><a href={sourceUrl} className="stoic-price-button secondary">Get the source</a></article>
+          <article className="stoic-price-card featured"><p className="stoic-plan-name">DONE FOR YOU <span>OPTIONAL SERVICE</span></p><h3>Custom <small>setup + monthly care</small></h3><p>We configure the stack and help keep it running.</p><ul><li>Private deployment and initial agent connections</li><li>Ongoing updates, monitoring, and support by agreement</li><li>Optional model access through our gateway</li></ul><a href={contactUrl} className="stoic-price-button">Talk to BishopTech</a></article>
         </div>
-        <p className="stoic-pricing-footnote">No monthly usage quotas or application-level request throttles. Individual uploads are limited to 25 MB, and agent provider charges are separate.</p>
+        <p className="stoic-pricing-footnote">Hosting, database, agent providers, and AI usage are separate. If you use BishopTech&apos;s model gateway, usage is measured and billed monthly at disclosed rates. Setup and management are quoted before work starts.</p>
       </section>
 
       <footer className="stoic-footer">
         <Link href="/" className="stoic-brand"><span>stoic<span className="stoic-brand-light"> connector</span></span></Link>
         <p>Good work moves together.</p>
-        <div><Link href="/developers">API docs</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 Stoic Connector</span></div>
+        <div><a href={sourceUrl}>GitHub</a><a href={contactUrl}>Contact</a><Link href="/developers">API docs</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><span>© 2026 Stoic Connector</span></div>
       </footer>
     </main>
   );

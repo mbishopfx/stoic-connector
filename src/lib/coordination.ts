@@ -89,9 +89,9 @@ export async function setAgentProjectRouting(agent: AgentIdentity, projectId: st
   if (!agent.isBoss) throw new AppError("Only the designated boss can change project routing", 403);
   const db = adminDb();
   const { data: workspace, error: workspaceError } = await db.from("workspaces")
-    .select("plan,boss_agent_id").eq("id", agent.workspaceId).maybeSingle();
+    .select("id,boss_agent_id").eq("id", agent.workspaceId).maybeSingle();
   if (workspaceError) throw workspaceError;
-  if (!workspace || workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to coordinate agents.", 402);
+  if (!workspace) throw new AppError("Workspace not found", 404);
   if (workspace.boss_agent_id !== agent.agentId) throw new AppError("Only the designated boss can change project routing", 403);
   if (defaultAgentId) {
     if (defaultAgentId === agent.agentId) throw new AppError("Choose a worker other than the designated boss", 400);

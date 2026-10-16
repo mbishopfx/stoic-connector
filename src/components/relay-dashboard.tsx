@@ -8,7 +8,6 @@ import {
   ChartBarIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   ClipboardDocumentListIcon,
-  CreditCardIcon,
   FolderIcon,
   LightBulbIcon,
   PaperClipIcon,
@@ -20,7 +19,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type Plan, type Platform } from "@/lib/config";
+import { type Platform } from "@/lib/config";
 import { AGENT_HARNESSES, agentHarnessLabel, agentScheduleSetupLabel, harnessHasDocumentedScheduler, harnessSupports30MinuteCadence, harnessSupports90MinuteCadence, isGrokBotHarness, type AgentHarnessId } from "@/lib/agent-harness";
 import { agentConnectionGuide } from "@/lib/agent-connection-guidance";
 import { agentConnectionSummary, agentHealth, FIRST_INBOX_CHECK_PROMPT } from "@/lib/agent-health";
@@ -60,6 +59,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Sidebar,
@@ -93,9 +93,9 @@ type BoardMessage = { id: string; project_id: string; parent_id: string | null; 
 type Idea = { id: string; workspace_id: string; project_id: string; run_id: string; title: string; summary: string; why_now: string; next_step: string; evidence_ids: string[]; status: "pending" | "accepted" | "archived"; accepted_handoff_id: string | null; accepted_at: string | null; archived_at: string | null; created_at: string; updated_at: string };
 
 type CheckActivity = { id: number; actor_key: string; details: { handoffCount?: number; unreadProjectCount?: number }; created_at: string };
-type Workspace = { id: string; name: string; plan: Plan; stripe_customer_id: string | null; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
-type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; activityAnalytics?: ActivityAnalytics; monthlyPrice?: number | null; usage?: { handoffs: number; storageBytes: number } };
-type Tab = "analytics" | "assistant" | "ideas" | "overview" | "handoffs" | "contacts" | "prompts" | "agents" | "install" | "projects" | "knowledge" | "files" | "billing";
+type Workspace = { id: string; name: string; delegation_level: "observe" | "propose" | "delegate"; boss_agent_id: string | null; ideas_timezone: string | null };
+type DashboardState = { user: { id: string; email: string }; workspace: Workspace | null; agents?: Agent[]; projects?: Project[]; handoffs?: Handoff[]; approvals?: Approval[]; artifacts?: Artifact[]; events?: Event[]; board?: BoardMessage[]; activity?: CheckActivity[]; ideas?: Idea[]; activityAnalytics?: ActivityAnalytics; usage?: { handoffs: number; storageBytes: number } };
+type Tab = "analytics" | "assistant" | "ideas" | "overview" | "handoffs" | "contacts" | "prompts" | "agents" | "install" | "projects" | "knowledge" | "files";
 
 function shellQuote(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -119,9 +119,6 @@ const navSections: { label: string; items: { id: Tab; label: string; icon: typeo
     { id: "prompts", label: "Prompt library", icon: QueueListIcon },
     { id: "knowledge", label: "Knowledge", icon: BookOpenIcon },
     { id: "files", label: "Artifacts", icon: PaperClipIcon },
-  ] },
-  { label: "ACCOUNT", items: [
-    { id: "billing", label: "Plan & billing", icon: CreditCardIcon },
   ] },
 ];
 const nav = navSections.flatMap((section) => section.items);
@@ -302,7 +299,6 @@ export function StoicDashboard({ email, previewState, previewMode = false }: { e
   if (!state.workspace) return <WorkspaceSetup email={email} busy={busy} onCreate={(name) => command("create_workspace", { name })} error={error} />;
 
   const workspace = state.workspace;
-  if (workspace.plan !== "pro") return <SubscriptionGate workspace={workspace} agents={state.agents || []} email={email} busy={busy} command={command} error={error} />;
   const agents = state.agents || [];
   const projects = state.projects || [];
   const handoffs = state.handoffs || [];
@@ -394,11 +390,10 @@ export function StoicDashboard({ email, previewState, previewMode = false }: { e
           </Card>}
         </div>}
         {tab === "handoffs" && <HandoffsView agents={agents} projects={projects} handoffs={handoffs} events={events} artifacts={artifacts} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} preview={previewMode} />}
-        {tab === "agents" && <><AgentsView agents={agents} workspace={workspace} handoffs={handoffs} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={navigateToTab} command={command} /><ScheduleGuide agent={currentAgent} workspace={workspace} /><AgentCheckHistory agent={currentAgent} activity={activity} /></>}
-        {tab === "projects" && <><ProjectsView projects={projects} handoffs={handoffs} agents={agents} busy={busy} command={command} onNavigate={navigateToTab} /><RoutingView projects={projects} agents={agents} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} /></>}
+        {tab === "agents" && <AgentsView agents={agents} workspace={workspace} handoffs={handoffs} activity={activity} busy={busy} selected={currentAgent} secret={secret} onSelect={setSelectedAgent} onSecret={setSecret} onNavigate={navigateToTab} command={command} />}
+        {tab === "projects" && <ProjectsView projects={projects} handoffs={handoffs} agents={agents} bossAgentId={workspace.boss_agent_id} busy={busy} command={command} onNavigate={navigateToTab} />}
         {tab === "knowledge" && <KnowledgeCenter projects={projects} agents={agents} onManageProjects={() => setTab("projects")} preview={previewMode} />}
         {tab === "files" && <FilesView projects={projects} handoffs={handoffs} artifacts={artifacts} busy={busy} command={command} setNotice={setNotice} onManageProjects={() => setTab("projects")} />}
-        {tab === "billing" && <BillingView workspace={workspace} monthlyPrice={state.monthlyPrice} usage={state.usage || { handoffs: 0, storageBytes: 0 }} busy={busy} command={command} />}
       </div>
     </SidebarInset>
   </SidebarProvider>;
@@ -415,31 +410,6 @@ function BridgeGuide({ guidance, onNavigate }: { guidance: DashboardGuidance; on
       </div>
     </CardContent>
   </Card>;
-}
-
-function SubscriptionGate({ workspace, agents, email, busy, command, error }: { workspace: Workspace; agents: Agent[]; email: string; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; error: string }) {
-  async function checkout() {
-    const result = await command("checkout") as { url: string };
-    window.location.href = result.url;
-  }
-  async function portal() {
-    const result = await command("billing_portal") as { url: string };
-    window.location.href = result.url;
-  }
-  return <main className="setup-page"><section className="setup-card subscription-gate">
-    <Link href="/" className="brand"><span className="brand-mark"><StoicMark /></span><span>Stoic <strong>Connector</strong></span></Link>
-    <div className="setup-progress"><span className="active" /><span className="active" /><span /></div>
-    <span className="eyebrow muted">ONE SUBSCRIPTION · ALL YOUR AGENTS</span>
-    <h1>Unlock {workspace.name}.</h1>
-    <p>Stoic membership is required to connect agents and coordinate their work. Your agents keep using their own accounts, models, and schedules.</p>
-    <ul className="subscription-benefits"><li> No plan-based caps on agents, projects, or handoffs</li><li> Private shared files and complete work history</li><li> Human approval controls stay included</li></ul>
-    <button className="button" disabled={busy} onClick={() => checkout().catch(() => {})}>Subscribe · $5/month</button>
-    {workspace.stripe_customer_id && <button className="button button-outline" disabled={busy} onClick={() => portal().catch(() => {})}>Manage existing billing</button>}
-    <a className="subscription-export" href="/api/export">Export existing workspace data </a>
-    {agents.some((agent) => agent.status !== "revoked") && <div className="locked-agents"><strong>Connected profiles</strong>{agents.filter((agent) => agent.status !== "revoked").map((agent) => <div key={agent.id}><span>{agent.name} · {agentHarnessLabel(agent)}</span><button className="danger-link" disabled={busy} onClick={() => command("revoke_agent", { agentId: agent.id }).catch(() => {})}>Revoke</button></div>)}</div>}
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <small>{email} · Cancel through Stripe billing settings. Provider and model charges are separate.</small>
-  </section></main>;
 }
 
 function WorkspaceSetup({ email, busy, onCreate, error }: { email: string; busy: boolean; onCreate: (name: string) => Promise<unknown>; error: string }) {
@@ -479,6 +449,7 @@ function HandoffText({ text, label, cutoff = 600 }: { text: string; label: strin
 
 function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgentId, busy, command, preview = false }: { agents: Agent[]; projects: Project[]; handoffs: Handoff[]; events: Event[]; artifacts: Artifact[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; preview?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(handoffs[0]?.id || null);
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const workers = agents.filter((agent) => agent.status === "connected" && agent.id !== bossAgentId && agent.platform !== "muse");
@@ -725,7 +696,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
             <p className="text-sm text-[var(--dash-muted)]">Loading project handoffs…</p>
             {[0, 1, 2].map((item) => <div key={item} className="space-y-2 rounded-lg border border-[var(--dash-line)] p-3"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-4/5" /></div>)}
           </div> : historyItems.length ? <div aria-busy={historyLoading} aria-label="Handoff history results" className="handoff-history-list space-y-2 pr-1" role="region" tabIndex={0}>
-            {historyItems.map((task) => <Button key={task.id} type="button" variant="ghost" aria-pressed={selected?.id === task.id} onClick={() => setSelectedId(task.id)} className={`h-auto w-full items-start justify-between gap-3 whitespace-normal rounded-lg border px-3 py-3 text-left transition-colors ${selected?.id === task.id ? "border-[var(--dash-accent)] bg-[var(--dash-soft)]" : "border-[var(--dash-line)] bg-transparent hover:bg-[var(--dash-soft)]"}`}>
+            {historyItems.map((task) => <Button key={task.id} type="button" variant="ghost" aria-pressed={selected?.id === task.id} onClick={() => { setSelectedId(task.id); setShowAllActivity(false); }} className={`h-auto w-full items-start justify-between gap-3 whitespace-normal rounded-lg border px-3 py-3 text-left transition-colors ${selected?.id === task.id ? "border-[var(--dash-accent)] bg-[var(--dash-soft)]" : "border-[var(--dash-line)] bg-transparent hover:bg-[var(--dash-soft)]"}`}>
               <span className="min-w-0 flex-1 space-y-1">
                 <span className="block truncate text-sm font-medium text-[var(--dash-text)]"><AssistantRichInline text={task.title} /></span>
                 <span className="block text-xs leading-5 text-[var(--dash-muted)]">{task.assigned_agent_id ? agentNames[task.assigned_agent_id] || "Agent" : task.status === "proposed" ? "Waiting for owner approval" : "Team queue · open to workers"} · {projects.find((project) => project.id === task.project_id)?.name || "Project"} · {timeAgo(task.updated_at)}</span>
@@ -775,7 +746,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
               {!detailForSelected && !detailError && <p className="text-sm text-[var(--dash-muted)]" role="status">Loading handoff activity…</p>}
               {detailForSelected && selectedEvents.length === 0 && <UiEmpty className="min-h-28 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]"><EmptyHeader><EmptyTitle className="text-sm">No updates yet</EmptyTitle><EmptyDescription className="text-[var(--dash-muted)]">Post context below to keep the handoff moving.</EmptyDescription></EmptyHeader></UiEmpty>}
               {selectedEvents.length > 0 && <MessageGroup className="handoff-activity-list gap-0 divide-y divide-[var(--dash-line)]" aria-label="Handoff activity log" tabIndex={0}>
-                {selectedEvents.map((event) => {
+                {(showAllActivity ? selectedEvents : selectedEvents.slice(-5)).map((event) => {
                   const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic";
                   return <Message key={event.id} className="py-3">
                     <MessageContent className="gap-2">
@@ -785,6 +756,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
                   </Message>;
                 })}
               </MessageGroup>}
+              {selectedEvents.length > 5 && <Button type="button" variant="outline" size="sm" onClick={() => setShowAllActivity((current) => !current)}>{showAllActivity ? "Show recent updates" : `Show all ${selectedEvents.length} updates`}</Button>}
             </section>
             {selectedArtifacts.length > 0 && <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Files</h3>
@@ -814,10 +786,11 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
   </div>;
 }
 
-function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSelect, onSecret, onNavigate, command }: { agents: Agent[]; workspace: Workspace; handoffs: Handoff[]; busy: boolean; selected?: Agent; secret: { agentId: string; value: string; type: "key" | "code" } | null; onSelect: (id: string) => void; onSecret: (value: { agentId: string; value: string; type: "key" | "code" } | null) => void; onNavigate: (tab: Tab) => void; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
+function AgentsView({ agents, workspace, handoffs, activity, busy, selected, secret, onSelect, onSecret, onNavigate, command }: { agents: Agent[]; workspace: Workspace; handoffs: Handoff[]; activity: CheckActivity[]; busy: boolean; selected?: Agent; secret: { agentId: string; value: string; type: "key" | "code" } | null; onSelect: (id: string) => void; onSecret: (value: { agentId: string; value: string; type: "key" | "code" } | null) => void; onNavigate: (tab: Tab) => void; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
   const [name, setName] = useState("");
   const [harness, setHarness] = useState<AgentHarnessId>("codex");
   const [customHarnessName, setCustomHarnessName] = useState("");
+  const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [level, setLevel] = useState(workspace.delegation_level);
   const [leadTransferOpen, setLeadTransferOpen] = useState(false);
   const [leadTransferRecipientId, setLeadTransferRecipientId] = useState("");
@@ -838,6 +811,7 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
     }) as { id: string };
     setName("");
     setCustomHarnessName("");
+    setAddAgentOpen(false);
     onSecret(null);
     onSelect(created.id);
   }
@@ -884,12 +858,13 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
       </Card>
     </header>
 
-    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)]">
+    <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(16rem,0.72fr)_minmax(0,1.65fr)]">
       <div className="space-y-5">
         <Card>
           <CardHeader>
             <CardTitle>Team members</CardTitle>
             <CardDescription>Each agent has its own Stoic profile and can be revoked independently.</CardDescription>
+            <CardAction><Button type="button" variant="outline" size="sm" onClick={() => setAddAgentOpen(true)}>Add agent</Button></CardAction>
           </CardHeader>
           <CardContent className="space-y-4">
             {activeAgents.length ? <div className="flex flex-col gap-1" role="group" aria-label="Team members">
@@ -922,43 +897,18 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
             </div> : <UiEmpty className="rounded-xl border border-dashed py-7">
               <EmptyHeader>
                 <EmptyTitle>No agents connected</EmptyTitle>
-                <EmptyDescription>Add an agent below to give your team a Stoic profile.</EmptyDescription>
+              <EmptyDescription>Use Add agent to give your team a Stoic profile.</EmptyDescription>
               </EmptyHeader>
             </UiEmpty>}
           </CardContent>
-          <Separator />
-          <CardContent className="space-y-4 pt-4">
-            <div>
-              <h3 className="font-medium">Add an agent</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Give the profile a clear name and choose its harness.</p>
-            </div>
-            <form className="grid gap-4" onSubmit={(event) => add(event).catch(() => {})}>
-              <Field>
-                <FieldLabel htmlFor="new-agent-name">Agent name</FieldLabel>
-                <Input id="new-agent-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Research assistant" minLength={2} maxLength={80} required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-agent-harness">Harness</FieldLabel>
-                <Select items={AGENT_HARNESSES.map((option) => ({ value: option.id, label: option.label }))} value={harness} onValueChange={(value) => setHarness((value || "codex") as AgentHarnessId)}>
-                  <SelectTrigger id="new-agent-harness"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
-                  <SelectContent>{AGENT_HARNESSES.map((option) => <SelectItem value={option.id} key={option.id}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-              {harness === "other" && <Field>
-                <FieldLabel htmlFor="new-agent-custom-harness">Harness name</FieldLabel>
-                <Input id="new-agent-custom-harness" value={customHarnessName} onChange={(event) => setCustomHarnessName(event.target.value)} placeholder="For example, Local assistant" minLength={2} maxLength={60} required />
-              </Field>}
-              <Button type="submit" disabled={busy}>{busy ? "Adding agent…" : "Add agent"}</Button>
-            </form>
-          </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Team rules</CardTitle>
-            <CardDescription>Set how the team boss can delegate work. Change an agent’s role from its profile.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Accordion defaultValue={[]} className="overflow-hidden rounded-xl border bg-card">
+          <AccordionItem value="team-rules" className="border-0">
+            <AccordionTrigger className="px-4 py-4 text-left hover:no-underline">
+              <span className="grid gap-1"><span className="font-semibold">Team rules</span><span className="text-sm font-normal text-muted-foreground">Delegation policy and approval boundary</span></span>
+            </AccordionTrigger>
+            <AccordionContent className="px-4">
             <Field>
               <FieldLabel htmlFor="delegation-level">Delegation level</FieldLabel>
               <Select items={[{ value: "observe", label: "Observe · updates only" }, { value: "propose", label: "Propose · owner approves assignments" }, { value: "delegate", label: "Delegate · boss assigns directly" }]} value={level} onValueChange={(value) => { if (value === "observe" || value === "propose" || value === "delegate") setLevel(value); }}>
@@ -975,9 +925,34 @@ function AgentsView({ agents, workspace, handoffs, busy, selected, secret, onSel
               <AlertDescription>Muse can share browser-based project ideas, but it is not a verified MCP handoff or boss connection.</AlertDescription>
             </Alert>
             <Button type="button" variant="outline" disabled={busy} onClick={() => command("set_policy", { bossAgentId: workspace.boss_agent_id, delegationLevel: level }).catch(() => {})}>Save team rules</Button>
-          </CardContent>
-        </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
+
+      <Dialog open={addAgentOpen} onOpenChange={setAddAgentOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Add an agent</DialogTitle><DialogDescription>Choose a clear profile name and its harness.</DialogDescription></DialogHeader>
+          <form className="grid gap-4" onSubmit={(event) => add(event).catch(() => {})}>
+            <Field>
+              <FieldLabel htmlFor="new-agent-name">Agent name</FieldLabel>
+              <Input id="new-agent-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="For example, Research assistant" minLength={2} maxLength={80} required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="new-agent-harness">Harness</FieldLabel>
+              <Select items={AGENT_HARNESSES.map((option) => ({ value: option.id, label: option.label }))} value={harness} onValueChange={(value) => setHarness((value || "codex") as AgentHarnessId)}>
+                <SelectTrigger id="new-agent-harness"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
+                <SelectContent>{AGENT_HARNESSES.map((option) => <SelectItem value={option.id} key={option.id}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            {harness === "other" && <Field>
+              <FieldLabel htmlFor="new-agent-custom-harness">Harness name</FieldLabel>
+              <Input id="new-agent-custom-harness" value={customHarnessName} onChange={(event) => setCustomHarnessName(event.target.value)} placeholder="For example, Local assistant" minLength={2} maxLength={60} required />
+            </Field>}
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setAddAgentOpen(false)}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Adding agent…" : "Add agent"}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Card className="min-w-0">
         {selected ? <>
@@ -1411,10 +1386,11 @@ function AgentCheckHistory({ agent, activity }: { agent?: Agent; activity: Check
   </Card>;
 }
 
-function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }: { projects: Project[]; handoffs: Handoff[]; agents: Agent[]; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onNavigate: (tab: Tab) => void }) {
+function ProjectsView({ projects, handoffs, agents, bossAgentId, busy, command, onNavigate }: { projects: Project[]; handoffs: Handoff[]; agents: Agent[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; onNavigate: (tab: Tab) => void }) {
   const [selectedId, setSelectedId] = useState(projects[0]?.id || "");
   const [newName, setNewName] = useState("");
   const [brief, setBrief] = useState(projects[0]?.brief || "");
+  const [createOpen, setCreateOpen] = useState(false);
   const selected = useMemo(() => projects.find((project) => project.id === selectedId) || projects[0], [projects, selectedId]);
   const agentNames = Object.fromEntries(agents.map((agent) => [agent.id, agent.name]));
   const projectHandoffs = handoffs.filter((handoff) => handoff.project_id === selected?.id && handoff.status !== "canceled");
@@ -1433,6 +1409,7 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
     setSelectedId(created.id);
     setBrief(created.brief || "");
     setNewName("");
+    setCreateOpen(false);
   }
 
   function selectProject(value: string | null) {
@@ -1449,37 +1426,46 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Projects</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Follow assignments from the first handoff through review. Each project keeps the shared context and work your agents need.</p>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:min-w-64">
-        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Projects</p><p className="mt-1 text-xl font-semibold tabular-nums">{projects.length}</p></CardContent></Card>
-        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Tasks in this project</p><p className="mt-1 text-xl font-semibold tabular-nums">{projectHandoffs.length}</p></CardContent></Card>
-      </div>
+      <div className="flex flex-wrap gap-2"><Badge variant="outline">{projects.length} {projects.length === 1 ? "project" : "projects"}</Badge><Badge variant="secondary">{projectHandoffs.length} tasks</Badge></div>
     </header>
 
-    <Card>
-      <CardHeader className="gap-1">
-        <CardTitle>Project space</CardTitle>
-        <CardDescription>Choose a project to view its work and shared context, or create a new one.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        {projects.length ? <Field>
+    <Card size="sm">
+      <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-end sm:justify-between">
+        {projects.length ? <Field className="w-full sm:max-w-sm">
           <FieldLabel htmlFor="project-space-select">Current project</FieldLabel>
           <Select items={projects.map((project) => ({ value: project.id, label: project.name }))} value={selected?.id || ""} onValueChange={selectProject}>
             <SelectTrigger id="project-space-select" aria-label="Choose a project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
             <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
           </Select>
-          <FieldDescription>Switching projects changes the board and shared brief below.</FieldDescription>
-        </Field> : <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Create a project to give your agents a shared workspace.</div>}
-        <form className="flex min-w-0 items-end gap-2" onSubmit={(event) => createProject(event).catch(() => {})}>
-          <Field className="min-w-0 flex-1">
-            <FieldLabel htmlFor="new-project-name">New project</FieldLabel>
-            <Input id="new-project-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Project name" minLength={2} maxLength={100} required />
-          </Field>
-          <Button type="submit" disabled={busy || newName.trim().length < 2}>Add project</Button>
-        </form>
+        </Field> : <p className="m-0 text-sm text-muted-foreground">Create a project to give your agents a shared workspace.</p>}
+        <Button type="button" variant="outline" onClick={() => setCreateOpen(true)}>New project</Button>
       </CardContent>
     </Card>
 
+    <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Create a project</DialogTitle><DialogDescription>Give your agents a shared brief and a place to track handoffs.</DialogDescription></DialogHeader>
+        <form className="grid gap-4" onSubmit={(event) => createProject(event).catch(() => {})}>
+          <Field>
+            <FieldLabel htmlFor="new-project-name">Project name</FieldLabel>
+            <Input id="new-project-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Project name" minLength={2} maxLength={100} required />
+          </Field>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" disabled={busy || newName.trim().length < 2}>{busy ? "Creating…" : "Create project"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
     {selected ? <>
+      <Tabs defaultValue="board" className="gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TabsList aria-label="Project sections">
+          <TabsTrigger value="board">Board</TabsTrigger>
+          <TabsTrigger value="brief">Brief</TabsTrigger>
+          <TabsTrigger value="routing">Routing</TabsTrigger>
+        </TabsList>
+        <p className="m-0 text-sm text-muted-foreground">{activeCount} active · {projectHandoffs.length - activeCount} completed</p>
+      </div>
+      <TabsContent value="board">
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
@@ -1510,7 +1496,9 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
           })}
         </CardContent>
       </Card>
+      </TabsContent>
 
+      <TabsContent value="brief">
       <Card>
         <CardHeader className="gap-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -1522,7 +1510,7 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
         <CardContent className="space-y-3">
           <Field>
             <FieldLabel htmlFor="project-brief">What should every agent know?</FieldLabel>
-            <Textarea id="project-brief" value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Project goal, decisions already made, important links, voice or style guidelines, constraints…" maxLength={20000} rows={10} />
+            <Textarea id="project-brief" value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Project goal, decisions already made, important links, voice or style guidelines, constraints…" maxLength={20000} rows={7} />
             <FieldDescription>{brief.length.toLocaleString()} / 20,000 characters</FieldDescription>
           </Field>
           <div className="flex justify-end">
@@ -1530,6 +1518,12 @@ function ProjectsView({ projects, handoffs, agents, busy, command, onNavigate }:
           </div>
         </CardContent>
       </Card>
+      </TabsContent>
+
+      <TabsContent value="routing">
+        <RoutingView projects={projects} agents={agents} bossAgentId={bossAgentId} busy={busy} command={command} />
+      </TabsContent>
+      </Tabs>
     </> : <Card>
       <UiEmpty className="border-0">
         <EmptyHeader>
@@ -1699,21 +1693,27 @@ function IdeasView({ projects, agents, ideas, workspace, busy, command }: { proj
       </DialogContent>}
     </Dialog>
 
-    <Card className={cardClass}>
-      <CardHeader>
-        <Badge variant="secondary" className="w-fit bg-[var(--dash-soft)] text-[var(--dash-muted)]">Daily schedule</Badge>
-        <CardTitle className="text-lg">Keep the morning calm</CardTitle>
-        <CardDescription className="max-w-3xl leading-6 text-[var(--dash-muted)]">The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-        <Field>
-          <FieldLabel htmlFor="ideas-timezone" className="text-[var(--dash-text)]">Workspace time zone</FieldLabel>
-          <FieldDescription className="text-[var(--dash-muted)]">Use an IANA time zone, such as America/Chicago.</FieldDescription>
-          <Input id="ideas-timezone" className={controlClass} value={timezone} onChange={(event) => setTimezoneOverride(event.target.value)} placeholder="America/Chicago" maxLength={100} />
-        </Field>
-        <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).then(() => setTimezoneOverride(null)).catch(() => {})}>Save time zone</Button>
-      </CardContent>
-    </Card>
+    <Accordion defaultValue={[]}>
+      <AccordionItem value="ideas-schedule" className={`rounded-xl border ${cardClass}`}>
+        <AccordionTrigger className="px-4 py-3 hover:no-underline sm:px-5">
+          <span className="flex flex-wrap items-center gap-2 text-left">
+            <span className="text-sm font-semibold">Daily schedule</span>
+            <Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-muted)]">After 8 AM · {timezone}</Badge>
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="px-4 sm:px-5">
+          <p className="mb-4 max-w-3xl text-sm leading-6 text-[var(--dash-muted)]">The server checks hourly and prepares ideas once after 8 AM in this time zone. Stoic&apos;s own scheduled run does not wake your agents or use their provider accounts.</p>
+          <div className="grid gap-4 pb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="ideas-timezone" className="text-[var(--dash-text)]">Workspace time zone</FieldLabel>
+              <FieldDescription className="text-[var(--dash-muted)]">Use an IANA time zone, such as America/Chicago.</FieldDescription>
+              <Input id="ideas-timezone" className={controlClass} value={timezone} onChange={(event) => setTimezoneOverride(event.target.value)} placeholder="America/Chicago" maxLength={100} />
+            </Field>
+            <Button type="button" variant="outline" size="sm" className="border-[var(--dash-line)] text-[var(--dash-text)]" disabled={busy || !timezone.trim() || timezone === workspace.ideas_timezone} onClick={() => command("set_ideas_timezone", { timezone }).then(() => setTimezoneOverride(null)).catch(() => {})}>Save time zone</Button>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   </div>;
 }
 
@@ -1809,6 +1809,7 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
   const [handoffId, setHandoffId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [filter, setFilter] = useState<ArtifactFilter>("all");
   const [query, setQuery] = useState("");
   const [artifactToDelete, setArtifactToDelete] = useState<Artifact | null>(null);
@@ -1833,6 +1834,7 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
       uploadKey.current = null;
       setFile(null);
       setNotice("File is ready to share with your agents.");
+      setUploadOpen(false);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Upload failed");
     } finally {
@@ -1877,15 +1879,25 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
       <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Keep source files, notes, and work products together for the agents who need them.</p>
     </header>
 
-    <Card>
-      <CardHeader className="gap-2">
-        <CardTitle>Share a file</CardTitle>
-        <CardDescription>Project files appear in agents’ unread project updates at their next check. A handoff file is available to that handoff’s worker, the boss, and you. Any file type can be attached up to 25 MB. Stoic previews common text, RTF, PDF, DOCX, XLSX, PPTX, OpenDocument, image, and audio formats; other files remain available to agents but do not receive an intake preview.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card size="sm">
+      <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-medium">Share a file</p>
+          <p className="mt-1 text-sm text-muted-foreground">Add a project or handoff file, up to 25 MB.</p>
+        </div>
+        <Button type="button" onClick={() => setUploadOpen(true)}><PaperClipIcon aria-hidden="true" /> Upload file</Button>
+      </CardContent>
+    </Card>
+
+    <Dialog open={uploadOpen} onOpenChange={(open) => { if (!uploading) setUploadOpen(open); }}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Share a file</DialogTitle>
+          <DialogDescription>Project files appear in agents’ unread project updates at their next check. Handoff files are limited to its worker, the boss, and you. Any file type up to 25 MB is supported; common document, text, image, and audio formats receive a preview.</DialogDescription>
+        </DialogHeader>
         {!projects.length ? <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">Create a project before uploading so Stoic knows where the file belongs.</p>
-          <Button type="button" variant="outline" onClick={onManageProjects}>Set up a project</Button>
+          <Button type="button" variant="outline" onClick={() => { setUploadOpen(false); onManageProjects(); }}>Set up a project</Button>
         </div> : <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => upload(event).catch(() => {})}>
           <Field>
             <FieldLabel htmlFor="artifact-project">Project</FieldLabel>
@@ -1912,11 +1924,14 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
           </Field>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
             <p className="text-sm text-muted-foreground" role="status">{uploading ? "Sending file…" : "Files are shared only with the project or handoff participants."}</p>
-            <Button type="submit" disabled={busy || uploading || !file}>{uploading ? "Sending…" : "Upload file"}</Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" disabled={uploading} onClick={() => setUploadOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={busy || uploading || !file}>{uploading ? "Sending…" : "Upload file"}</Button>
+            </div>
           </div>
         </form>}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
 
     <Card>
       <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -1983,85 +1998,5 @@ function FilesView({ projects, handoffs, artifacts, busy, command, setNotice, on
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  </div>;
-}
-
-function BillingView({ workspace, monthlyPrice, usage, busy, command }: { workspace: Workspace; monthlyPrice?: number | null; usage: { handoffs: number; storageBytes: number }; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown> }) {
-  async function portal() {
-    const result = await command("billing_portal") as { url: string };
-    window.location.href = result.url;
-  }
-
-  const storageLabel = (usage.storageBytes / 1024 / 1024).toFixed(1) + " MB";
-  const isActive = workspace.plan === "pro";
-
-  return <div className="space-y-5 sm:space-y-6">
-    <header className="space-y-2">
-      <Badge variant="secondary">Workspace membership</Badge>
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Plan & billing</h1>
-      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Manage the subscription for your whole agent workspace and export its data.</p>
-    </header>
-
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-      <Card>
-        <CardHeader className="sm:grid-cols-[1fr_auto]">
-          <div className="space-y-1">
-            <CardTitle>Stoic Connector</CardTitle>
-            <CardDescription>{isActive ? "Your subscription is active." : "An active subscription is required to use coordination features."}</CardDescription>
-          </div>
-          <Badge variant={isActive ? "default" : "outline"}>{isActive ? "Active" : "Inactive"}</Badge>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <Separator />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Card size="sm">
-              <CardContent className="space-y-1 py-3">
-                <p className="text-xs text-muted-foreground">Your current price</p>
-                <p className="font-semibold tabular-nums">{monthlyPrice == null ? "See Stripe portal" : "$" + monthlyPrice + " / month"}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1 py-3">
-                <p className="text-xs text-muted-foreground">Handoffs created this month</p>
-                <p className="font-semibold tabular-nums">{usage.handoffs}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1 py-3">
-                <p className="text-xs text-muted-foreground">Private storage used</p>
-                <p className="font-semibold tabular-nums">{storageLabel}</p>
-              </CardContent>
-            </Card>
-          </div>
-          <Alert>
-            <AlertTitle>No monthly usage quotas</AlertTitle>
-            <AlertDescription>Stoic does not apply monthly usage quotas or application-level request throttles. The counts above are for visibility.</AlertDescription>
-          </Alert>
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium">Included workspace features</h3>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              <li className="rounded-lg border border-border/80 bg-muted/20 p-3 text-sm">Private files and project routing</li>
-              <li className="rounded-lg border border-border/80 bg-muted/20 p-3 text-sm">Human approval controls and data export</li>
-            </ul>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {workspace.stripe_customer_id && <Button type="button" variant="outline" disabled={busy} onClick={() => portal().catch(() => {})}>{busy ? "Opening Stripe…" : "Manage billing"}</Button>}
-            <Button nativeButton={false} variant="outline" render={<a href="/api/export" />}>Export workspace data</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="h-fit">
-        <CardHeader>
-          <CardTitle>Provider costs</CardTitle>
-          <CardDescription>Native schedules run through each agent’s provider account.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm leading-6 text-muted-foreground">Agent provider subscriptions and model usage from native schedules are billed by those providers.</p>
-          <Separator />
-          <p className="text-sm leading-6 text-muted-foreground">Individual uploads are limited to 25 MB.</p>
-        </CardContent>
-      </Card>
-    </div>
   </div>;
 }

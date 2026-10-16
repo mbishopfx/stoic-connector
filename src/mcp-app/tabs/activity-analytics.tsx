@@ -31,11 +31,11 @@ function formatActivityWindow(windowStart: string, windowEnd: string) {
 }
 
 function StatCard({ label, value, detail }: { label: string; value: number | undefined; detail: string }) {
-  return <Card size="sm">
-    <CardHeader><CardDescription>{label}</CardDescription></CardHeader>
+  return <Card size="sm" className="gap-2">
+    <CardHeader className="pb-1"><CardDescription>{label}</CardDescription></CardHeader>
     <CardContent>
-      <p className="text-3xl font-semibold tabular-nums">{value == null ? "—" : value.toLocaleString()}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      <p className="text-2xl font-semibold tabular-nums">{value == null ? "—" : value.toLocaleString()}</p>
+      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{detail}</p>
     </CardContent>
   </Card>;
 }
@@ -50,7 +50,7 @@ function ActivityStats({ metrics, workspaceAgentCount }: { metrics: ActivityMetr
     { label: "Audit actions", value: metrics?.auditActions, detail: "Workspace audit records" },
     { label: "Agent MCP calls", value: metrics?.agentMcpToolCalls, detail: `of ${metrics?.mcpToolCalls ?? "—"} MCP calls` },
   ];
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
     {items.map((item) => <StatCard key={item.label} {...item} />)}
   </div>;
 }

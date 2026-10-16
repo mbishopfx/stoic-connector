@@ -189,7 +189,7 @@ export function KnowledgeCenter({ projects, agents, onManageProjects, preview = 
   const currentOverview = overview?.project.id === projectId ? overview : null;
   const stewardSettings = currentOverview ? settingsDraft || currentOverview.settings : null;
 
-  const stewardPanelOpen = stewardOpen ?? Boolean(stewardSettings?.enabled || error);
+  const stewardPanelOpen = stewardOpen ?? Boolean(error);
 
   useEffect(() => {
     if (!preview || !demoOverview) return;
@@ -477,15 +477,13 @@ export function KnowledgeCenter({ projects, agents, onManageProjects, preview = 
       <p className="m-0 leading-6 text-muted-foreground">{stewardSettings?.enabled ? `The Knowledge Steward checks this project ${stewardSettings.schedule_slots.length} times per day in ${stewardSettings.timezone}. Runs create proposed notes for your review and do not wake agents.` : "Notes are available to connected agents through Stoic. Scheduled model calls begin only after you enable the Knowledge Steward."}</p>
     </div>
 
-    <Card size="sm">
-      <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">Agent diary</Badge><CardTitle className="text-base">Nightly check-in · 11:30 PM</CardTitle></div>
-          <CardDescription>Entries use {diaryTimezone}. Add the 30- or 60-minute Stoic Chat check-in prompt to an agent with a native schedule; Stoic cannot wake an offline host. The daily Ideas run reads these self-reported notes as context.</CardDescription>
-        </div>
-        <Badge variant="outline">{agentDiaries.length} {agentDiaries.length === 1 ? "entry" : "entries"}</Badge>
-      </CardHeader>
-    </Card>
+    <section aria-label="Agent diary schedule" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2.5">
+      <div className="min-w-0 text-sm">
+        <p className="m-0 font-medium">Agent diary · nightly check-in at 11:30 PM</p>
+        <p className="m-0 mt-1 text-xs leading-5 text-muted-foreground">{diaryTimezone} · Add the Stoic Chat prompt to an agent’s native schedule. Stoic cannot wake an offline host.</p>
+      </div>
+      <Badge variant="outline">{agentDiaries.length} {agentDiaries.length === 1 ? "entry" : "entries"}</Badge>
+    </section>
 
     {error && <Alert variant="destructive" className="grid-cols-[1fr_auto] items-start">
       <div><AlertTitle>Could not complete that action</AlertTitle><AlertDescription className="break-words">{error}</AlertDescription></div>

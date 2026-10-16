@@ -50,9 +50,9 @@ function sha256(value: string | Uint8Array) {
 
 async function actorWorkspace(actor: ContactActor) {
   if (!actor.agent) return (await requireActiveWorkspace(actor.userId)).id;
-  const { data, error } = await adminDb().from("workspaces").select("plan").eq("id", actor.agent.workspaceId).maybeSingle();
+  const { data, error } = await adminDb().from("workspaces").select("id").eq("id", actor.agent.workspaceId).maybeSingle();
   if (error) throw error;
-  if (!data || data.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
+  if (!data) throw new AppError("Workspace not found", 404);
   return actor.agent.workspaceId;
 }
 

@@ -62,7 +62,6 @@ export const designPreviewState = {
     id: ids.workspace,
     name: "BishopTech Studio",
     plan: "pro" as const,
-    stripe_customer_id: "cus_preview_only",
     delegation_level: "propose" as const,
     boss_agent_id: ids.stoic,
     ideas_timezone: "America/Chicago",

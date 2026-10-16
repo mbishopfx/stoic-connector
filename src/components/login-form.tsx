@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 
-type AuthMode = "signup" | "signin";
-
 function getSafeNext() {
   const next = new URLSearchParams(window.location.search).get("next") || "/dashboard";
   return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") && new URL(next, window.location.origin).origin === window.location.origin ? next : "/dashboard";
@@ -14,7 +12,6 @@ function getSafeNext() {
 
 export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boolean }) {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>(passwordUpdated ? "signin" : "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState(passwordUpdated ? "Your password has been updated. Sign in with your new password." : "");
@@ -29,10 +26,7 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
     try {
       const client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
       const next = getSafeNext();
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-      const result = mode === "signup"
-        ? await client.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } })
-        : await client.auth.signInWithPassword({ email, password });
+      const result = await client.auth.signInWithPassword({ email, password });
 
       if (result.error) throw result.error;
       if (result.data.session) {
@@ -40,7 +34,6 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
         router.refresh();
         return;
       }
-      setNotice(`Account created for ${email}. If email confirmation is enabled, check your inbox to finish signing in.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not authenticate your account");
     } finally {
@@ -53,12 +46,12 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
       <label htmlFor="email">Email address</label>
       <input id="email" type="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" />
       <label htmlFor="password">Password</label>
-      <input id="password" type="password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
-      {mode === "signin" && <Link className="auth-forgot-link" href="/forgot-password">Forgot password?</Link>}
+      <input id="password" type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" />
+      <Link className="auth-forgot-link" href="/forgot-password">Forgot password?</Link>
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p className="auth-success" role="status">{notice}</p>}
-      <button className="button" disabled={busy}>{busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}</button>
+      <button className="button" disabled={busy}>{busy ? "Working…" : "Sign in"}</button>
     </form>
-    <p className="auth-mode-switch">{mode === "signup" ? "Already have an account?" : "New to Stoic Connector?"} <button type="button" className="text-link" onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(""); setNotice(""); }}>{mode === "signup" ? "Sign in" : "Create an account"}</button></p>
+    <p className="auth-mode-switch">New to Stoic? <a className="text-link" href="https://github.com/mbishopfx/stoic-connector">Self-host from the source</a> or <a className="text-link" href="https://www.bishoptech.dev/contact">ask BishopTech to set it up</a>.</p>
   </>;
 }

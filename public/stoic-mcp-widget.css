@@ -572,9 +572,6 @@
   .h-auto {
     height: auto;
   }
-  .h-fit {
-    height: fit-content;
-  }
   .h-full {
     height: 100%;
   }
@@ -1365,12 +1362,6 @@
       background-color: color-mix(in oklab, var(--muted) 50%, transparent);
     }
   }
-  .bg-muted\/60 {
-    background-color: var(--muted);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--muted) 60%, transparent);
-    }
-  }
   .bg-muted\/70 {
     background-color: var(--muted);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1575,6 +1566,9 @@
   .pb-0 {
     padding-bottom: 0px;
   }
+  .pb-1 {
+    padding-bottom: var(--spacing);
+  }
   .pb-2 {
     padding-bottom: calc(var(--spacing) * 2);
   }
@@ -1626,10 +1620,6 @@
   .text-2xl {
     font-size: var(--text-2xl);
     line-height: var(--tw-leading, var(--text-2xl--line-height));
-  }
-  .text-3xl {
-    font-size: var(--text-3xl);
-    line-height: var(--tw-leading, var(--text-3xl--line-height));
   }
   .text-base {
     font-size: var(--text-base);
@@ -3969,6 +3959,9 @@
     .lg\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .lg\:grid-cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     .lg\:grid-cols-\[minmax\(0\,0\.9fr\)_minmax\(0\,1\.1fr\)\] {
       grid-template-columns: minmax(0,0.9fr) minmax(0,1.1fr);
     }
@@ -3988,9 +3981,6 @@
     }
     .xl\:grid-cols-\[1\.05fr_0\.95fr\] {
       grid-template-columns: 1.05fr 0.95fr;
-    }
-    .xl\:grid-cols-\[minmax\(0\,1\.2fr\)_minmax\(17rem\,0\.8fr\)\] {
-      grid-template-columns: minmax(0,1.2fr) minmax(17rem,0.8fr);
     }
     .xl\:grid-cols-\[minmax\(0\,1\.55fr\)_minmax\(18rem\,0\.85fr\)\] {
       grid-template-columns: minmax(0,1.55fr) minmax(18rem,0.85fr);
@@ -4942,7 +4932,7 @@
   --radius: 0.625rem;
   --mcp-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mcp-font-heading: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --background: oklch(1 0 0);
+  --background: oklch(0.975 0.008 160);
   --foreground: oklch(0.145 0.008 326);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0.008 326);
@@ -5071,8 +5061,8 @@ html, body, #stoic-root, #stoic-app {
   min-height: 100%;
   margin: 0;
 }
-body {
-  background: transparent;
+body, #stoic-root, #stoic-app {
+  background: var(--background);
 }
 body, button, input, textarea, select {
   font-family: var(--mcp-font-sans);
@@ -5119,6 +5109,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .mcp-widget-content {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--background);
 }
 .mcp-widget-content > * {
   width: 100%;

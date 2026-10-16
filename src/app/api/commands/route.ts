@@ -1,11 +1,9 @@
 import { z } from "zod";
 import { AppError, assertSameOrigin, currentUser, responseError } from "@/lib/supabase";
-import { requireWorkspace } from "@/lib/account";
 import { agentInput, artifactInput, handoffActionInput, handoffInput, projectInput, uuid, workspaceInput } from "@/lib/validation";
 import { addAgent, createPairingCode, createProject, createWorkspace, issueAgentKey, revokeAgent, setAgentAccessNotes, setSchedule, setWorkspacePolicy, setProjectRouting, updateBrief } from "@/lib/account";
 import { createHandoff, handoffAction, decideApproval } from "@/lib/coordination";
 import { reserveArtifact, completeArtifact, artifactDownload, deleteArtifact } from "@/lib/artifacts";
-import { createCheckout, createBillingPortal } from "@/lib/billing";
 import { boardPostInput, postBoardMessage } from "@/lib/board";
 import { archiveIdea, assignIdea, setIdeasTimezone } from "@/lib/ideas";
 import { contactInputSchema, contactLinkInputSchema, createContact, linkContact, updateContact } from "@/lib/contacts";
@@ -21,12 +19,6 @@ export async function POST(request: Request) {
     if (raw.length > 50_000) throw new AppError("Request too large", 413);
     const body = JSON.parse(raw) as Record<string, unknown>;
     const action = z.string().parse(body.action);
-    const accountActions = new Set(["create_workspace", "checkout", "billing_portal", "revoke_agent", "delete_artifact"]);
-    const turningScheduleOff = action === "set_schedule" && body.enabled === false;
-    if (!accountActions.has(action) && !turningScheduleOff) {
-      const workspace = await requireWorkspace(user.id);
-      if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
-    }
     let data: unknown;
     switch (action) {
       case "create_workspace": {
@@ -141,14 +133,6 @@ export async function POST(request: Request) {
       }
       case "delete_artifact": {
         data = await deleteArtifact(user.id, uuid.parse(body.artifactId));
-        break;
-      }
-      case "checkout": {
-        data = await createCheckout(user.id);
-        break;
-      }
-      case "billing_portal": {
-        data = await createBillingPortal(user.id);
         break;
       }
       default:

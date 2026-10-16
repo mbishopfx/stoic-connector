@@ -92,8 +92,7 @@ export type NavTab =
   | "prompts"
   | "knowledge"
   | "install"
-  | "files"
-  | "billing";
+  | "files";
 
 export const navSections: { label: string; items: { id: NavTab; label: string }[] }[] = [
   { label: "START", items: [{ id: "assistant", label: "Chat" }] },
@@ -108,5 +107,4 @@ export const navSections: { label: string; items: { id: NavTab; label: string }[
     { id: "knowledge", label: "Knowledge" },
     { id: "files", label: "Files" },
   ] },
-  { label: "ACCOUNT", items: [{ id: "billing", label: "Billing" }] },
 ];

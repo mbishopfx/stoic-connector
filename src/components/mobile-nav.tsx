@@ -37,10 +37,10 @@ export function MobileNav() {
      </button>
       {open && <div className="stoic-mobile-backdrop" onClick={close}>
         <nav ref={panel} id="stoic-mobile-menu" className="stoic-mobile-panel" aria-label="Mobile navigation" onClick={(event) => event.stopPropagation()}>
-          <Link href="#home" onClick={close}>Home</Link>
           <Link href="#product" onClick={close}>Product</Link>
-          <Link href="#how-it-works" onClick={close}>How it works</Link>
-          <Link href="#pricing" onClick={close}>Pricing</Link>
+          <Link href="#workspace" onClick={close}>Workspace</Link>
+          <Link href="#self-host" onClick={close}>Self-host</Link>
+          <Link href="#services" onClick={close}>Services</Link>
           <Link href="/login" className="stoic-mobile-cta" onClick={close}>Sign in</Link>
         </nav>
       </div>}

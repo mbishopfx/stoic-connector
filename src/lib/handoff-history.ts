@@ -48,13 +48,8 @@ function decodeCursor(value: string) {
   }
 }
 
-function assertPaid(workspace: { plan: string }) {
-  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
-}
-
 export async function listOwnerHandoffHistory(ownerId: string, filters: HandoffHistoryFilters) {
   const workspace = await requireWorkspace(ownerId);
-  assertPaid(workspace);
   const cursor = filters.cursor ? decodeCursor(filters.cursor) : null;
 
   let query = adminDb().from("handoffs")
@@ -85,7 +80,6 @@ export async function listOwnerHandoffHistory(ownerId: string, filters: HandoffH
 
 export async function readOwnerHandoffHistory(ownerId: string, handoffId: string) {
   const workspace = await requireWorkspace(ownerId);
-  assertPaid(workspace);
   const db = adminDb();
   const { data: handoff, error } = await db.from("handoffs")
     .select("id,project_id,assigned_agent_id,created_by_agent_id,title,goal,constraints,status,created_at,updated_at")

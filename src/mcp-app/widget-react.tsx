@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  BookOpen, Bot, CreditCard, Folder, LayoutDashboard, Lightbulb, ListTodo,
+  BookOpen, Bot, Folder, LayoutDashboard, Lightbulb, ListTodo,
   MessageSquareText, Moon, Paperclip, RefreshCw, Sun, Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantTab } from "./tabs/assistant-tab";
-import { ContactsTab, BillingTab } from "./tabs/other-tabs";
+import { ContactsTab } from "./tabs/other-tabs";
 import { AgentsTab, FilesTab, KnowledgeTab, ProjectsTab } from "./tabs/team-tabs";
 import { BoardTab, HandoffsTab, OverviewTab } from "./tabs/work-tabs";
 import { navSections, type McpRuntime, type McpTabProps, type NavTab, type TeamContext } from "./ui-contract";
@@ -36,7 +36,6 @@ const tabIcons: Record<NavTab, LucideIcon> = {
   knowledge: BookOpen,
   install: Bot,
   files: Paperclip,
-  billing: CreditCard,
 };
 const navItems = navSections.flatMap((section) => section.items);
 
@@ -251,7 +250,6 @@ function AppRoot() {
           case "agents": view = <AgentsTab {...props} />; break;
           case "knowledge": view = <KnowledgeTab {...props} />; break;
           case "files": view = <FilesTab {...props} />; break;
-          case "billing": view = <BillingTab {...props} />; break;
           default: view = null; break;
         }
   }

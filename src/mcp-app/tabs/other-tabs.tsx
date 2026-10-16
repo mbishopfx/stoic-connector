@@ -6,9 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   Copy,
-  CreditCard,
   ExternalLink,
   FileText,
   Plus,
@@ -753,54 +751,6 @@ export function PromptsTab({ runtime }: McpTabProps) {
           <p className="text-sm leading-6 text-muted-foreground">Prompts are instructions only. They never grant access, initiate an external action, or guarantee that an agent is scheduled to run.</p>
         </CardContent>
       </Card>
-    </main>
-  );
-}
-
-export function BillingTab({ runtime }: McpTabProps) {
-  return (
-    <main className="grid min-w-0 gap-6">
-      <PageHeading eyebrow="Account" title="Plan & billing" description="Manage the subscription for your Stoic workspace. Agent providers continue to bill for their own models and schedules." icon={<CreditCard className="size-5" />} />
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(17rem,0.8fr)]">
-        <Card>
-          <CardHeader className="sm:grid-cols-[1fr_auto]">
-            <div className="space-y-1">
-              <CardTitle>Stoic Connector</CardTitle>
-              <CardDescription>One subscription covers coordination for the workspace and its connected agents.</CardDescription>
-            </div>
-            <Badge variant="secondary">$5 / month</Badge>
-          </CardHeader>
-          <CardContent className="grid gap-5">
-            <Separator />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Card size="sm"><CardContent className="grid gap-1 py-3"><p className="text-xs text-muted-foreground">Workspace plan</p><p className="font-semibold">One monthly subscription</p></CardContent></Card>
-              <Card size="sm"><CardContent className="grid gap-1 py-3"><p className="text-xs text-muted-foreground">Plan limits</p><p className="font-semibold">No monthly caps on agents, projects, or handoffs</p></CardContent></Card>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {[
-                "Shared briefs, handoffs, and project board",
-                "Private files and project routing",
-                "Periodic next-step suggestions for review",
-                "Human approval controls and work history",
-              ].map((feature) => <div key={feature} className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm leading-5"><Check className="mt-0.5 size-4 shrink-0 text-primary" />{feature}</div>)}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => void runtime.openLink(DASHBOARD_URL)}><ExternalLink />Open plan and billing</Button>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><CircleAlert className="size-4" />Provider costs</CardTitle>
-            <CardDescription>Stoic and your agent providers bill separately.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <p className="text-sm leading-6 text-muted-foreground">Stoic coordinates the agents you bring. Model usage and native scheduled runs are billed by each agent provider under your provider account.</p>
-            <Separator />
-            <p className="text-sm leading-6 text-muted-foreground">Billing details and cancellation options are available to the workspace owner in the secure dashboard.</p>
-          </CardContent>
-        </Card>
-      </div>
     </main>
   );
 }

@@ -453,6 +453,11 @@ function HandoffSummary({ handoff, context }: { handoff: Handoff; context: McpTa
   );
 }
 
+function ExpandableContext({ text, label }: { text: string; label: string }) {
+  if (text.length <= 360) return <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{text}</p>;
+  return <details className="rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed"><summary className="cursor-pointer text-primary">{`Click to expand ${label}`}</summary><p className="mt-3 whitespace-pre-wrap break-words text-muted-foreground">{text}</p></details>;
+}
+
 function HandoffCard({
   handoff,
   context,
@@ -465,6 +470,7 @@ function HandoffCard({
   onUpdated: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [detail, setDetail] = useState<HandoffDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
@@ -541,9 +547,9 @@ function HandoffCard({
               <div className="space-y-4 border-t pt-4">
                 <section className="space-y-2">
                   <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Goal</h4>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{String(fullHandoff.goal || handoff.goal || "No task description was returned.")}</p>
+                  <ExpandableContext text={String(fullHandoff.goal || handoff.goal || "No task description was returned.")} label="goal" />
                   {Boolean(fullHandoff.constraints || handoff.constraints) && (
-                    <p className="whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-sm leading-relaxed"><span className="font-medium">Constraints: </span>{String(fullHandoff.constraints || handoff.constraints)}</p>
+                    <ExpandableContext text={String(fullHandoff.constraints || handoff.constraints)} label="constraints" />
                   )}
                 </section>
 
@@ -551,15 +557,16 @@ function HandoffCard({
                   <section className="space-y-3">
                     <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">History</h4>
                     <div className="space-y-2">
-                      {events.map((event, index) => (
+                      {(showAllHistory ? events : events.slice(-5)).map((event, index) => (
                         <div key={event.id || `${event.event_type}-${index}`} className="flex gap-3 rounded-lg border p-3">
                           <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><Activity className="size-3.5" /></div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{(event.event_type || "Update").replaceAll("_", " ")}</p><time className="text-xs text-muted-foreground">{formatDate(event.created_at)}</time></div>
-                            {event.body && <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{event.body}</p>}
+                            {event.body && <ExpandableContext text={event.body} label="update" />}
                           </div>
                         </div>
                       ))}
+                      {events.length > 5 && <Button type="button" variant="outline" size="sm" onClick={() => setShowAllHistory((current) => !current)}>{showAllHistory ? "Show recent updates" : `Show all ${events.length} updates`}</Button>}
                       {approvals.map((approval, index) => (
                         <div key={approval.id || `approval-${index}`} className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                           <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">Approval {approval.status || "requested"}</p><time className="text-xs text-muted-foreground">{formatDate(approval.created_at)}</time></div>

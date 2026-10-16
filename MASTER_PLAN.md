@@ -1,5 +1,7 @@
 # Stoic Connector — Master Product and Engineering Plan
 
+> Historical planning snapshot. Its Stripe, subscription, and pricing sections are superseded by the open-source self-hosting model in [README.md](README.md).
+
 **Last updated:** October 1, 2026
 **Product status:** Deployed pilot; launch acceptance work remains
 **Production app:** <https://stoic.bishoptech.dev>

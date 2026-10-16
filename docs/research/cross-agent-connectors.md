@@ -1,5 +1,7 @@
 # Stoic Connector — Cross-Agent Connectors Research
 
+> Historical research snapshot. Its pricing and Stripe references are superseded by the open-source self-hosting model in [README.md](../../README.md).
+
 Initial research: 2026-09-27<br>
 Capability refresh: 2026-10-01<br>
 Status: Provider documentation has been refreshed; implementation and live account acceptance remain separate gates.

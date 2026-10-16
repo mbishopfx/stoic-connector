@@ -49,4 +49,6 @@ psql -X -q -v ON_ERROR_STOP=1 -h "$test_dir" -p 55438 -U relaytest -d postgres \
   -f supabase/migrations/202610060002_activity_analytics.sql \
   -f supabase/migrations/202610060003_agent_diaries_and_collaboration_metrics.sql \
   -f supabase/migrations/20261006135828_rolling_project_group_chat.sql \
-  -f tests/sql/integration.sql
+  -f tests/sql/integration.sql \
+  -f supabase/migrations/20261015180000_open_source_workspaces.sql \
+  -f tests/sql/open_source_workspaces.sql

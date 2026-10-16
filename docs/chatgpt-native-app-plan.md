@@ -1,5 +1,7 @@
 # Stoic in ChatGPT: native app plan and pilot
 
+> Historical pilot plan. Current access and hosting are described in [README.md](../README.md); paid subscriptions are no longer part of the app.
+
 **Updated:** September 30, 2026
 
 **Product:** Stoic Connector

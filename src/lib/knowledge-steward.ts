@@ -285,9 +285,9 @@ async function appendRunAudit(workspaceId: string, projectId: string, runId: str
 
 async function refreshProject(workspaceId: string, projectId: string, identity: RunIdentity) {
   if (identity.trigger === "scheduled") {
-    const { data: workspace, error: workspaceError } = await adminDb().from("workspaces").select("plan").eq("id", workspaceId).maybeSingle();
+    const { data: workspace, error: workspaceError } = await adminDb().from("workspaces").select("id").eq("id", workspaceId).maybeSingle();
     if (workspaceError) throw workspaceError;
-    if (!workspace || workspace.plan !== "pro") return { status: "subscription_inactive" as const, created: 0 };
+    if (!workspace) return { status: "workspace_missing" as const, created: 0 };
   }
   const settings = await projectSettings(workspaceId, projectId);
   if (identity.trigger === "scheduled" && !settings.enabled) return { status: "disabled" as const, created: 0 };

@@ -12,12 +12,12 @@ const submission = JSON.parse(readFileSync("chatgpt-app-submission.json", "utf8"
 
 describe("Stoic plugin contact surfaces", () => {
   it("exposes every ShadCN workspace tab through the embedded MCP App", () => {
-    for (const tab of ["assistant", "ideas", "overview", "handoffs", "board", "contacts", "projects", "agents", "prompts", "knowledge", "files", "billing"]) {
+    for (const tab of ["assistant", "ideas", "overview", "handoffs", "contacts", "projects", "agents", "prompts", "knowledge", "files"]) {
       expect(tabContract).toContain(`"${tab}"`);
       expect(widgetBundle).toContain(tab);
     }
     expect(widgetSource).toContain('data-component-system="shadcn"');
-    expect(widgetBundle).toContain("Navigate to tab");
+    expect(widgetBundle).toContain("Stoic workspace sections");
     expect(widgetStyles).toContain("--background");
     expect(contactTabSource).toContain('"search_contacts"');
     expect(contactTabSource).toContain('"create_contact"');
@@ -26,10 +26,9 @@ describe("Stoic plugin contact surfaces", () => {
       expect(widgetBundle).toContain(name);
     }
     expect(widgetBundle).toContain("Link interaction");
-    expect(widgetBundle).toContain("Prompt library");
     expect(widgetBundle).toContain("Missing email");
-    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.js?v=20261007-shadcn-mcp-v4");
-    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.css?v=20261007-shadcn-mcp-v4");
+    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.js?v=20261014-agent-roles-mcp-v6");
+    expect(stoicMcpAppHtml("https://stoic.example")).toContain("stoic-mcp-widget.css?v=20261014-agent-roles-mcp-v6");
   });
 
   it("keeps the portable plugin's contact copy and tool inventory aligned", () => {

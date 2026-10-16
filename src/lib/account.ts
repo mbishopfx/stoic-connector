@@ -132,7 +132,6 @@ export async function teamActivityAnalytics(workspaceId: string) {
   const { data: workspace, error } = await adminDb().from("workspaces").select("*").eq("id", workspaceId).maybeSingle();
   if (error) throw error;
   if (!workspace) throw new AppError("Workspace not found", 404);
-  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to view agent activity.", 402);
   return loadWorkspaceActivityAnalytics(workspace);
 }
 
@@ -157,21 +156,12 @@ export async function requireWorkspace(ownerId: string) {
 }
 
 export async function requireActiveWorkspace(ownerId: string) {
-  const workspace = await requireWorkspace(ownerId);
-  if (workspace.plan !== "pro") throw new AppError("An active Stoic subscription is required to use agent coordination.", 402);
-  return workspace;
+  return requireWorkspace(ownerId);
 }
 
 export async function dashboardState(ownerId: string) {
   const workspace = await ensureWorkspaceForOwner(ownerId);
   const db = adminDb();
-  if (workspace.plan !== "pro") {
-    const { data: agents, error } = await db.from("agents")
-      .select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at")
-      .eq("workspace_id", workspace.id).order("created_at");
-    if (error) throw error;
-    return { workspace, agents: agents || [] };
-  }
   const [agents, projects, handoffs, approvals, artifacts, events, board, activity, ideas, activityAnalytics] = await Promise.all([
     db.from("agents").select("id,name,platform,harness_name,status,oauth_client_id,access_notes,schedule_enabled,schedule_cadence_minutes,last_check_at,created_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("projects").select("*").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),

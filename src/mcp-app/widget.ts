@@ -62,7 +62,7 @@ type IntakeProposal = {
 type ChatTurn = { id: string; role: "user" | "stoic"; body: string; attachments?: ChatAttachment[]; proposal?: IntakeProposal; thinking?: boolean };
 type ContactSource = { id: string; source_label: string; notes: string; artifact_id: string | null; created_at: string };
 type Contact = { id: string; project_id: string | null; full_name: string; email: string | null; phone: string | null; company: string | null; job_title: string | null; status: string; last_seen_at: string; sources: ContactSource[] };
-type NavTab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "projects" | "agents" | "prompts" | "knowledge" | "files" | "billing";
+type NavTab = "assistant" | "ideas" | "overview" | "handoffs" | "board" | "contacts" | "projects" | "agents" | "prompts" | "knowledge" | "files";
 
 const app = new App({ name: "Stoic Connector", version: "0.1.0" });
 const SITE_URL = "https://stoic.bishoptech.dev/dashboard";
@@ -85,7 +85,6 @@ const iconPaths: Record<string, string> = {
   agents: "M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z",
   knowledge: "M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25",
   files: "m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13",
-  billing: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z",
   refresh: "M16.023 9.348h4.992V4.356m-.479 5.016a9 9 0 1 0 2.213 7.056M8.163 14.652H3.171v4.992m.479-5.016a9 9 0 1 0-2.213-7.056",
   moon: "M21.752 15.002A9.718 9.718 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.598.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z",
   sun: "M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-6.364-1.636 1.591-1.591M3 12h2.25m.386-6.364 1.591 1.591M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z",
@@ -100,7 +99,6 @@ const navSections: { label: string; items: { id: NavTab; label: string; icon: st
   { label: "START", items: [{ id: "assistant", label: "Stoic chat", icon: "assistant" }, { id: "ideas", label: "Ideas", icon: "ideas" }] },
   { label: "WORK", items: [{ id: "overview", label: "Overview", icon: "overview" }, { id: "handoffs", label: "Handoffs", icon: "handoffs" }, { id: "board", label: "Message board", icon: "board" }, { id: "contacts", label: "Contacts", icon: "contacts" }, { id: "projects", label: "Projects", icon: "projects" }] },
   { label: "TEAM", items: [{ id: "agents", label: "Agents", icon: "agents" }, { id: "prompts", label: "Prompt library", icon: "prompts" }, { id: "knowledge", label: "Knowledge", icon: "knowledge" }, { id: "files", label: "Artifacts", icon: "files" }] },
-  { label: "ACCOUNT", items: [{ id: "billing", label: "Plan & billing", icon: "billing" }] },
 ];
 const navItems = navSections.flatMap((section) => section.items);
 const state: {
@@ -1511,20 +1509,6 @@ async function renderFiles() {
   page.append(surface.surface);
 }
 
-function renderBilling() {
-  const page = makePage("ACCOUNT", "Plan & billing", "Manage your Stoic account and subscription from the secure web dashboard.");
-  const panel = makeSurface("Stoic Connector", "One workspace for the agents you already use.");
-  const content = el("div", "layout-two");
-  const price = metricCard("$5", "per month", "Subscription billed by Stoic.");
-  const details = el("div", "quiet-note");
-  details.append(el("strong", "", "Coordination without another agent."), el("span", "", "Stoic provides shared briefs, handoffs, check-in visibility, and private project files. Your agent providers continue to bill for their own model usage."));
-  content.append(price, details);
-  panel.body.append(content, makeButton("Open plan and billing", "button primary", async () => {
-    await app.openLink({ url: SITE_URL });
-  }));
-  page.append(panel.surface);
-}
-
 async function renderCurrentTab() {
   if (!state.context) return;
   updateShell();
@@ -1542,7 +1526,6 @@ async function renderCurrentTab() {
       case "prompts": renderPrompts(); break;
       case "knowledge": await renderKnowledge(); break;
       case "files": await renderFiles(); break;
-      case "billing": renderBilling(); break;
     }
   } catch (error) {
     showError(error instanceof Error ? error.message : "Could not load this Stoic view.");

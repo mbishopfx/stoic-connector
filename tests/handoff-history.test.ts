@@ -104,11 +104,13 @@ describe("handoff history filters", () => {
     expect(page.nextCursor).toBeTruthy();
   });
 
-  it("rejects history reads outside the paid workspace", async () => {
+  it("allows history reads for a workspace without a paid plan", async () => {
     mocks.requireWorkspace.mockResolvedValue({ id: workspaceId, plan: "free" });
+    const builder = makeBuilder([]);
+    mocks.adminDb.mockReturnValue({ from: vi.fn(() => builder) });
     await expect(listOwnerHandoffHistory(ownerId, parseHandoffHistoryFilters(new URLSearchParams())))
-      .rejects.toThrow("An active Stoic subscription is required");
-    expect(mocks.adminDb).not.toHaveBeenCalled();
+      .resolves.toEqual({ items: [], nextCursor: null, hasMore: false, pageSize: 40 });
+    expect(builder.calls).toContainEqual(["eq", "workspace_id", workspaceId]);
   });
 
   it("scopes selected handoff, event, and artifact reads to the same workspace", async () => {
