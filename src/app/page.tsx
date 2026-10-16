@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MobileNav } from "@/components/mobile-nav";
 import { HairlineFigures } from "@/components/hairline-figures";
+import { MockPreviewGallery } from "@/components/mock-preview-gallery";
 
 const sourceUrl = "https://github.com/mbishopfx/stoic-connector";
 const contactUrl = "https://www.bishoptech.dev/contact#consultation-form";
@@ -155,6 +156,7 @@ export default function Home() {
           <article><span>03</span><div><h3>Review the handoff</h3><p>The worker claims the task, posts progress, and submits a result for the boss to accept or return.</p></div></article>
         </div>
         <div className="stoic-surfaces-grid">{surfaces.map(([title, description]) => <article key={title}><h3>{title}</h3><p>{description}</p></article>)}</div>
+        <MockPreviewGallery />
       </section>
 
       <section className="stoic-compat-section" aria-labelledby="compat-title">
