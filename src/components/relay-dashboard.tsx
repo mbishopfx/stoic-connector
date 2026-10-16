@@ -464,6 +464,19 @@ async function fetchHandoffHistoryPage(url: string, signal?: AbortSignal) {
   return result as HandoffHistoryPage;
 }
 
+function HandoffText({ text, label, cutoff = 600 }: { text: string; label: string; cutoff?: number }) {
+  if (text.length <= cutoff) return <AssistantRichText text={text} />;
+  const preview = text.slice(0, 260).trimEnd().replace(/\s+\S*$/, "");
+  return <details className="group min-w-0 rounded-lg border border-[var(--dash-line)] bg-[var(--dash-soft)]/40 p-3">
+    <summary className="cursor-pointer list-none text-sm leading-6 marker:hidden [&::-webkit-details-marker]:hidden">
+      <span className="line-clamp-3 break-words text-[var(--dash-text)] group-open:hidden">{preview}…</span>
+      <span className="mt-2 inline-flex font-medium text-[var(--dash-accent)] group-open:hidden">Read full {label}</span>
+      <span className="hidden font-medium text-[var(--dash-accent)] group-open:inline">Collapse {label}</span>
+    </summary>
+    <div className="min-w-0 border-t border-[var(--dash-line)] pt-3 text-[var(--dash-text)] group-open:mt-3"><AssistantRichText text={text} /></div>
+  </details>;
+}
+
 function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgentId, busy, command, preview = false }: { agents: Agent[]; projects: Project[]; handoffs: Handoff[]; events: Event[]; artifacts: Artifact[]; bossAgentId: string | null; busy: boolean; command: (action: string, payload?: Record<string, unknown>) => Promise<unknown>; preview?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(handoffs[0]?.id || null);
   const [showForm, setShowForm] = useState(false);
@@ -711,7 +724,7 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
           {historyLoading && !historyItems.length ? <div className="space-y-2" role="status" aria-label="Loading project handoffs">
             <p className="text-sm text-[var(--dash-muted)]">Loading project handoffs…</p>
             {[0, 1, 2].map((item) => <div key={item} className="space-y-2 rounded-lg border border-[var(--dash-line)] p-3"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-4/5" /></div>)}
-          </div> : historyItems.length ? <div aria-busy={historyLoading} className="space-y-2">
+          </div> : historyItems.length ? <div aria-busy={historyLoading} aria-label="Handoff history results" className="handoff-history-list space-y-2 pr-1" role="region" tabIndex={0}>
             {historyItems.map((task) => <Button key={task.id} type="button" variant="ghost" aria-pressed={selected?.id === task.id} onClick={() => setSelectedId(task.id)} className={`h-auto w-full items-start justify-between gap-3 whitespace-normal rounded-lg border px-3 py-3 text-left transition-colors ${selected?.id === task.id ? "border-[var(--dash-accent)] bg-[var(--dash-soft)]" : "border-[var(--dash-line)] bg-transparent hover:bg-[var(--dash-soft)]"}`}>
               <span className="min-w-0 flex-1 space-y-1">
                 <span className="block truncate text-sm font-medium text-[var(--dash-text)]"><AssistantRichInline text={task.title} /></span>
@@ -746,11 +759,11 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
             </div>
             <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Goal</h3>
-              <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={selected.goal} /></div>
+              <div className="text-sm leading-6 text-[var(--dash-text)]"><HandoffText text={selected.goal} label="goal" /></div>
             </section>
             {selected.constraints && <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--dash-muted)]">Constraints</h3>
-              <div className="rounded-lg border border-[var(--dash-line)] p-3 text-sm leading-6 text-[var(--dash-muted)]"><AssistantRichText text={selected.constraints} /></div>
+              <div className="text-sm leading-6 text-[var(--dash-muted)]"><HandoffText text={selected.constraints} label="constraints" cutoff={400} /></div>
             </section>}
             <Separator className="bg-[var(--dash-line)]" />
             <section className="space-y-3">
@@ -761,13 +774,13 @@ function HandoffsView({ agents, projects, handoffs, events, artifacts, bossAgent
               {detailError && <Alert variant="destructive" className="!bg-[var(--dash-panel)]"><AlertTitle>Could not load the complete timeline</AlertTitle><AlertDescription>{detailError}</AlertDescription></Alert>}
               {!detailForSelected && !detailError && <p className="text-sm text-[var(--dash-muted)]" role="status">Loading handoff activity…</p>}
               {detailForSelected && selectedEvents.length === 0 && <UiEmpty className="min-h-28 border border-dashed border-[var(--dash-line)] bg-[var(--dash-bg)] text-[var(--dash-text)]"><EmptyHeader><EmptyTitle className="text-sm">No updates yet</EmptyTitle><EmptyDescription className="text-[var(--dash-muted)]">Post context below to keep the handoff moving.</EmptyDescription></EmptyHeader></UiEmpty>}
-              {selectedEvents.length > 0 && <MessageGroup className="gap-0 divide-y divide-[var(--dash-line)]">
+              {selectedEvents.length > 0 && <MessageGroup className="handoff-activity-list gap-0 divide-y divide-[var(--dash-line)]" aria-label="Handoff activity log" tabIndex={0}>
                 {selectedEvents.map((event) => {
                   const actor = event.actor_key.startsWith("agent:") ? agentNames[event.actor_key.slice(6)] || "Agent" : event.actor_key.startsWith("user:") ? "You" : "Stoic";
                   return <Message key={event.id} className="py-3">
                     <MessageContent className="gap-2">
                       <MessageHeader className="gap-2 px-0 text-[var(--dash-muted)]"><Badge variant="outline" className="border-[var(--dash-line)] text-[var(--dash-text)] capitalize">{event.event_type.replaceAll("_", " ")}</Badge><span>{actor} · {timeAgo(event.created_at)}</span></MessageHeader>
-                      {event.body && <div className="text-sm leading-6 text-[var(--dash-text)]"><AssistantRichText text={event.body} /></div>}
+                      {event.body && <div className="text-sm leading-6 text-[var(--dash-text)]"><HandoffText text={event.body} label="update" cutoff={400} /></div>}
                     </MessageContent>
                   </Message>;
                 })}

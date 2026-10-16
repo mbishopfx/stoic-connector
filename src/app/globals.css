@@ -994,7 +994,9 @@
   --sidebar-accent-foreground:#22332b;
 }
 .dark .dashboard-shell[data-component-system="shadcn"][data-accent="forest"]{--primary:oklch(.72 .105 166);--primary-foreground:oklch(.16 .025 166);--ring:oklch(.72 .105 166)}
-.dashboard-shell .dashboard-main{min-width:0;min-height:0;height:100dvh;margin:0!important;border-radius:0!important;box-shadow:none!important;background:var(--background)}
+.dashboard-shell .dashboard-main{min-width:0;min-height:100dvh;height:auto;margin:0!important;border-radius:0!important;box-shadow:none!important;background:var(--background)}
+html:has(.dashboard-shell[data-theme="dark"]),body:has(.dashboard-shell[data-theme="dark"]){background:#121719}
+html:has(.dashboard-shell[data-theme="light"]),body:has(.dashboard-shell[data-theme="light"]){background:#f4f7f5}
 .dashboard-shell .dashboard-header{height:60px;min-height:60px;padding:0 clamp(18px,2.6vw,38px);border-bottom:1px solid var(--border);background:var(--background)}
 .dashboard-shell .dashboard-header-title{font-size:13px;font-weight:550;letter-spacing:-.015em;color:var(--foreground)}
 .dashboard-shell .dashboard-sidebar-trigger{display:none}
@@ -1002,6 +1004,9 @@
 .dashboard-shell .header-right>[data-slot="avatar"]{border:1px solid var(--border)}
 .dashboard-shell .dashboard-content:not(.assistant-content){max-width:1500px;min-height:calc(100dvh - 60px);margin:0 auto;padding:clamp(24px,3vw,44px)}
 .dashboard-shell .dashboard-content[data-tab]{font-size:14px;line-height:1.55}
+.dashboard-shell .handoff-history-list{max-height:min(52rem,calc(100dvh - 17rem));overflow-y:auto;overscroll-behavior:contain;scrollbar-color:var(--dash-line) transparent}
+.dashboard-shell .handoff-activity-list{max-height:36rem;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:var(--dash-line) transparent}
+@media(max-width:760px){.dashboard-shell .handoff-history-list{max-height:28rem}}
 .dashboard-shell .dashboard-content[data-tab] h1{font-size:clamp(25px,2.3vw,32px);line-height:1.15;letter-spacing:-.035em;font-weight:620}
 .dashboard-shell .dashboard-content[data-tab] h2{letter-spacing:-.025em}
 .dashboard-shell .dashboard-content[data-tab] .text-xs{font-size:12px;line-height:1.5}
