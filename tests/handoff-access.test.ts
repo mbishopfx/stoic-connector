@@ -6,10 +6,10 @@ const worker: AgentIdentity = { agentId: "worker-a", workspaceId: "workspace", o
 const boss: AgentIdentity = { ...worker, agentId: "boss", isBoss: true };
 
 describe("handoff read access", () => {
-  it("limits workers to their own approved assignments", () => {
+  it("lets connected workers read routed assignments and proposed history within their workspace", () => {
     expect(canReadHandoff(worker, { assigned_agent_id: "worker-a", status: "assigned" })).toBe(true);
-    expect(canReadHandoff(worker, { assigned_agent_id: "worker-b", status: "assigned" })).toBe(false);
-    expect(canReadHandoff(worker, { assigned_agent_id: "worker-a", status: "proposed" })).toBe(false);
+    expect(canReadHandoff(worker, { assigned_agent_id: "worker-b", status: "assigned" })).toBe(true);
+    expect(canReadHandoff(worker, { assigned_agent_id: "worker-a", status: "proposed" })).toBe(true);
   });
 
   it("allows the designated boss to review team handoffs", () => {
@@ -17,12 +17,11 @@ describe("handoff read access", () => {
     expect(canReadHandoff(boss, { assigned_agent_id: "worker-b", status: "proposed" })).toBe(true);
   });
 
-  it("allows only an explicitly eligible worker to read an open team-queue item", () => {
+  it("reads open team-queue history without a stale eligibility snapshot", () => {
     const open = { assigned_agent_id: null, status: "assigned" };
-    expect(canReadHandoff(worker, open)).toBe(false);
-    expect(canReadHandoff(worker, open, true)).toBe(true);
-    expect(canReadHandoff(worker, { ...open, status: "proposed" }, true)).toBe(false);
-    expect(canReadHandoff(worker, { assigned_agent_id: "worker-b", status: "assigned" }, true)).toBe(false);
+    expect(canReadHandoff(worker, open)).toBe(true);
+    expect(canReadHandoff(worker, { ...open, status: "proposed" })).toBe(true);
+    expect(canReadHandoff(worker, { assigned_agent_id: "worker-b", status: "assigned" })).toBe(true);
   });
 
   it("only lets the uploader or boss finalize a pending file", () => {

@@ -34,10 +34,20 @@ describe("copy-ready Stoic prompts", () => {
     expect(text).toContain("claim_handoff");
     expect(text).toContain("owner approval");
     expect(promptLibrary.map((prompt) => prompt.id)).toEqual([
-      "contact-link", "contact-link-browser", "team-check-in", "stoic-chat-check-in-30m", "stoic-chat-check-in-60m",
+      "contact-link", "contact-link-browser", "team-check-in", "stoic-chat-check-in-30m", "stoic-chat-check-in-60m", "group-chat-collaboration",
       "project-kickoff", "parallel-work-breakdown", "handoff-execution", "cross-agent-review", "integration-review",
       "blocker-resolution", "team-status-roundup", "decision-synthesis",
     ]);
+  });
+
+  it("teaches agents to discover unread discussions and start a durable invited thread", () => {
+    const text = renderStoicPrompt("group-chat-collaboration", endpoint);
+    for (const tool of ["list_unread_project_messages", "list_group_discussions", "read_group_discussion", "start_group_discussion", "post_project_message", "ack_project_board", "list_all_handoffs"]) {
+      expect(text).toContain(tool);
+    }
+    expect(text).toContain("nextOffset");
+    expect(text).toContain("parentId");
+    expect(text).toContain("not a privileged system message");
   });
 
   it("adds 30- and 60-minute Stoic Chat routines and a nightly self-reported diary", () => {

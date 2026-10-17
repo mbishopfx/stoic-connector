@@ -47,6 +47,76 @@ export async function listBoard(agent: AgentIdentity, projectId: string, offset 
   };
 }
 
+export async function listUnreadProjectMessages(agent: AgentIdentity, offset = 0) {
+  const { data, error } = await adminDb().rpc("stoic_agent_unread_board_page", {
+    p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId, p_offset: offset,
+  });
+  if (error) throw error;
+  return { messages: data || [], nextOffset: data?.length === 100 ? offset + 100 : null };
+}
+
+export async function listGroupDiscussions(agent: AgentIdentity, projectId: string, offset = 0) {
+  const db = adminDb();
+  const { data: project, error: projectError } = await db.from("projects").select("id,name")
+    .eq("workspace_id", agent.workspaceId).eq("id", projectId).is("archived_at", null).maybeSingle();
+  if (projectError) throw projectError;
+  if (!project) throw new AppError("Project not found", 404);
+  const { data, error } = await db.rpc("stoic_group_discussion_roots_page", {
+    p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId,
+    p_project_id: projectId, p_offset: offset,
+  });
+  if (error) throw error;
+  const discussions = (data || []).map((item: {
+    id: string; project_id: string; author_key: string; body: string; created_at: string;
+  }) => ({
+    id: item.id,
+    projectId: item.project_id,
+    authorKey: item.author_key,
+    topic: item.body.match(/^Topic: (.+)$/m)?.[1] || "Untitled discussion",
+    participantAgentIds: (item.body.match(/^Invited agent IDs: (.+)$/m)?.[1] || "")
+      .split(",").map((value: string) => value.trim().replace(/^agent:/, "")).filter(Boolean),
+    createdAt: item.created_at,
+    closesAt: item.body.startsWith("[stoic-agent-discussion:v1]")
+      ? new Date(new Date(item.created_at).getTime() + 90 * 60_000).toISOString() : null,
+  }));
+  return { project, discussions, nextOffset: data?.length === 100 ? offset + 100 : null };
+}
+
+export async function readGroupDiscussion(agent: AgentIdentity, projectId: string, rootId: string, offset = 0) {
+  const { data, error } = await adminDb().rpc("stoic_discussion_messages_page", {
+    p_workspace_id: agent.workspaceId, p_agent_id: agent.agentId,
+    p_project_id: projectId, p_root_id: rootId, p_offset: offset,
+  });
+  if (error) {
+    if (error.message.includes("not_found")) throw new AppError("Discussion not found", 404);
+    throw error;
+  }
+  const { data: root, error: rootError } = await adminDb().from("board_messages")
+    .select("id,project_id,parent_id,author_key,kind,body,created_at,message_seq")
+    .eq("workspace_id", agent.workspaceId).eq("project_id", projectId).eq("id", rootId).single();
+  if (rootError) throw rootError;
+  return { root, messages: data || [], nextOffset: data?.length === 100 ? offset + 100 : null };
+}
+
+export async function startGroupDiscussion(agent: AgentIdentity, input: {
+  projectId: string; topic: string; guidance?: string; participantAgentIds: string[]; idempotencyKey: string;
+}) {
+  const participants = [...new Set([agent.agentId, ...input.participantAgentIds])];
+  if (participants.length > 10) throw new AppError("Choose at most ten participants including yourself", 400);
+  const { data, error } = await adminDb().rpc("stoic_start_agent_discussion", {
+    p_workspace_id: agent.workspaceId, p_project_id: input.projectId,
+    p_actor_agent_id: agent.agentId, p_topic: input.topic, p_guidance: input.guidance || null,
+    p_participant_ids: participants, p_idempotency_key: input.idempotencyKey,
+  });
+  if (error) {
+    const status = error.message.includes("not_found") ? 404
+      : error.message.includes("forbidden") ? 403
+        : error.message.includes("idempotency_conflict") ? 409 : 400;
+    throw new AppError(error.message.replaceAll("_", " "), status);
+  }
+  return data;
+}
+
 export async function acknowledgeBoardMessage(agent: AgentIdentity, projectId: string, messageId: string) {
   const { data, error } = await adminDb().rpc("stoic_ack_board_message", {
     p_workspace_id: agent.workspaceId,
