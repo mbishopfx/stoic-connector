@@ -3,7 +3,7 @@ import { adminDb, AppError } from "@/lib/supabase";
 import { artifactInput } from "@/lib/validation";
 import { requireWorkspace } from "@/lib/account";
 import type { AgentIdentity } from "@/lib/identity";
-import { canCompleteArtifact, canReadHandoff } from "@/lib/handoff-policy";
+import { canCompleteArtifact } from "@/lib/handoff-policy";
 import { canReadScopedHandoff } from "@/lib/handoff-access";
 import { SUPPORTED_ARTIFACT_MIME } from "@/lib/artifact-mime";
 
@@ -29,7 +29,9 @@ export async function reserveArtifact(actor: Actor, input: unknown, contentDiges
       .select("assigned_agent_id,status").eq("workspace_id", workspaceId)
       .eq("project_id", parsed.projectId).eq("id", parsed.handoffId).maybeSingle();
     if (handoffError) throw handoffError;
-    if (!handoff || !canReadHandoff(actor.agent, handoff)) throw new AppError("Handoff not found", 404);
+    if (!handoff || !(actor.agent.isBoss || (
+      handoff.assigned_agent_id === actor.agent.agentId && ["claimed", "blocked"].includes(handoff.status)
+    ))) throw new AppError("Claim this handoff before attaching a file", 403);
   }
   const { data: artifact, error } = await db.rpc("stoic_reserve_artifact_v2", {
     p_workspace_id: workspaceId, p_project_id: parsed.projectId, p_handoff_id: parsed.handoffId || null,

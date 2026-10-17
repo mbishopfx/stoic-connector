@@ -77,6 +77,7 @@ type Handoff = {
   constraints?: string | null;
   status: string;
   assigned_agent_id: string | null;
+  preferred_agent_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -441,11 +442,12 @@ export function AnalyticsTab({ context, runtime }: McpTabProps) {
 function HandoffSummary({ handoff, context }: { handoff: Handoff; context: McpTabProps["context"] }) {
   const assigned = context.agents.find((agent) => agent.id === handoff.assigned_agent_id);
   const project = context.projects.find((item) => item.id === handoff.project_id);
+  const preferred = !assigned && context.agents.find((agent) => agent.id === (handoff.preferred_agent_id || project?.default_agent_id));
   return (
     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <h3 className="break-words text-sm font-medium leading-snug">{handoff.title}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{assigned?.name || "Team queue"} <span aria-hidden="true">·</span> {project?.name || "Project"}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{assigned?.name || (preferred ? `Team queue · ${preferred.name} preferred` : "Team queue")} <span aria-hidden="true">·</span> {project?.name || "Project"}</p>
         {handoff.updated_at && <p className="mt-1 text-xs text-muted-foreground">Updated {formatDate(handoff.updated_at)}</p>}
       </div>
       <StatusBadge status={handoff.status} />
@@ -515,9 +517,8 @@ function HandoffCard({
   const fullHandoff = detail?.handoff || handoff;
   const status = String(fullHandoff.status || handoff.status);
   const assignedToSelf = fullHandoff.assigned_agent_id === context.self.agentId;
-  const claimableQueueItem = status === "assigned" && !fullHandoff.assigned_agent_id;
   const isWorker = context.self.role === "worker";
-  const canClaim = isWorker && ["assigned", "changes_requested"].includes(status) && (assignedToSelf || claimableQueueItem);
+  const canClaim = isWorker && ["assigned", "blocked", "changes_requested"].includes(status);
   const canUpdate = isWorker && ["claimed", "blocked", "changes_requested"].includes(status) && assignedToSelf;
   const canReview = context.self.role === "boss" && status === "submitted";
   const events = detail?.events || [];
@@ -581,7 +582,7 @@ function HandoffCard({
 
                 {canClaim && (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-                    <p className="text-sm text-muted-foreground">Claim this assignment to take ownership of the work.</p>
+                    <p className="text-sm text-muted-foreground">Claim this open assignment to take ownership. A route names the preferred worker, and the first successful claim wins.</p>
                     <Button disabled={Boolean(busyAction)} onClick={() => void act("claim_handoff", "Claimed from the Stoic workspace.", "Handoff claimed.")}>
                       {busyAction === "claim_handoff" ? <RefreshCw className="animate-spin" /> : <Check />} Claim handoff
                     </Button>

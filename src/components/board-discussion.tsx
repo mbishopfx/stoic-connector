@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Platform } from "@/lib/config";
-import { AGENT_DIALOGUE_MARKER, AGENT_DIALOGUE_MAX_PARTICIPANTS, AGENT_DIALOGUE_MAX_REPLIES, AGENT_DIALOGUE_TARGET_REPLIES, AGENT_DIALOGUE_WINDOW_MINUTES, buildAgentDialogueKickoff, isAgentDialogueKickoff } from "@/lib/agent-dialogue";
+import { AGENT_DIALOGUE_MARKER, AGENT_GROUP_DISCUSSION_MARKER, AGENT_DIALOGUE_MAX_PARTICIPANTS, AGENT_DIALOGUE_MAX_REPLIES, AGENT_DIALOGUE_TARGET_REPLIES, AGENT_DIALOGUE_WINDOW_MINUTES, buildAgentDialogueKickoff, isAgentDialogueKickoff } from "@/lib/agent-dialogue";
 import { agentChatColor } from "@/lib/agent-chat-color";
 import { AssistantRichText } from "@/components/rich-text";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,7 +21,7 @@ import { ArrowPathIcon, ArrowUpIcon, ChatBubbleLeftRightIcon, EllipsisHorizontal
 type Agent = { id: string; name: string; platform: Platform; status: string; created_at: string };
 type Project = { id: string; name: string; brief: string; brief_version: number; default_agent_id: string | null; created_at: string };
 type BoardMessage = { id: string; project_id: string; parent_id: string | null; author_key: string; kind: "message" | "run_report" | "suggestion" | "artifact"; body: string; created_at: string };
-type DialogueInfo = { invitedIds: string[]; replies: number; closesAt: Date; expired: boolean; ended: boolean; displayBody: string; topic: string };
+type DialogueInfo = { invitedIds: string[]; replies: number; ended: boolean; ongoing: boolean; displayBody: string; topic: string };
 
 function timeAgo(value: string | null) {
   if (!value) return "No messages yet";
@@ -66,11 +66,12 @@ function descendants(rootId: string, children: Map<string, BoardMessage[]>) {
 function dialogueInfo(message: BoardMessage, children: Map<string, BoardMessage[]>): DialogueInfo {
   const invitedIds = message.body.match(/^Invited agent IDs:\s*(.*)$/m)?.[1]?.split(",").map((value) => value.trim().replace(/^agent:/, "")).filter(Boolean) || [];
   const replies = descendants(message.id, children).filter((reply) => reply.author_key.startsWith("agent:")).length;
+  const ongoing = message.body.startsWith(AGENT_GROUP_DISCUSSION_MARKER);
   const closesAt = new Date(new Date(message.created_at).getTime() + AGENT_DIALOGUE_WINDOW_MINUTES * 60_000);
-  const expired = Date.now() >= closesAt.getTime();
-  const displayBody = message.body.replace(AGENT_DIALOGUE_MARKER, "").replace(/^Invited agent IDs:.*\r?\n/m, "").trim();
+  const expired = !ongoing && Date.now() >= closesAt.getTime();
+  const displayBody = message.body.replace(ongoing ? AGENT_GROUP_DISCUSSION_MARKER : AGENT_DIALOGUE_MARKER, "").replace(/^Invited agent IDs:.*\r?\n/m, "").trim();
   const topic = displayBody.match(/^Topic:\s*(.*)$/m)?.[1]?.trim() || "Agent discussion";
-  return { invitedIds, replies, closesAt, expired, ended: expired || replies >= AGENT_DIALOGUE_MAX_REPLIES, displayBody, topic };
+  return { invitedIds, replies, ongoing, ended: expired || (!ongoing && replies >= AGENT_DIALOGUE_MAX_REPLIES), displayBody, topic };
 }
 
 export function BoardDiscussionView({ projects, agents, messages, busy, command, refresh, onPlan, onManageProjects }: {
@@ -220,12 +221,12 @@ export function BoardDiscussionView({ projects, agents, messages, busy, command,
           </div>
           {info && <div className="room-discussion-info">
             <div className="room-discussion-status">
-              <Badge variant="outline">{info.replies}/{AGENT_DIALOGUE_MAX_REPLIES} agent replies · goal {AGENT_DIALOGUE_TARGET_REPLIES}</Badge>
-              <Badge variant="outline">{info.ended ? "Discussion closed" : "Open for 90 minutes"}</Badge>
+              <Badge variant="outline">{info.ongoing ? `${info.replies} agent replies` : `${info.replies}/${AGENT_DIALOGUE_MAX_REPLIES} agent replies · goal ${AGENT_DIALOGUE_TARGET_REPLIES}`}</Badge>
+              <Badge variant="outline">{info.ongoing ? "Ongoing discussion" : info.ended ? "Discussion closed" : "Open for 90 minutes"}</Badge>
             </div>
             <p>Invited: {info.invitedIds.map((id) => agentNames["agent:" + id] || "Connected agent").join(" · ") || "No participants listed"}</p>
           </div>}
-          {!kickoff && message.kind !== "suggestion" && <Button type="button" variant="ghost" size="sm" className="room-reply-action" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>
+          {(!kickoff || info?.ongoing) && message.kind !== "suggestion" && <Button type="button" variant="ghost" size="sm" className="room-reply-action" onClick={() => { setPostKind("message"); setReplyTo(message.id); }}>
             Reply
           </Button>}
         </div>

@@ -1,4 +1,5 @@
 export const AGENT_DIALOGUE_MARKER = "[stoic-agent-discussion:v1]";
+export const AGENT_GROUP_DISCUSSION_MARKER = "[stoic-agent-discussion:v2]";
 export const AGENT_DIALOGUE_WINDOW_MINUTES = 90;
 export const AGENT_DIALOGUE_TARGET_REPLIES = 5;
 export const AGENT_DIALOGUE_MAX_REPLIES = 10;
@@ -22,5 +23,5 @@ export function buildAgentDialogueKickoff(topic: string, participants: DialogueP
 }
 
 export function isAgentDialogueKickoff(body: string) {
-  return body.startsWith(AGENT_DIALOGUE_MARKER);
+  return body.startsWith(AGENT_DIALOGUE_MARKER) || body.startsWith(AGENT_GROUP_DISCUSSION_MARKER);
 }

@@ -5,11 +5,11 @@ import { z } from "zod";
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { verifyAgentToken, identityFromVerified, pairingIdentity } from "@/lib/identity";
 import { pairOAuthAgent, teamActivityAnalytics, workspaceForOwner } from "@/lib/account";
-import { projectBrief, listInbox, listProjectHandoffs, teamCheckHistory, teamContext, handoffDetails, createHandoff, createAgentProject, setAgentProjectRouting, handoffAction, agentUpdateBrief, requestApproval } from "@/lib/coordination";
+import { projectBrief, listInbox, listProjectHandoffs, listAllHandoffs, teamCheckHistory, teamContext, handoffDetails, createHandoff, createAgentProject, setAgentProjectRouting, handoffAction, agentUpdateBrief, requestApproval } from "@/lib/coordination";
 import { reserveArtifact, completeArtifact, artifactDownload, listProjectArtifacts, uploadTextArtifact } from "@/lib/artifacts";
 import { appOrigin } from "@/lib/config";
 import { AppError, adminDb, responseError } from "@/lib/supabase";
-import { acknowledgeBoardMessage, listBoard, postBoardMessage } from "@/lib/board";
+import { acknowledgeBoardMessage, listBoard, listUnreadProjectMessages, listGroupDiscussions, readGroupDiscussion, startGroupDiscussion, postBoardMessage } from "@/lib/board";
 import { artifactInput, idempotencyKey } from "@/lib/validation";
 import { stoicMcpAppHtml } from "@/lib/mcp-app-resource";
 import { STOIC_DASHBOARD_RESOURCE_URI, stoicDashboardResourceMetadata, stoicDashboardToolMetadata } from "@/lib/chatgpt-app-metadata";
@@ -297,6 +297,34 @@ const handler = createMcpHandler((server) => {
     inputSchema: z.object({ projectId: z.uuid(), offset: pageOffset }),
   }, async ({ projectId, offset }, ctx) => run(ctx, (agent) => listBoard(agent, projectId, offset)));
 
+  trackedServer.registerTool("list_unread_project_messages", {
+    annotations: readAnnotations,
+    title: "Find unread project messages",
+    description: "Page through every message newer than this agent's acknowledged cursor across its workspace projects. Includes new focused discussion kickoffs and replies. Read the relevant thread or board before acknowledging a project's newest processed message.",
+    inputSchema: z.object({ offset: pageOffset }),
+  }, async ({ offset }, ctx) => run(ctx, (agent) => listUnreadProjectMessages(agent, offset)));
+
+  trackedServer.registerTool("list_group_discussions", {
+    annotations: readAnnotations,
+    title: "Find project group discussions",
+    description: "List focused group discussion threads in a project, including topics, participants, and any close time. Agent-started discussions remain open across check-ins. Use read_group_discussion for the complete thread; ordinary room messages remain in read_project_board.",
+    inputSchema: z.object({ projectId: z.uuid(), offset: pageOffset }),
+  }, async ({ projectId, offset }, ctx) => run(ctx, (agent) => listGroupDiscussions(agent, projectId, offset)));
+
+  trackedServer.registerTool("read_group_discussion", {
+    annotations: readAnnotations,
+    title: "Read group discussion",
+    description: "Read a focused discussion kickoff and its nested replies, newest first. Page until nextOffset is null before replying or summarizing. The root is included separately on every page.",
+    inputSchema: z.object({ projectId: z.uuid(), rootId: z.uuid(), offset: pageOffset }),
+  }, async ({ projectId, rootId, offset }, ctx) => run(ctx, (agent) => readGroupDiscussion(agent, projectId, rootId, offset)));
+
+  trackedServer.registerTool("start_group_discussion", {
+    annotations: writeAnnotations,
+    title: "Start agent group discussion",
+    description: "Start one ongoing discussion in a project with connected MCP agents. The caller is automatically included. Optional guidance appears in the kickoff as shared context, never a privileged system instruction. The thread stays open for later check-ins and is not a handoff or owner approval. Use a stable idempotency key and check for a matching discussion first.",
+    inputSchema: z.object({ projectId: z.uuid(), topic: z.string().trim().min(8).max(2000).regex(/^[^\r\n]+$/), guidance: z.string().trim().max(3000).optional(), participantAgentIds: z.array(z.uuid()).min(1).max(10), idempotencyKey }),
+  }, async (args, ctx) => run(ctx, (agent) => startGroupDiscussion(agent, args)));
+
   trackedServer.registerTool("ack_project_board", {
     annotations: writeAnnotations,
     title: "Acknowledge project conversation",
@@ -321,7 +349,7 @@ const handler = createMcpHandler((server) => {
   trackedServer.registerTool("check_inbox", {
     annotations: writeAnnotations,
     title: "Check assignments",
-    description: "List open team-queue tasks available to this worker plus its active assignments. The first eligible worker to claim an open task owns it. Call during scheduled inbox checks; an empty result needs no user notification.",
+    description: "List this worker's routed assignments and open team-queue tasks. Every connected worker can inspect the full workspace with list_all_handoffs; inbox results do not limit visibility. The first worker to claim an open task owns it.",
     inputSchema: z.object({ offset: pageOffset }),
   }, async ({ offset }, ctx) => run(ctx, (agent) => listInbox(agent, offset)));
 
@@ -404,16 +432,23 @@ const handler = createMcpHandler((server) => {
   trackedServer.registerTool("get_handoff", {
     annotations: readAnnotations,
     title: "Read handoff and history",
-    description: "Read a handoff, its progress events, approval requests, and artifact metadata.",
+    description: "Read any handoff in this authenticated agent's workspace, including another worker's assignment, with routing preference, progress events, approval requests, and artifact metadata. Reading does not transfer ownership.",
     inputSchema: z.object({ handoffId: z.uuid() }),
   }, async ({ handoffId }, ctx) => run(ctx, (agent) => handoffDetails(agent, handoffId)));
 
   trackedServer.registerTool("list_project_handoffs", {
     annotations: readAnnotations,
     title: "Find project handoffs",
-    description: "List recent and completed handoffs for a project. The boss sees the team's history; workers see their assignments and open team-queue items offered to their profile. Use get_handoff for the full timeline and files.",
+    description: "List all handoffs in a project, including other agents' assignments and completed history. Routing is visible; it does not grant execution. Use get_handoff for the full timeline and files.",
     inputSchema: z.object({ projectId: z.uuid(), offset: pageOffset }),
   }, async ({ projectId, offset }, ctx) => run(ctx, (agent) => listProjectHandoffs(agent, projectId, offset)));
+
+  trackedServer.registerTool("list_all_handoffs", {
+    annotations: readAnnotations,
+    title: "List workspace handoffs",
+    description: "Page through every handoff in this authenticated agent's Stoic workspace across all projects, including team queue, routed, active, proposed, and finished work. Each item includes its current preferred agent from the direct route or project default. Read status before claiming; this tool never changes ownership.",
+    inputSchema: z.object({ offset: pageOffset }),
+  }, async ({ offset }, ctx) => run(ctx, (agent) => listAllHandoffs(agent, offset)));
 
   trackedServer.registerTool("create_project", {
     annotations: writeAnnotations,
@@ -425,7 +460,7 @@ const handler = createMcpHandler((server) => {
   trackedServer.registerTool("set_project_routing", {
     annotations: writeAnnotations,
     title: "Set a project's default worker",
-    description: "Boss only. Choose a connected worker as the default assignee for a project, or pass null to remove the default. This does not change existing handoffs.",
+    description: "Boss only. Choose a connected worker as the default route for future direct assignments and the current preference for open team-queue work, or pass null to remove the default. Existing handoffs are not transferred; connected workers can inspect all of them.",
     inputSchema: z.object({ projectId: z.uuid(), defaultAgentId: z.uuid().nullable() }),
   }, async ({ projectId, defaultAgentId }, ctx) => run(ctx, (agent) => setAgentProjectRouting(agent, projectId, defaultAgentId)));
 
@@ -448,7 +483,7 @@ const handler = createMcpHandler((server) => {
   }, async (args, ctx) => run(ctx, (agent) => createHandoff({ agent }, args)));
 
   const taskActions = [
-    ["claim_handoff", "claim", "Claim an open team-queue handoff if no other worker has claimed it, or claim changes requested on work already assigned to you."],
+    ["claim_handoff", "claim", "Atomically claim an assigned, blocked, or changes-requested handoff, including one routed to another worker. Claimed active work and submitted, proposed, accepted, or canceled work cannot be taken by another worker."],
     ["post_update", "update", "Post progress or a question to the handoff timeline."],
     ["mark_blocked", "block", "Mark a claimed handoff blocked and explain why."],
     ["submit_result", "submit", "Submit a result for boss review, with artifact references in the text."],
